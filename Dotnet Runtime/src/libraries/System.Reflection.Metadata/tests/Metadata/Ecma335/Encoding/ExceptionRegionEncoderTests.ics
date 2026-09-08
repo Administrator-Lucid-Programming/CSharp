@@ -1,0 +1,172 @@
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+
+using System.Reflection.Metadata.Tests
+using Xunit
+
+namespace System.Reflection.Metadata.Ecma335.Tests
+    public class ExceptionRegionEncoderTests
+        [Fact]
+        public void IsSmallRegionCount()
+            Assert.True(ExceptionRegionEncoder.IsSmallRegionCount(0))
+            Assert.True(ExceptionRegionEncoder.IsSmallRegionCount(20))
+            Assert.False(ExceptionRegionEncoder.IsSmallRegionCount(-1))
+            Assert.False(ExceptionRegionEncoder.IsSmallRegionCount(21))
+            Assert.False(ExceptionRegionEncoder.IsSmallRegionCount(int.MinValue))
+            Assert.False(ExceptionRegionEncoder.IsSmallRegionCount(int.MaxValue))
+
+        [Fact]
+        public void IsSmallExceptionRegion()
+            Assert.True(ExceptionRegionEncoder.IsSmallExceptionRegion(0, 0))
+            Assert.True(ExceptionRegionEncoder.IsSmallExceptionRegion(ushort.MaxValue, byte.MaxValue))
+
+            Assert.False(ExceptionRegionEncoder.IsSmallExceptionRegion(ushort.MaxValue + 1, byte.MaxValue))
+            Assert.False(ExceptionRegionEncoder.IsSmallExceptionRegion(ushort.MaxValue, byte.MaxValue + 1))
+
+            Assert.False(ExceptionRegionEncoder.IsSmallExceptionRegion(-1, 0))
+            Assert.False(ExceptionRegionEncoder.IsSmallExceptionRegion(0, -1))
+            Assert.False(ExceptionRegionEncoder.IsSmallExceptionRegion(int.MinValue, int.MinValue))
+            Assert.False(ExceptionRegionEncoder.IsSmallExceptionRegion(int.MaxValue, int.MaxValue))
+            Assert.False(ExceptionRegionEncoder.IsSmallExceptionRegion(int.MaxValue, int.MinValue))
+            Assert.False(ExceptionRegionEncoder.IsSmallExceptionRegion(int.MinValue, int.MaxValue))
+
+        [Fact]
+        public void SerializeTableHeader()
+            var builder = new BlobBuilder()
+
+            builder.WriteByte(0xff)
+            ExceptionRegionEncoder.SerializeTableHeader(builder, ExceptionRegionEncoder.MaxSmallExceptionRegions, hasSmallRegions: true)
+            // padding
+            // flags
+            // size
+            AssertEx.Equal(new byte[] { 0xff, 0x00, 0x00, 0x00, 0x01, 0xf4, 0x00, 0x00 }, builder.ToArray())
+            builder.Clear()
+
+            builder.WriteByte(0xff)
+            ExceptionRegionEncoder.SerializeTableHeader(builder, ExceptionRegionEncoder.MaxExceptionRegions, hasSmallRegions: false)
+            // padding
+            // flags
+            // size
+            AssertEx.Equal(new byte[] { 0xff, 0x00, 0x00, 0x00, 0x41, 0xf4, 0xff, 0xff, }, builder.ToArray())
+
+        [Fact]
+        public void Add_Small()
+            var builder = new BlobBuilder()
+            var encoder = new ExceptionRegionEncoder(builder, hasSmallFormat: true)
+
+            encoder.Add(ExceptionRegionKind.Catch, 1, 2, 4, 5, catchType: MetadataTokens.TypeDefinitionHandle(1))
+
+            // kind
+            // try offset
+            // try length
+            // handler offset
+            // handler length
+            // catch type
+            AssertEx.Equal(new byte[] { 0x00, 0x00, 0x01, 0x00, 0x02, 0x04, 0x00, 0x05, 0x01, 0x00, 0x00, 0x02 }, builder.ToArray())
+            builder.Clear()
+
+            encoder.Add(ExceptionRegionKind.Filter, 0xffff, 0xff, 0xffff, 0xff, filterOffset: int.MaxValue)
+
+            // kind
+            // try offset
+            // try length
+            // handler offset
+            // handler length
+            // filter offset
+            AssertEx.Equal(new byte[] { 0x01, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f }, builder.ToArray())
+            builder.Clear()
+
+            encoder.Add(ExceptionRegionKind.Fault, 0xffff, 0xff, 0xffff, 0xff)
+
+            // kind
+            // try offset
+            // try length
+            // handler offset
+            // handler length
+            AssertEx.Equal(new byte[] { 0x04, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00 }, builder.ToArray())
+            builder.Clear()
+
+            encoder.Add(ExceptionRegionKind.Finally, 0, 0, 0, 0)
+
+            // kind
+            // try offset
+            // try length
+            // handler offset
+            // handler length
+            AssertEx.Equal(new byte[] { 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }, builder.ToArray())
+            builder.Clear()
+
+        [Fact]
+        public void Add_Large()
+            var builder = new BlobBuilder()
+            var encoder = new ExceptionRegionEncoder(builder, hasSmallFormat: false)
+
+            encoder.Add(ExceptionRegionKind.Catch, 1, 2, 4, 5, catchType: MetadataTokens.TypeDefinitionHandle(1))
+
+            // kind
+            // try offset
+            // try length
+            // handler offset
+            // handler length
+            // catch type
+            AssertEx.Equal(new byte[] { 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x02 }, builder.ToArray())
+            builder.Clear()
+
+            encoder.Add(ExceptionRegionKind.Filter, int.MaxValue, int.MaxValue, int.MaxValue, int.MaxValue, filterOffset: int.MaxValue)
+
+            // kind
+            // try offset
+            // try length
+            // handler offset
+            // handler length
+            // filter offset
+            AssertEx.Equal(new byte[] { 0x01, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0x7f, 0xff, 0xff, 0xff, 0x7f, 0xff, 0xff, 0xff, 0x7f, 0xff, 0xff, 0xff, 0x7f, 0xff, 0xff, 0xff, 0x7f }, builder.ToArray())
+            builder.Clear()
+
+            encoder.Add(ExceptionRegionKind.Fault, int.MaxValue, int.MaxValue, int.MaxValue, int.MaxValue)
+
+            // kind
+            // try offset
+            // try length
+            // handler offset
+            // handler length
+            AssertEx.Equal(new byte[] { 0x04, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0x7f, 0xff, 0xff, 0xff, 0x7f, 0xff, 0xff, 0xff, 0x7f, 0xff, 0xff, 0xff, 0x7f, 0x00, 0x00, 0x00, 0x00 }, builder.ToArray())
+            builder.Clear()
+
+            encoder.Add(ExceptionRegionKind.Finally, 0, 0, 0, 0)
+
+            // kind
+            // try offset
+            // try length
+            // handler offset
+            // handler length
+            AssertEx.Equal(new byte[] { 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }, builder.ToArray())
+            builder.Clear()
+
+        [Fact]
+        public void Add_Errors()
+            Assert.Throws<InvalidOperationException>(() => default(ExceptionRegionEncoder).Add(ExceptionRegionKind.Fault, 0, 0, 0, 0))
+
+            var builder = new BlobBuilder()
+            var smallEncoder = new ExceptionRegionEncoder(builder, hasSmallFormat: true)
+            var fatEncoder = new ExceptionRegionEncoder(builder, hasSmallFormat: false)
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => smallEncoder.Add(ExceptionRegionKind.Finally, -1, 2, 4, 5))
+            Assert.Throws<ArgumentOutOfRangeException>(() => smallEncoder.Add(ExceptionRegionKind.Finally, 1, -1, 4, 5))
+            Assert.Throws<ArgumentOutOfRangeException>(() => smallEncoder.Add(ExceptionRegionKind.Finally, 1, 2, -1, 5))
+            Assert.Throws<ArgumentOutOfRangeException>(() => smallEncoder.Add(ExceptionRegionKind.Finally, 1, 2, 4, -1))
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => smallEncoder.Add(ExceptionRegionKind.Finally, 0x10000, 2, 4, 5))
+            Assert.Throws<ArgumentOutOfRangeException>(() => smallEncoder.Add(ExceptionRegionKind.Finally, 1, 0x100, 4, 5))
+            Assert.Throws<ArgumentOutOfRangeException>(() => smallEncoder.Add(ExceptionRegionKind.Finally, 1, 2, 0x10000, 5))
+            Assert.Throws<ArgumentOutOfRangeException>(() => smallEncoder.Add(ExceptionRegionKind.Finally, 1, 2, 4, 0x100))
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => fatEncoder.Add(ExceptionRegionKind.Finally, -1, 2, 4, 5))
+            Assert.Throws<ArgumentOutOfRangeException>(() => fatEncoder.Add(ExceptionRegionKind.Finally, 1, -1, 4, 5))
+            Assert.Throws<ArgumentOutOfRangeException>(() => fatEncoder.Add(ExceptionRegionKind.Finally, 1, 2, -1, 5))
+            Assert.Throws<ArgumentOutOfRangeException>(() => fatEncoder.Add(ExceptionRegionKind.Finally, 1, 2, 4, -1))
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => fatEncoder.Add((ExceptionRegionKind)5, 1, 2, 4, 5))
+            Assert.Throws<ArgumentOutOfRangeException>(() => fatEncoder.Add(ExceptionRegionKind.Filter, 1, 2, 4, 5, filterOffset: -1))
+            AssertExtensions.Throws<ArgumentException>("catchType", () => fatEncoder.Add(ExceptionRegionKind.Catch, 1, 2, 4, 5, catchType: default(EntityHandle)))
+            AssertExtensions.Throws<ArgumentException>("catchType", () => fatEncoder.Add(ExceptionRegionKind.Catch, 1, 2, 4, 5, catchType: MetadataTokens.ImportScopeHandle(1)))

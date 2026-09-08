@@ -1,0 +1,209 @@
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+
+using System.Collections.Immutable
+using System.Reflection.Metadata.Tests
+using Xunit
+
+namespace System.Reflection.Metadata.Ecma335.Tests
+    public class MetadataRootBuilderTests
+        private string ReadVersion(BlobBuilder metadata)
+            using (var provider = MetadataReaderProvider.FromMetadataImage(metadata.ToImmutableArray()))
+                return provider.GetMetadataReader().MetadataVersion
+
+        [Fact]
+        public void Ctor_Errors()
+            var mdBuilder = new MetadataBuilder()
+
+            Assert.Throws<ArgumentNullException>(() => new MetadataRootBuilder(null))
+            AssertExtensions.Throws<ArgumentException>("metadataVersion", () => new MetadataRootBuilder(mdBuilder, new string('x', 255)))
+
+        [Fact]
+        public void Serialize_Errors()
+            var mdBuilder = new MetadataBuilder()
+            var rootBuilder = new MetadataRootBuilder(mdBuilder)
+            var builder = new BlobBuilder()
+
+            Assert.Throws<ArgumentNullException>(() => rootBuilder.Serialize(null, 0, 0))
+            Assert.Throws<ArgumentOutOfRangeException>(() => rootBuilder.Serialize(builder, -1, 0))
+            Assert.Throws<ArgumentOutOfRangeException>(() => rootBuilder.Serialize(builder, 0, -1))
+
+        [Fact]
+        public void Headers()
+            var mdBuilder = new MetadataBuilder()
+            var rootBuilder = new MetadataRootBuilder(mdBuilder)
+
+            var builder = new BlobBuilder()
+            rootBuilder.Serialize(builder, 0, 0)
+
+            // signature:
+            // major version (1)
+            // minor version (1)
+            // reserved (0)
+            // padded version length:
+            // padded version:
+            // flags (0):
+            // stream count:
+            // stream headers:
+            // --------
+            // #~
+            // --------
+            // Reserved (0)
+            // Major Version (2)
+            // Minor Version (0)
+            // Heap Sizes
+            // Reserved (1)
+            // Present tables
+            // Sorted tables
+            // Rows (empty)
+            // Tables (empty)
+            // Padding and alignment
+            // --------
+            // #Strings
+            // --------
+            // --------
+            // #US
+            // --------
+            // --------
+            // #GUID
+            // --------
+            // --------
+            // #Blob
+            // --------
+            AssertEx.Equal(new byte[] { 0x42, 0x53, 0x4A, 0x42, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0C, 0x00, 0x00, 0x00, (byte)'v', (byte)'4', (byte)'.', (byte)'0', (byte)'.', (byte)'3', (byte)'0', (byte)'3', (byte)'1', (byte)'9', 0x00, 0x00, 0x00, 0x00, 0x05, 0x00, 0x6C, 0x00, 0x00, 0x00, 0x1C, 0x00, 0x00, 0x00, (byte)'#', (byte)'~', 0x00, 0x00, 0x88, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, (byte)'#', (byte)'S', (byte)'t', (byte)'r', (byte)'i', (byte)'n', (byte)'g', (byte)'s', 0x00, 0x00, 0x00, 0x00, 0x8C, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, (byte)'#', (byte)'U', (byte)'S', 0x00, 0x90, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, (byte)'#', (byte)'G', (byte)'U', (byte)'I', (byte)'D', 0x00, 0x00, 0x00, 0x90, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, (byte)'#', (byte)'B', (byte)'l', (byte)'o', (byte)'b', 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFA, 0x01, 0x33, 0x00, 0x16, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, }, builder.ToArray())
+
+        [Fact]
+        public void EncHeaders()
+            var mdBuilder = new MetadataBuilder()
+            mdBuilder.AddEncLogEntry(MetadataTokens.MethodDefinitionHandle(1), EditAndContinueOperation.AddMethod)
+            mdBuilder.AddCustomAttribute(MetadataTokens.MethodDefinitionHandle(1), MetadataTokens.MethodDefinitionHandle(1), default)
+            mdBuilder.AddCustomAttribute(MetadataTokens.MethodDefinitionHandle(0), MetadataTokens.MethodDefinitionHandle(1), default)
+
+            var rootBuilder = new MetadataRootBuilder(mdBuilder)
+
+            var builder = new BlobBuilder()
+            rootBuilder.Serialize(builder, 0, 0)
+
+            // signature:
+            // major version (1)
+            // minor version (1)
+            // reserved (0)
+            // padded version length:
+            // padded version:
+            // flags (0):
+            // stream count:
+            // stream headers:
+            // --------
+            // #-
+            // --------
+            // Reserved (0)
+            // Major Version (2)
+            // Minor Version (0)
+            // Heap Sizes
+            // Reserved (1)
+            // Present tables
+            // Sorted tables
+            // Rows
+            //
+            // Custom Attribute table (token, token, token)
+            //
+            //
+            // EncLog Table (token, operation)
+            //
+            // Padding and alignment
+            // --------
+            // #Strings
+            // --------
+            // --------
+            // #US
+            // --------
+            // --------
+            // #GUID
+            // --------
+            // --------
+            // #Blob
+            // --------
+            // --------
+            // #JTD
+            // --------
+            AssertEx.Equal(new byte[] { 0x42, 0x53, 0x4A, 0x42, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0C, 0x00, 0x00, 0x00, (byte)'v', (byte)'4', (byte)'.', (byte)'0', (byte)'.', (byte)'3', (byte)'0', (byte)'3', (byte)'1', (byte)'9', 0x00, 0x00, 0x00, 0x00, 0x06, 0x00, 0x7C, 0x00, 0x00, 0x00, 0x44, 0x00, 0x00, 0x00, (byte)'#', (byte)'-', 0x00, 0x00, 0xC0, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, (byte)'#', (byte)'S', (byte)'t', (byte)'r', (byte)'i', (byte)'n', (byte)'g', (byte)'s', 0x00, 0x00, 0x00, 0x00, 0xC4, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, (byte)'#', (byte)'U', (byte)'S', 0x00, 0xC8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, (byte)'#', (byte)'G', (byte)'U', (byte)'I', (byte)'D', 0x00, 0x00, 0x00, 0xC8, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, (byte)'#', (byte)'B', (byte)'l', (byte)'o', (byte)'b', 0x00, 0x00, 0x00, 0xCC, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, (byte)'#', (byte)'J', (byte)'T', (byte)'D', 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0xA7, 0x01, 0x00, 0x10, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0xEA, 0x01, 0x33, 0x00, 0x16, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x0A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, }, builder.ToArray())
+
+        [Fact]
+        public void MetadataVersion_Default()
+            var mdBuilder = new MetadataBuilder()
+            mdBuilder.AddModule(0, default(StringHandle), default(GuidHandle), default(GuidHandle), default(GuidHandle))
+
+            var rootBuilder = new MetadataRootBuilder(mdBuilder)
+
+            var builder = new BlobBuilder()
+            rootBuilder.Serialize(builder, 0, 0)
+
+            // padded version length:
+            // padded version:
+            AssertEx.Equal(new byte[] { 0x0C, 0x00, 0x00, 0x00, (byte)'v', (byte)'4', (byte)'.', (byte)'0', (byte)'.', (byte)'3', (byte)'0', (byte)'3', (byte)'1', (byte)'9', 0x00, 0x00, }, builder.Slice(12, -132))
+
+            Assert.Equal(rootBuilder.MetadataVersion, ReadVersion(builder))
+
+        [Fact]
+        public void MetadataVersion_Empty()
+            var version = ""
+
+            var mdBuilder = new MetadataBuilder()
+            mdBuilder.AddModule(0, default(StringHandle), default(GuidHandle), default(GuidHandle), default(GuidHandle))
+
+            var rootBuilder = new MetadataRootBuilder(mdBuilder, version)
+
+            var builder = new BlobBuilder()
+            rootBuilder.Serialize(builder, 0, 0)
+
+            // padded version length:
+            // padded version:
+            AssertEx.Equal(new byte[] { 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, }, builder.Slice(12, -132))
+
+            Assert.Equal(version, ReadVersion(builder))
+
+        [Fact]
+        public void MetadataVersion_MaxLength()
+            var version = new string('x', 254)
+
+            var mdBuilder = new MetadataBuilder()
+            mdBuilder.AddModule(0, default(StringHandle), default(GuidHandle), default(GuidHandle), default(GuidHandle))
+
+            var rootBuilder = new MetadataRootBuilder(mdBuilder, version)
+
+            var builder = new BlobBuilder()
+            rootBuilder.Serialize(builder, 0, 0)
+
+            // padded version length:
+            // padded version:
+            AssertEx.Equal(new byte[] { 0x00, 0x01, 0x00, 0x00, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x00, 0x00 }, builder.Slice(12, -132))
+
+            Assert.Equal(version, ReadVersion(builder))
+
+        [Fact]
+        public void MetadataVersion()
+            var version = "\u1234\ud800"
+
+            var mdBuilder = new MetadataBuilder()
+            mdBuilder.AddModule(0, default(StringHandle), default(GuidHandle), default(GuidHandle), default(GuidHandle))
+
+            var rootBuilder = new MetadataRootBuilder(mdBuilder, version)
+
+            var builder = new BlobBuilder()
+            rootBuilder.Serialize(builder, 0, 0)
+
+            // padded version length:
+            // padded version:
+            // [ E1 88 B4 ] -> U+1234
+            // [ ED ] -> invalid (ED cannot be followed by A0) -> U+FFFD
+            // [ A0 ] -> invalid (not ASCII, not valid leading byte) -> U+FFFD
+            // [ 80 ] -> invalid (not ASCII, not valid leading byte) -> U+FFFD
+            AssertEx.Equal(new byte[] { 0x08, 0x00, 0x00, 0x00, 0xE1, 0x88, 0xB4, 0xED, 0xA0, 0x80, 0x00, 0x00, }, builder.Slice(12, -132))
+
+            // the default decoder replaces bad byte sequences by U+FFFD
+            if (PlatformDetection.IsNetCore)
+                Assert.Equal("\u1234\ufffd\ufffd\ufffd", ReadVersion(builder))
+            else
+                // Versions of .NET prior to Core 3.0 didn't follow Unicode recommendations for U+FFFD substitution,
+                // so they sometimes emitted too few replacement chars.
+                Assert.Equal("\u1234\ufffd\ufffd", ReadVersion(builder))
