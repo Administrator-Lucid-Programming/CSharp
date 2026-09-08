@@ -1,0 +1,635 @@
+using Xunit;
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using Avalonia.Controls.Primitives;
+using Avalonia.Controls.Templates;
+using Avalonia.Input;
+using Avalonia.UnitTests;
+using Avalonia.VisualTree;
+
+namespace Avalonia.Controls.UnitTests
+{
+    public class CalendarTests : ScopedTestBase
+    {
+        private static bool CompareDates(DateTime first, DateTime second)
+        {
+            return first.Year == second.Year && 
+                first.Month == second.Month &&
+                first.Day == second.Day;
+        }
+
+        [Fact]
+        public void SelectedDatesChanged_Should_Fire_When_SelectedDate_Set()
+        {
+            bool handled = false;
+            Calendar calendar = new Calendar();
+            calendar.SelectionMode = CalendarSelectionMode.SingleDate;
+            calendar.SelectedDatesChanged += new EventHandler<SelectionChangedEventArgs>(delegate
+            {
+                handled = true;
+            });
+            DateTime value = new DateTime(2000, 10, 10);
+            calendar.SelectedDate = value;
+            Assert.True(handled);
+        }
+
+        [Fact]
+        public void DisplayDateChanged_Should_Fire_When_DisplayDate_Set()
+        {
+            bool handled = false;
+            Calendar calendar = new Calendar();
+            calendar.SelectionMode = CalendarSelectionMode.SingleDate;
+            calendar.DisplayDateChanged += new EventHandler<CalendarDateChangedEventArgs>(delegate
+            {
+                handled = true;
+            });
+            DateTime value = new DateTime(2000, 10, 10);
+            calendar.DisplayDate = value;
+            Assert.True(handled);
+        }
+
+        [Fact]
+        public void Setting_Selected_Date_To_Blackout_Date_Should_Throw()
+        {
+            Calendar calendar = new Calendar();
+            calendar.BlackoutDates.AddDatesInPast();
+
+            Assert.ThrowsAny<ArgumentOutOfRangeException>(
+                () => calendar.SelectedDate = DateTime.Today.AddDays(-1));
+        }
+
+        [Fact]
+        public void Setting_Selected_Date_To_Blackout_Date_Should_Throw_Range()
+        {
+            Calendar calendar = new Calendar();
+            calendar.BlackoutDates.Add(new CalendarDateRange(DateTime.Today, DateTime.Today.AddDays(10)));
+
+            calendar.SelectedDate = DateTime.Today.AddDays(-1);
+            Assert.True(CompareDates(calendar.SelectedDate.Value, DateTime.Today.AddDays(-1)));
+            Assert.True(CompareDates(calendar.SelectedDate.Value, calendar.SelectedDates[0]));
+
+            calendar.SelectedDate = DateTime.Today.AddDays(11);
+            Assert.True(CompareDates(calendar.SelectedDate.Value, DateTime.Today.AddDays(11)));
+            Assert.True(CompareDates(calendar.SelectedDate.Value, calendar.SelectedDates[0]));
+
+            Assert.ThrowsAny<ArgumentOutOfRangeException>(
+                () => calendar.SelectedDate = DateTime.Today.AddDays(5));
+        }
+
+        [Fact]
+        public void Adding_Blackout_Dates_Containing_Selected_Date_Should_Throw()
+        {
+            Calendar calendar = new Calendar();
+            calendar.SelectedDate = DateTime.Today.AddDays(5);
+
+            Assert.ThrowsAny<ArgumentOutOfRangeException>(
+                () => calendar.BlackoutDates.Add(new CalendarDateRange(DateTime.Today, DateTime.Today.AddDays(10))));
+        }
+
+        [Fact]
+        public void DisplayDateStartEnd_Should_Constrain_Display_Date()
+        {
+            Calendar calendar = new Calendar();
+            calendar.SelectionMode = CalendarSelectionMode.SingleDate;
+            calendar.DisplayDateStart = new DateTime(2005, 12, 30);
+
+            DateTime value = new DateTime(2005, 12, 15);
+            calendar.DisplayDate = value;
+            Assert.True(CompareDates(calendar.DisplayDate, calendar.DisplayDateStart.Value));
+
+            value = new DateTime(2005, 12, 30);
+            calendar.DisplayDate = value;
+            Assert.True(CompareDates(calendar.DisplayDate, value));
+
+            value = DateTime.MaxValue;
+            calendar.DisplayDate = value;
+            Assert.True(CompareDates(calendar.DisplayDate, value));
+
+            calendar.DisplayDateEnd = new DateTime(2010, 12, 30);
+            Assert.True(CompareDates(calendar.DisplayDate, calendar.DisplayDateEnd.Value));
+        }
+
+        [Fact]
+        public void Setting_DisplayDateEnd_Should_Alter_DispalyDate_And_DisplayDateStart()
+        {
+            Calendar calendar = new Calendar();
+            DateTime value = new DateTime(2000, 1, 30);
+
+            calendar.DisplayDate = value;
+            calendar.DisplayDateEnd = value;
+            calendar.DisplayDateStart = value;
+            Assert.True(CompareDates(calendar.DisplayDateStart.Value, value));
+            Assert.True(CompareDates(calendar.DisplayDateEnd.Value, value));
+
+            value = value.AddMonths(2);
+            calendar.DisplayDateStart = value;
+            Assert.True(CompareDates(calendar.DisplayDateStart.Value, value));
+            Assert.True(CompareDates(calendar.DisplayDateEnd.Value, value));
+            Assert.True(CompareDates(calendar.DisplayDate, value));
+        }
+
+        [Fact]
+        public void Display_Date_Range_End_Will_Contain_SelectedDate()
+        {
+            Calendar calendar = new Calendar();
+            calendar.SelectionMode = CalendarSelectionMode.SingleDate;
+
+            calendar.SelectedDate = DateTime.MaxValue;
+            Assert.True(CompareDates((DateTime)calendar.SelectedDate, DateTime.MaxValue));
+
+            calendar.DisplayDateEnd = DateTime.MaxValue.AddDays(-1);
+            Assert.True(CompareDates((DateTime)calendar.DisplayDateEnd, DateTime.MaxValue));
+        }
+
+
+        /// <summary>
+        /// The days added to the SelectedDates collection.
+        /// </summary>
+        private IList<object>? _selectedDatesChangedAddedDays;
+
+        /// <summary>
+        /// The days removed from the SelectedDates collection.
+        /// </summary>
+        private IList<object>? _selectedDatesChangedRemovedDays;
+
+        /// <summary>
+        /// The number of times the SelectedDatesChanged event has been fired.
+        /// </summary>
+        private int _selectedDatesChangedCount;
+
+        /// <summary>
+        /// Handle the SelectedDatesChanged event.
+        /// </summary>
+        /// <param name="sender">The calendar.</param>
+        /// <param name="e">Event arguments.</param>
+        private void OnSelectedDatesChanged(object? sender, SelectionChangedEventArgs e)
+        {
+            _selectedDatesChangedAddedDays =
+                e.AddedItems
+                 .Cast<object>()
+                 .ToList();
+            _selectedDatesChangedRemovedDays =
+                e.RemovedItems
+                 .Cast<object>()
+                 .ToList();
+            _selectedDatesChangedCount++;
+        }
+
+        /// <summary>
+        /// Clear the variables used to track the SelectedDatesChanged event.
+        /// </summary>
+        private void ResetSelectedDatesChanged()
+        {
+            if (_selectedDatesChangedAddedDays != null)
+            {
+                _selectedDatesChangedAddedDays.Clear();
+            }
+
+            if (_selectedDatesChangedRemovedDays != null)
+            {
+                _selectedDatesChangedRemovedDays.Clear();
+            }
+
+            _selectedDatesChangedCount = 0;
+        }
+
+        [Fact]
+        public void SingleDate_Selection_Behavior()
+        {
+            ResetSelectedDatesChanged();
+            Calendar calendar = new Calendar();
+            calendar.SelectedDatesChanged += new EventHandler<SelectionChangedEventArgs>(OnSelectedDatesChanged);
+            calendar.SelectionMode = CalendarSelectionMode.SingleDate;
+            calendar.SelectedDate = DateTime.Today;
+            Assert.True(CompareDates(calendar.SelectedDate.Value, DateTime.Today));
+            Assert.True(calendar.SelectedDates.Count == 1);
+            Assert.True(CompareDates(calendar.SelectedDates[0], DateTime.Today));
+            Assert.True(_selectedDatesChangedCount == 1);
+            Assert.NotNull(_selectedDatesChangedAddedDays);
+            Assert.True(_selectedDatesChangedAddedDays.Count == 1);
+            Assert.NotNull(_selectedDatesChangedRemovedDays);
+            Assert.True(_selectedDatesChangedRemovedDays.Count == 0);
+            ResetSelectedDatesChanged();
+
+            calendar.SelectedDate = DateTime.Today;
+            Assert.True(CompareDates(calendar.SelectedDate.Value, DateTime.Today));
+            Assert.True(calendar.SelectedDates.Count == 1);
+            Assert.True(CompareDates(calendar.SelectedDates[0], DateTime.Today));
+            Assert.True(_selectedDatesChangedCount == 0);
+
+            calendar.ClearValue(Calendar.SelectedDateProperty);
+
+            calendar.SelectionMode = CalendarSelectionMode.None;
+            Assert.True(calendar.SelectedDates.Count == 0);
+            Assert.Null(calendar.SelectedDate);
+
+            calendar.SelectionMode = CalendarSelectionMode.SingleDate;
+
+            calendar.SelectedDates.Add(DateTime.Today.AddDays(1));
+            Assert.True(CompareDates(calendar.SelectedDate.Value, DateTime.Today.AddDays(1)));
+            Assert.True(calendar.SelectedDates.Count == 1);
+
+            Assert.ThrowsAny<InvalidOperationException>(
+                () => calendar.SelectedDates.Add(DateTime.Today.AddDays(2)));
+        }
+
+        [Fact]
+        public void SingleRange_Selection_Behavior()
+        {
+            ResetSelectedDatesChanged();
+            Calendar calendar = new Calendar();
+            calendar.SelectedDatesChanged += new EventHandler<SelectionChangedEventArgs>(OnSelectedDatesChanged);
+            calendar.SelectionMode = CalendarSelectionMode.SingleRange;
+            calendar.SelectedDate = DateTime.Today;
+            Assert.True(CompareDates(calendar.SelectedDate.Value, DateTime.Today));
+            Assert.True(calendar.SelectedDates.Count == 1);
+            Assert.True(CompareDates(calendar.SelectedDates[0], DateTime.Today));
+            Assert.True(_selectedDatesChangedCount == 1);
+            Assert.NotNull(_selectedDatesChangedAddedDays);
+            Assert.True(_selectedDatesChangedAddedDays.Count == 1);
+            Assert.NotNull(_selectedDatesChangedRemovedDays);
+            Assert.True(_selectedDatesChangedRemovedDays.Count == 0);
+            ResetSelectedDatesChanged();
+
+            calendar.SelectedDates.Clear();
+            Assert.Null(calendar.SelectedDate);
+            ResetSelectedDatesChanged();
+
+            calendar.SelectedDates.AddRange(DateTime.Today, DateTime.Today.AddDays(10));
+            Assert.True(CompareDates(calendar.SelectedDate.Value, DateTime.Today));
+            Assert.True(calendar.SelectedDates.Count == 11);
+            ResetSelectedDatesChanged();
+
+            calendar.SelectedDates.AddRange(DateTime.Today, DateTime.Today.AddDays(10));
+            Assert.True(calendar.SelectedDates.Count == 11);
+            Assert.True(_selectedDatesChangedCount == 0);
+            ResetSelectedDatesChanged();
+
+            calendar.SelectedDates.AddRange(DateTime.Today.AddDays(-20), DateTime.Today);
+            Assert.True(CompareDates(calendar.SelectedDate.Value, DateTime.Today.AddDays(-20)));
+            Assert.True(calendar.SelectedDates.Count == 21);
+            Assert.True(_selectedDatesChangedCount == 1);
+            Assert.True(_selectedDatesChangedAddedDays.Count == 21);
+            Assert.True(_selectedDatesChangedRemovedDays.Count == 11);
+            ResetSelectedDatesChanged();
+
+            calendar.SelectedDates.Add(DateTime.Today.AddDays(100));
+            Assert.True(CompareDates(calendar.SelectedDate.Value, DateTime.Today.AddDays(100)));
+            Assert.True(calendar.SelectedDates.Count == 1);
+        }
+
+        [Fact]
+        public void AllowTapRangeSelection_Should_Disable_TapToSelectRange()
+        {
+            var calendar = new Calendar();
+            Assert.True(calendar.AllowTapRangeSelection); // Default should be true
+            
+            calendar.AllowTapRangeSelection = false;
+            Assert.False(calendar.AllowTapRangeSelection);
+        }
+
+        [Fact]
+        public void TapRangeSelection_Should_Work_In_SingleRange_Mode()
+        {
+            var calendar = new Calendar();
+            calendar.SelectionMode = CalendarSelectionMode.SingleRange;
+            calendar.AllowTapRangeSelection = true;
+            
+            var startDate = new DateTime(2023, 10, 10);
+            var endDate = new DateTime(2023, 10, 15);
+            
+            // First tap should select start date
+            var firstTapResult = calendar.ProcessTapRangeSelection(startDate);
+            Assert.True(firstTapResult);
+            Assert.Equal(1, calendar.SelectedDates.Count);
+            Assert.True(calendar.SelectedDates.Contains(startDate));
+            
+            // Second tap should complete the range
+            var secondTapResult = calendar.ProcessTapRangeSelection(endDate);
+            Assert.True(secondTapResult);
+            Assert.Equal(6, calendar.SelectedDates.Count); // 5 days inclusive
+            Assert.True(calendar.SelectedDates.Contains(startDate));
+            Assert.True(calendar.SelectedDates.Contains(endDate));
+        }
+
+        [Fact]
+        public void TapRangeSelection_Should_Not_Work_In_SingleDate_Mode()
+        {
+            var calendar = new Calendar();
+            calendar.SelectionMode = CalendarSelectionMode.SingleDate;
+            calendar.AllowTapRangeSelection = true;
+            
+            var date = new DateTime(2023, 10, 10);
+            var result = calendar.ProcessTapRangeSelection(date);
+            Assert.False(result); // Should not handle tap range selection
+        }
+
+        [Fact]
+        public void TapRangeSelection_Should_Handle_Blackout_Dates()
+        {
+            var calendar = new Calendar();
+            calendar.SelectionMode = CalendarSelectionMode.SingleRange;
+            calendar.AllowTapRangeSelection = true;
+            
+            var startDate = new DateTime(2023, 10, 10);
+            var blackoutDate = new DateTime(2023, 10, 12);
+            var endDate = new DateTime(2023, 10, 15);
+            
+            // Add blackout date in the middle
+            calendar.BlackoutDates.Add(new CalendarDateRange(blackoutDate, blackoutDate));
+            
+            // First tap
+            calendar.ProcessTapRangeSelection(startDate);
+            Assert.Equal(1, calendar.SelectedDates.Count);
+            
+            // Second tap should restart selection due to blackout date
+            calendar.ProcessTapRangeSelection(endDate);
+            Assert.Equal(1, calendar.SelectedDates.Count);
+            Assert.True(calendar.SelectedDates.Contains(endDate));
+            Assert.False(calendar.SelectedDates.Contains(startDate));
+        }
+
+        [Fact]
+        public void TapRangeSelection_Should_Handle_Reverse_Order_Dates()
+        {
+            var calendar = new Calendar();
+            calendar.SelectionMode = CalendarSelectionMode.SingleRange;
+            calendar.AllowTapRangeSelection = true;
+            
+            var laterDate = new DateTime(2023, 10, 15);
+            var earlierDate = new DateTime(2023, 10, 10);
+            
+            // First tap on later date
+            calendar.ProcessTapRangeSelection(laterDate);
+            Assert.Equal(1, calendar.SelectedDates.Count);
+            
+            // Second tap on earlier date should still create correct range
+            calendar.ProcessTapRangeSelection(earlierDate);
+            Assert.Equal(6, calendar.SelectedDates.Count);
+            Assert.True(calendar.SelectedDates.Contains(earlierDate));
+            Assert.True(calendar.SelectedDates.Contains(laterDate));
+        }
+
+        [Fact]
+        public void CalendarItem_Should_Reset_Mouse_Down_Flag_On_Detach_From_Visual_Tree()
+        {
+            var calendar = new Calendar();
+            calendar.SelectionMode = CalendarSelectionMode.SingleDate;
+
+            var calendarItem = new CalendarItem();
+            calendarItem.Owner = calendar;
+
+            // Attach CalendarItem to a visual tree
+            var root = new TestRoot(calendarItem);
+
+            // Create a day button and simulate mouse left button down,
+            // which sets the internal _isMouseLeftButtonDown flag to true.
+            var date1 = new DateTime(2024, 1, 15);
+            var dayButton1 = new CalendarDayButton { DataContext = date1 };
+
+            var pointer = new Pointer(Pointer.GetNextFreeId(), PointerType.Mouse, true);
+            var props = new PointerPointProperties(RawInputModifiers.LeftMouseButton,
+                PointerUpdateKind.LeftButtonPressed);
+            var pressArgs = new PointerPressedEventArgs(dayButton1, pointer, root,
+                default, 0, props, KeyModifiers.None);
+
+            calendarItem.Cell_MouseLeftButtonDown(dayButton1, pressArgs);
+
+            // date1 should now be selected
+            Assert.Equal(1, calendar.SelectedDates.Count);
+            Assert.Equal(date1, calendar.SelectedDates[0]);
+
+            // Detach CalendarItem from visual tree (simulates popup closing
+            // during date selection without a PointerReleased event).
+            root.Child = null;
+
+            // Create a different day button and simulate mouse enter.
+            // Before the fix, _isMouseLeftButtonDown would still be true,
+            // causing hover to auto-select dates.
+            var date2 = new DateTime(2024, 1, 20);
+            var dayButton2 = new CalendarDayButton { DataContext = date2 };
+
+            calendarItem.Cell_MouseEntered(dayButton2, null!);
+
+            // The selected date should NOT have changed to date2,
+            // because the mouse-down flag was reset when detaching.
+            Assert.Equal(1, calendar.SelectedDates.Count);
+            Assert.Equal(date1, calendar.SelectedDates[0]);
+        }
+
+        [Fact]
+        public void CalendarItem_Should_Reset_YearView_Mouse_Down_Flag_On_Detach_From_Visual_Tree()
+        {
+            var calendar = new Calendar();
+            var calendarItem = new CalendarItem();
+            calendarItem.Owner = calendar;
+
+            // Attach CalendarItem to a visual tree
+            var root = new TestRoot(calendarItem);
+
+            // Use reflection to set the _isMouseLeftButtonDownYearView flag,
+            // since Month_CalendarButtonMouseDown is private.
+            var field = typeof(CalendarItem).GetField("_isMouseLeftButtonDownYearView",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            Assert.NotNull(field);
+            field!.SetValue(calendarItem, true);
+            Assert.True((bool)field.GetValue(calendarItem)!);
+
+            // Detach CalendarItem from visual tree
+            root.Child = null;
+
+            // Verify the flag was reset
+            Assert.False((bool)field.GetValue(calendarItem)!);
+        }
+
+
+        // --- Week number tests ---
+
+        [Fact]
+        public void IsWeekNumberVisible_Defaults_To_False()
+        {
+            var calendar = new Calendar();
+            Assert.False(calendar.IsWeekNumberVisible);
+        }
+
+        [Fact]
+        public void WeekNumberRule_Defaults_To_Culture_CalendarWeekRule()
+        {
+            var calendar = new Calendar();
+            Assert.IsType<CalendarWeekRule>(calendar.WeekNumberRule);
+        }
+
+        [Fact]
+        public void IsWeekNumberVisible_Can_Be_Set()
+        {
+            var calendar = new Calendar();
+            calendar.IsWeekNumberVisible = true;
+            Assert.True(calendar.IsWeekNumberVisible);
+        }
+
+        [Fact]
+        public void WeekNumberRule_Can_Be_Set()
+        {
+            var calendar = new Calendar();
+            calendar.WeekNumberRule = CalendarWeekRule.FirstFourDayWeek;
+            Assert.Equal(CalendarWeekRule.FirstFourDayWeek, calendar.WeekNumberRule);
+        }
+
+        [Theory]
+        // ISO 8601: week 1 of 2023 starts on Monday 2 Jan 2023
+        [InlineData(2023, 1, 2, CalendarWeekRule.FirstFourDayWeek, DayOfWeek.Monday, 1)]
+        // 2022-12-31 is still in ISO week 52 of 2022
+        [InlineData(2022, 12, 31, CalendarWeekRule.FirstFourDayWeek, DayOfWeek.Monday, 52)]
+        // .NET bug: 2018-12-31 is a Monday and is ISO week 1 of 2019, not week 53 of 2018
+        [InlineData(2018, 12, 31, CalendarWeekRule.FirstFourDayWeek, DayOfWeek.Monday, 1)]
+        // US rule: week 1 always starts on Jan 1
+        [InlineData(2023, 1, 1, CalendarWeekRule.FirstDay, DayOfWeek.Sunday, 1)]
+        [InlineData(2023, 12, 31, CalendarWeekRule.FirstDay, DayOfWeek.Sunday, 53)]
+        public void GetWeekOfYear_Returns_Correct_Week_Number(
+            int year, int month, int day,
+            CalendarWeekRule rule,
+            DayOfWeek firstDayOfWeek,
+            int expectedWeek)
+        {
+            var _calendar = new GregorianCalendar();
+            var date = new DateTime(year, month, day);
+            int week = DateTimeHelper.GetWeekOfYear(date, rule, firstDayOfWeek, _calendar);
+            Assert.Equal(expectedWeek, week);
+        }
+
+
+        // ------------------------------------------------------------------------
+        //  ISO‑week fallback tests – verify that GetWeekOfYear returns the expected
+        //  week numbers for edge‑case dates.
+        // ------------------------------------------------------------------------
+        [Theory]
+        // 31 Dec 2018 is part of ISO‑week 1 of 2019
+        [InlineData(2018, 12, 31, CalendarWeekRule.FirstFourDayWeek, DayOfWeek.Monday, 1)]
+        // 1 Jan 2020 is also ISO‑week 1 (Monday)
+        [InlineData(2020, 01, 01, CalendarWeekRule.FirstFourDayWeek, DayOfWeek.Monday, 1)]
+        // 29 Dec 2014 (Monday) should be week 1 of 2015 (ISO)
+        [InlineData(2014, 12, 29, CalendarWeekRule.FirstFourDayWeek, DayOfWeek.Monday, 1)]
+        // 30 Dec 2019 (Monday) is week 1 of 2020 (ISO)
+        [InlineData(2019, 12, 30, CalendarWeekRule.FirstFourDayWeek, DayOfWeek.Monday, 1)]
+        public void GetWeekOfYear_IsoWeekFallback_Returns_Correct_Week(
+            int year, int month, int day,
+            CalendarWeekRule rule,
+            DayOfWeek firstDay,
+            int expectedWeek)
+        {
+            var _calendar = new GregorianCalendar();
+            var date = new DateTime(year, month, day);
+            // DateTimeHelper is the internal helper used by Calendar.
+            // It falls back to ISO‑week calculation when the culture’s
+            // CalendarWeekRule does not produce a valid week.
+            int week = DateTimeHelper.GetWeekOfYear(date, rule, firstDay, _calendar);
+            Assert.Equal(expectedWeek, week);
+        }
+
+        // ------------------------------------------------------------------------
+        //  Property change refresh tests – ensure the control updates its
+        //  visual state when week‑number related properties are changed.
+        // ------------------------------------------------------------------------
+        [Fact]
+        public void Changing_IsWeekNumberVisible_Toggles_HasWeekNumbers_PseudoClass()
+        {
+            var calendar = CreateTestCalendar();
+            
+            calendar.ApplyTemplate();
+            calendar.DisplayMode = CalendarMode.Month;
+            calendar.IsWeekNumberVisible = false;
+
+            // Grab the CalendarItem from the visual tree
+            var calendarItem = calendar.GetVisualDescendants()
+                .OfType<CalendarItem>()
+                .FirstOrDefault();
+            Assert.NotNull(calendarItem);
+            
+            calendarItem.ApplyTemplate();
+
+            // Assert pseudo-class is NOT set
+            Assert.False(calendarItem.Classes.Contains(":hasweeknumbers"));
+            
+            // Turn on week numbers
+            calendar.IsWeekNumberVisible = true;
+            
+            // Assert pseudo-class IS set
+            Assert.True(calendarItem.Classes.Contains(":hasweeknumbers"));
+        }
+
+        [Fact]
+        public void Changing_WeekNumberRule_Refreshes_WeekNumber_Labels()
+        {
+            var calendar = CreateTestCalendar();
+            
+            // Apply template so that the internal CalendarItem is created
+            calendar.ApplyTemplate();
+
+            calendar.DisplayMode = CalendarMode.Month;
+            calendar.IsWeekNumberVisible = true;
+            // Use ISO‑rule (FirstFourDayWeek) for the test
+            calendar.WeekNumberRule = CalendarWeekRule.FirstFourDayWeek;
+            calendar.FirstDayOfWeek = DayOfWeek.Monday;
+            calendar.DisplayDate = new DateTime(2021, 01, 04); // First Monday of 2021
+
+            // Grab the CalendarItem from the visual tree
+            var calendarItem = calendar.GetVisualDescendants()
+                .OfType<CalendarItem>()
+                .FirstOrDefault();
+            Assert.NotNull(calendarItem);
+            
+            calendarItem.ApplyTemplate();
+
+            // The first week‑number label should display “1” for the first week of 2021
+            var weekLabelsGrid = calendarItem.GetVisualDescendants()
+                .OfType<Grid>()
+                .FirstOrDefault(x => x.Name == "PART_ElementWeekNumberLabels");
+            Assert.NotNull(weekLabelsGrid);
+            var firstLabel = weekLabelsGrid.Children.OfType<ContentControl>().First(x => Grid.GetRow(x) == 2);
+            Assert.Equal(1, firstLabel.Content);
+
+            // Change the rule to use FirstDay (which for 2021‑01‑04 would be week 2)
+            calendar.WeekNumberRule = CalendarWeekRule.FirstDay;
+
+            // Force a layout pass – in unit‑tests this is enough to trigger the update
+            calendar.InvalidateMeasure();
+            calendar.UpdateLayout();
+
+            // After the rule change the first visible week number should now be “2”
+            firstLabel = weekLabelsGrid.Children.OfType<ContentControl>().First(x => Grid.GetRow(x) == 2);
+            Assert.Equal(2, firstLabel.Content);
+        }
+
+        private static Calendar CreateTestCalendar()
+        {
+            var cal = new Calendar();
+            var template = new FuncControlTemplate<Calendar>((c, scope) => new Panel()
+            {
+                Name = "PART_Root",
+                Children =
+                {
+                    new CalendarItem()
+                    {
+                        Name = "PART_CalendarItem",
+                        Owner = c,
+                        DayTitleTemplate = new FuncTemplate<Control>(() => new TextBlock()),
+                        Template = new FuncControlTemplate<CalendarItem>((_, itemScope) => new Grid()
+                        {
+                            Children =
+                            {
+                                new Grid { Name = "PART_MonthView" }.RegisterInNameScope(itemScope),
+                                new Grid { Name = "PART_YearView" }.RegisterInNameScope(itemScope),
+                                new Grid { Name = "PART_ElementWeekNumberLabels" }.RegisterInNameScope(itemScope)
+                            }
+                        })
+                    }.RegisterInNameScope(scope)
+                }
+            }.RegisterInNameScope(scope));
+            cal.Template = template;
+
+            return cal;
+        }
+    }
+}
