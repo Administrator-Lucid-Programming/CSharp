@@ -1,0 +1,84 @@
+﻿import {expect} from "@playwright/test";
+import {ApiHelpers} from "./ApiHelpers";
+import {ConstantHelper} from "./ConstantHelper";
+
+export class MemberGroupApiHelper {
+  api: ApiHelpers;
+
+  constructor(api: ApiHelpers) {
+    this.api = api;
+  }
+
+  async get(id: string) {
+    const response = await this.api.get(this.api.baseUrl + '/umbraco/management/api/v1/member-group/' + id);
+    return await response.json();
+  }
+
+  async create(name: string, id?: string) {
+    const memberGroupData = {
+      "name": name,
+      "id": id ? id : null,
+    };
+    const response = await this.api.post(this.api.baseUrl + '/umbraco/management/api/v1/member-group', memberGroupData);
+    return this.api.getIdFromLocation(response);
+  }
+
+  async rename(id: string, name: string) {
+    const memberGroupData = {
+      "name": name
+    };
+    return await this.api.put(this.api.baseUrl + '/umbraco/management/api/v1/member-group/' + id, memberGroupData);
+  }
+
+  async delete(id: string) {
+    return await this.api.delete(this.api.baseUrl + '/umbraco/management/api/v1/member-group/' + id);
+  }
+
+  async getAll() {
+    return await this.api.get(this.api.baseUrl + '/umbraco/management/api/v1/tree/member-group/root?skip=0&take=10000');
+  }
+
+  async doesExist(id: string) {
+    const response = await this.api.get(this.api.baseUrl + '/umbraco/management/api/v1/member-group/' + id);
+    return response.status() === 200;
+  }
+
+  async doesNameExist(name: string) {
+    return await this.getByName(name);
+  }
+
+  // Poll variant of doesNameExist: the list projection lags a create, so wait for the group to be readable
+  // before a UI step navigates to the collection (which would otherwise fetch a pre-create snapshot).
+  async waitUntilNameExists(name: string, timeout: number = ConstantHelper.timeout.long) {
+    await expect.poll(() => this.doesNameExist(name), {timeout}).toBeTruthy();
+  }
+
+  async getByName(name: string) {
+    const rootMemberGroups = await this.getAll();
+    const jsonMemberGroups = await rootMemberGroups.json();
+
+    for (const memberGroup of this.api.itemsOf(jsonMemberGroups)) {
+      if (memberGroup.name === name) {
+        return this.get(memberGroup.id);
+      }
+    }
+    return false;
+  }
+
+  async ensureNameNotExists(name: string) {
+    const rootMemberGroups = await this.getAll();
+    const jsonMemberGroups = await rootMemberGroups.json();
+
+    for (const memberGroup of this.api.itemsOf(jsonMemberGroups)) {
+      if (memberGroup.name === name) {
+        return this.delete(memberGroup.id);
+      }
+    }
+    return null;
+  }
+
+  async createDefaultMemberGroup(name: string) {
+    await this.ensureNameNotExists(name);
+    return await this.create(name);
+  }
+}
