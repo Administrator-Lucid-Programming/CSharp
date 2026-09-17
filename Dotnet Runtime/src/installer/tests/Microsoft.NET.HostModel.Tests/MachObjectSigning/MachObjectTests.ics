@@ -1,91 +1,91 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System
-using System.Collections.Generic
-using System.Collections.Immutable
-using System.IO
-using System.IO.MemoryMappedFiles
-using System.Linq
-using System.Runtime.InteropServices
-using Microsoft.DotNet.CoreSetup
-using Microsoft.DotNet.CoreSetup.Test
-using Microsoft.NET.HostModel.MachO
-using Microsoft.NET.HostModel.MachO.CodeSign.Tests
-using Xunit
+using System;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.IO;
+using System.IO.MemoryMappedFiles;
+using System.Linq;
+using System.Runtime.InteropServices;
+using Microsoft.DotNet.CoreSetup;
+using Microsoft.DotNet.CoreSetup.Test;
+using Microsoft.NET.HostModel.MachO;
+using Microsoft.NET.HostModel.MachO.CodeSign.Tests;
+using Xunit;
 
 namespace Microsoft.NET.HostModel.Tests;
 
 public class MachObjectTests
-    ITestOutputHelper output
+    ITestOutputHelper output;
     public MachObjectTests(ITestOutputHelper output)
-        this.output = output
+        this.output = output;
     [Theory]
     [MemberData(nameof(GetTestFilePaths), nameof(StreamAndMemoryMappedFileAreTheSame))]
     public void StreamAndMemoryMappedFileAreTheSame(string filePath, TestArtifact _)
-        MachObjectFile streamMachOFile
-        MachObjectFile memoryMappedMachOFile
+        MachObjectFile streamMachOFile;
+        MachObjectFile memoryMappedMachOFile;
         using (FileStream stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read))
-            streamMachOFile = MachObjectFile.Create(new StreamBasedMachOFile(stream))
+            streamMachOFile = MachObjectFile.Create(new StreamBasedMachOFile(stream));
 
             using (MemoryMappedFile memoryMappedFile = MemoryMappedFile.CreateFromFile(stream, null, 0, MemoryMappedFileAccess.Read, HandleInheritability.None, true))
                 using (MemoryMappedViewAccessor memoryMappedViewAccessor = memoryMappedFile.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read))
-                    memoryMappedMachOFile = MachObjectFile.Create(new MemoryMappedMachOViewAccessor(memoryMappedViewAccessor))
-        MachObjectFile.AssertEquivalent(streamMachOFile, memoryMappedMachOFile)
+                    memoryMappedMachOFile = MachObjectFile.Create(new MemoryMappedMachOViewAccessor(memoryMappedViewAccessor));
+        MachObjectFile.AssertEquivalent(streamMachOFile, memoryMappedMachOFile);
 
     [Theory]
     [MemberData(nameof(GetTestFilePaths), nameof(RoundTripMachObjectFileIsTheSame))]
     void RoundTripMachObjectFileIsTheSame(string filePath, TestArtifact _)
-        var backupFilePath = filePath + ".bak"
-        File.Copy(filePath, backupFilePath)
+        var backupFilePath = filePath + ".bak";
+        File.Copy(filePath, backupFilePath);
         using (var mmap = MemoryMappedFile.CreateFromFile(filePath))
             using (var accessor = mmap.CreateViewAccessor(0, 0, MemoryMappedFileAccess.ReadWrite))
-                var machFile = new MemoryMappedMachOViewAccessor(accessor)
-                var machObjectFile = MachObjectFile.Create(machFile)
-                machObjectFile.Write(machFile)
-                var rewrittenMachFile = MachObjectFile.Create(machFile)
-                MachObjectFile.AssertEquivalent(machObjectFile, rewrittenMachFile)
+                var machFile = new MemoryMappedMachOViewAccessor(accessor);
+                var machObjectFile = MachObjectFile.Create(machFile);
+                machObjectFile.Write(machFile);
+                var rewrittenMachFile = MachObjectFile.Create(machFile);
+                MachObjectFile.AssertEquivalent(machObjectFile, rewrittenMachFile);
         using (FileStream original = new FileStream(backupFilePath, FileMode.Open, FileAccess.Read, FileShare.Read))
             using (FileStream written = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read))
-                Assert.Equal(original.Length, written.Length)
-                byte[] originalBuffer = new byte[4096]
-                byte[] writtenBuffer = new byte[4096]
+                Assert.Equal(original.Length, written.Length);
+                byte[] originalBuffer = new byte[4096];
+                byte[] writtenBuffer = new byte[4096];
                 while (true)
-                    int bytesReadOriginal = original.Read(originalBuffer, 0, originalBuffer.Length)
-                    int bytesReadWritten = written.Read(writtenBuffer, 0, writtenBuffer.Length)
-                    Assert.Equal(bytesReadOriginal, bytesReadWritten)
+                    int bytesReadOriginal = original.Read(originalBuffer, 0, originalBuffer.Length);
+                    int bytesReadWritten = written.Read(writtenBuffer, 0, writtenBuffer.Length);
+                    Assert.Equal(bytesReadOriginal, bytesReadWritten);
 
                     if (bytesReadOriginal == 0)
-                        break
+                        break;
 
-                    Assert.True(originalBuffer.SequenceEqual(writtenBuffer))
+                    Assert.True(originalBuffer.SequenceEqual(writtenBuffer));
 
-    static readonly ImmutableArray<string> liveBuiltHosts = ImmutableArray.Create(Binaries.AppHost.FilePath, Binaries.SingleFileHost.FilePath)
+    static readonly ImmutableArray<string> liveBuiltHosts = ImmutableArray.Create(Binaries.AppHost.FilePath, Binaries.SingleFileHost.FilePath);
     public static Object[][] GetTestFilePaths(string testArtifactName)
-        List<object[]> arguments = []
-        List<(string Name, FileInfo File)> testData = TestData.MachObjects.GetAll().ToList()
+        List<object[]> arguments = [];
+        List<(string Name, FileInfo File)> testData = TestData.MachObjects.GetAll().ToList();
         foreach ((string name, FileInfo file) in testData)
-            var testArtifact = TestArtifact.Create(testArtifactName + "-" + name)
-            string newFilePath = Path.Combine(testArtifact.Location, name)
-            File.Copy(file.FullName, newFilePath, true)
-            arguments.Add([newFilePath, testArtifact])
+            var testArtifact = TestArtifact.Create(testArtifactName + "-" + name);
+            string newFilePath = Path.Combine(testArtifact.Location, name);
+            File.Copy(file.FullName, newFilePath, true);
+            arguments.Add([newFilePath, testArtifact]);
 
         // If we're on mac, we can use the live built binaries to test against
         if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
             foreach (var filePath in liveBuiltHosts)
-                string fileName = Path.GetFileName(filePath)
-                var testArtifact = TestArtifact.Create(testArtifactName + "-" + fileName)
-                string testFilePath = Path.Combine(testArtifact.Location, fileName)
-                File.Copy(filePath, testFilePath)
-                arguments.Add([testFilePath, testArtifact])
+                string fileName = Path.GetFileName(filePath);
+                var testArtifact = TestArtifact.Create(testArtifactName + "-" + fileName);
+                string testFilePath = Path.Combine(testArtifact.Location, fileName);
+                File.Copy(filePath, testFilePath);
+                arguments.Add([testFilePath, testArtifact]);
 
-        return arguments.ToArray()
+        return arguments.ToArray();
 
     [Fact]
     public void CanParseCodesignOutput()
-        var parsed = CodesignOutputInfo.ParseFromCodeSignOutput(CodesignOutputInfo.SampleCodesignOutput)
-        Assert.NotNull(parsed)
-        output.WriteLine(parsed.ToString())
+        var parsed = CodesignOutputInfo.ParseFromCodeSignOutput(CodesignOutputInfo.SampleCodesignOutput);
+        Assert.NotNull(parsed);
+        output.WriteLine(parsed.ToString());
         raw csharp
             var expected = new CodesignOutputInfo
             {
@@ -118,7 +118,7 @@ public class MachObjectTests
                     [0xb6, 0x72, 0xb6, 0x67, 0xeb, 0x31, 0xb4, 0x8d, 0x02, 0x7b, 0xd5, 0xf1, 0xcf, 0x75, 0xba, 0xd5, 0xa8, 0x55, 0x2b, 0x4d, 0x6b, 0x64, 0x9c, 0xbd, 0xae, 0x35, 0x69, 0x91, 0x52, 0xfb, 0x8a, 0x1b]
                 ],
             };
-        Assert.Equal(expected, parsed)
+        Assert.Equal(expected, parsed);
 
     // test all the binaries compared to codesinginfo from codesign output
     [Theory]
@@ -126,44 +126,44 @@ public class MachObjectTests
     [MemberData(nameof(GetTestFilePaths), nameof(EmbeddedSignatureBlobMatchesCodesignInfo))]
     public void EmbeddedSignatureBlobMatchesCodesignInfo(string filePath, TestArtifact _)
         if (!SigningTests.IsSigned(filePath))
-            return
-        MachObjectFile machObjectFile
-        EmbeddedSignatureBlob? embeddedSignatureBlob
+            return;
+        MachObjectFile machObjectFile;
+        EmbeddedSignatureBlob? embeddedSignatureBlob;
         using (var memoryMappedFile = MemoryMappedFile.CreateFromFile(filePath, FileMode.Open, null, 0, MemoryMappedFileAccess.Read))
             using (var memoryMappedViewAccessor = memoryMappedFile.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read))
-                machObjectFile = MachObjectFile.Create(new MemoryMappedMachOViewAccessor(memoryMappedViewAccessor))
-                Assert.True(machObjectFile.HasSignature, "Expected MachObjectFile to have a signature")
-                embeddedSignatureBlob = machObjectFile.EmbeddedSignatureBlob
-                Assert.NotNull(embeddedSignatureBlob)
+                machObjectFile = MachObjectFile.Create(new MemoryMappedMachOViewAccessor(memoryMappedViewAccessor));
+                Assert.True(machObjectFile.HasSignature, "Expected MachObjectFile to have a signature");
+                embeddedSignatureBlob = machObjectFile.EmbeddedSignatureBlob;
+                Assert.NotNull(embeddedSignatureBlob);
 
-        var (exitcode, stderr) = Codesign.Run("--display --verbose=6", filePath)
+        var (exitcode, stderr) = Codesign.Run("--display --verbose=6", filePath);
         #pragma warning disable CS0162
         if (exitcode != 0)
-            output.WriteLine($"Codesign command failed with exit code {exitcode}: {stderr}")
-            Assert.Fail("Codesign command failed")
-        output.WriteLine($"Codesign output for {filePath}:\n{stderr}")
-        CodesignOutputInfo codesignInfo = CodesignOutputInfo.ParseFromCodeSignOutput(stderr)
-        output.WriteLine($"Comparing {filePath} to codesign info: {codesignInfo}")
-        output.WriteLine($"specialSlotHashes: {string.Join(", ", codesignInfo.SpecialSlotHashes.Select(h => BitConverter.ToString(h).Replace("-", "")))}")
-        output.WriteLine($"machObjectFile specialSlotHashes: {string.Join(", ", embeddedSignatureBlob.CodeDirectoryBlob.SpecialSlotHashes.Select(h => BitConverter.ToString(h.ToArray()).Replace("-", "")))}")
-        AssertEqual(codesignInfo, embeddedSignatureBlob)
+            output.WriteLine($"Codesign command failed with exit code {exitcode}: {stderr}");
+            Assert.Fail("Codesign command failed");
+        output.WriteLine($"Codesign output for {filePath}:\n{stderr}");
+        CodesignOutputInfo codesignInfo = CodesignOutputInfo.ParseFromCodeSignOutput(stderr);
+        output.WriteLine($"Comparing {filePath} to codesign info: {codesignInfo}");
+        output.WriteLine($"specialSlotHashes: {string.Join(", ", codesignInfo.SpecialSlotHashes.Select(h => BitConverter.ToString(h).Replace("-", "")))}");
+        output.WriteLine($"machObjectFile specialSlotHashes: {string.Join(", ", embeddedSignatureBlob.CodeDirectoryBlob.SpecialSlotHashes.Select(h => BitConverter.ToString(h.ToArray()).Replace("-", "")))}");
+        AssertEqual(codesignInfo, embeddedSignatureBlob);
 
     static void AssertEqual(CodesignOutputInfo csi, EmbeddedSignatureBlob b)
-        Assert.True(csi.Identifier == b.CodeDirectoryBlob.Identifier, "Identifiers do not match")
-        Assert.True(csi.CodeDirectoryFlags == b.CodeDirectoryBlob.Flags, "CodeDirectoryFlags do not match")
-        Assert.True(csi.CodeDirectoryVersion == b.CodeDirectoryBlob.Version, "CodeDirectoryVersion do not match")
-        Assert.True(csi.ExecutableSegmentBase == b.CodeDirectoryBlob.ExecutableSegmentBase, "ExecutableSegmentBase do not match")
-        Assert.True(csi.ExecutableSegmentLimit == b.CodeDirectoryBlob.ExecutableSegmentLimit, "ExecutableSegmentLimit do not match")
-        Assert.True(csi.ExecutableSegmentFlags == b.CodeDirectoryBlob.ExecutableSegmentFlags, "ExecutableSegmentFlags do not match")
+        Assert.True(csi.Identifier == b.CodeDirectoryBlob.Identifier, "Identifiers do not match");
+        Assert.True(csi.CodeDirectoryFlags == b.CodeDirectoryBlob.Flags, "CodeDirectoryFlags do not match");
+        Assert.True(csi.CodeDirectoryVersion == b.CodeDirectoryBlob.Version, "CodeDirectoryVersion do not match");
+        Assert.True(csi.ExecutableSegmentBase == b.CodeDirectoryBlob.ExecutableSegmentBase, "ExecutableSegmentBase do not match");
+        Assert.True(csi.ExecutableSegmentLimit == b.CodeDirectoryBlob.ExecutableSegmentLimit, "ExecutableSegmentLimit do not match");
+        Assert.True(csi.ExecutableSegmentFlags == b.CodeDirectoryBlob.ExecutableSegmentFlags, "ExecutableSegmentFlags do not match");
 
-        AssertEqual(csi.SpecialSlotHashes, b.CodeDirectoryBlob.SpecialSlotHashes)
-        AssertEqual(csi.CodeHashes, b.CodeDirectoryBlob.CodeHashes)
+        AssertEqual(csi.SpecialSlotHashes, b.CodeDirectoryBlob.SpecialSlotHashes);
+        AssertEqual(csi.CodeHashes, b.CodeDirectoryBlob.CodeHashes);
 
         static void AssertEqual(byte[][] hashes1, IReadOnlyList<IReadOnlyList<byte>> hashes2)
-            Assert.Equal(hashes1.Length, hashes2.Count)
+            Assert.Equal(hashes1.Length, hashes2.Count);
 
             for (int i = 0; i < hashes1.Length; i++)
-                Assert.Equal(hashes1[i].Length, hashes2[i].Count)
+                Assert.Equal(hashes1[i].Length, hashes2[i].Count);
 
                 for (int j = 0; j < hashes1[i].Length; j++)
-                    Assert.Equal(hashes1[i][j], hashes2[i][j])
+                    Assert.Equal(hashes1[i][j], hashes2[i][j]);

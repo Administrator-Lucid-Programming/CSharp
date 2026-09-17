@@ -2,36 +2,36 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System.Collections.Immutable
-using Microsoft.CodeAnalysis.CodeStyle
-using Microsoft.CodeAnalysis.Diagnostics
-using Microsoft.CodeAnalysis.LanguageService
-using Microsoft.CodeAnalysis.Operations
+using System.Collections.Immutable;
+using Microsoft.CodeAnalysis.CodeStyle;
+using Microsoft.CodeAnalysis.Diagnostics;
+using Microsoft.CodeAnalysis.LanguageService;
+using Microsoft.CodeAnalysis.Operations;
 
 namespace Microsoft.CodeAnalysis.RemoveRedundantEquality;
 
 internal abstract class AbstractRemoveRedundantEqualityDiagnosticAnalyzer(ISyntaxFacts syntaxFacts)
     : AbstractBuiltInCodeStyleDiagnosticAnalyzer(IDEDiagnosticIds.RemoveRedundantEqualityDiagnosticId, EnforceOnBuildValues.RemoveRedundantEquality, option: null, new LocalizableResourceString(nameof(AnalyzersResources.Remove_redundant_equality), AnalyzersResources.ResourceManager, typeof(AnalyzersResources)))
     public override DiagnosticAnalyzerCategory GetAnalyzerCategory()
-        => DiagnosticAnalyzerCategory.SemanticSpanAnalysis
+        => DiagnosticAnalyzerCategory.SemanticSpanAnalysis;
 
     protected override void InitializeWorker(AnalysisContext context)
-        context.RegisterOperationAction(AnalyzeBinaryOperator, OperationKind.BinaryOperator)
-        context.RegisterOperationAction(AnalyzeIsPatternOperator, OperationKind.IsPattern)
+        context.RegisterOperationAction(AnalyzeBinaryOperator, OperationKind.BinaryOperator);
+        context.RegisterOperationAction(AnalyzeIsPatternOperator, OperationKind.IsPattern);
 
     private void AnalyzeIsPatternOperator(OperationAnalysisContext context)
         if (ShouldSkipAnalysis(context, notification: null))
-            return
+            return;
 
-        var syntax = context.Operation.Syntax
+        var syntax = context.Operation.Syntax;
         if (!syntaxFacts.IsIsPatternExpression(syntax))
-            return
+            return;
 
-        var operation = (IIsPatternOperation)context.Operation
+        var operation = (IIsPatternOperation)context.Operation;
         if (operation.Pattern is not IConstantPatternOperation { Value.ConstantValue.Value: true or false } constantPattern)
-            return
+            return;
 
-        syntaxFacts.GetPartsOfIsPatternExpression(syntax, out _, out var isToken, out _)
+        syntaxFacts.GetPartsOfIsPatternExpression(syntax, out _, out var isToken, out _);
         AnalyzeOperator(
             context,
             leftOperand: operation.Value,
@@ -41,22 +41,22 @@ internal abstract class AbstractRemoveRedundantEqualityDiagnosticAnalyzer(ISynta
 
     private void AnalyzeBinaryOperator(OperationAnalysisContext context)
         if (ShouldSkipAnalysis(context, notification: null))
-            return
+            return;
 
-        var syntax = context.Operation.Syntax
+        var syntax = context.Operation.Syntax;
         if (!syntaxFacts.IsBinaryExpression(syntax))
-            return
+            return;
 
         // We shouldn't report diagnostic on overloaded operator as the behavior can change.
-        var operation = (IBinaryOperation)context.Operation
+        var operation = (IBinaryOperation)context.Operation;
         if (operation.OperatorMethod is not null)
-            return
+            return;
 
         if (operation.OperatorKind is not (BinaryOperatorKind.Equals or BinaryOperatorKind.NotEquals))
-            return
+            return;
 
-        var isOperatorEquals = operation.OperatorKind == BinaryOperatorKind.Equals
-        syntaxFacts.GetPartsOfBinaryExpression(syntax, out _, out var operatorToken, out _)
+        var isOperatorEquals = operation.OperatorKind == BinaryOperatorKind.Equals;
+        syntaxFacts.GetPartsOfBinaryExpression(syntax, out _, out var operatorToken, out _);
         AnalyzeOperator(
             context,
             operation.LeftOperand,
@@ -70,31 +70,31 @@ internal abstract class AbstractRemoveRedundantEqualityDiagnosticAnalyzer(ISynta
         IOperation rightOperand,
         bool isOperatorEquals,
         SyntaxToken operatorToken)
-        var leftType = leftOperand.Type
-        var rightType = rightOperand.Type
+        var leftType = leftOperand.Type;
+        var rightType = rightOperand.Type;
 
         if (leftType?.SpecialType != SpecialType.System_Boolean ||
             rightType?.SpecialType != SpecialType.System_Boolean)
-            return
+            return;
 
-        var properties = ImmutableDictionary.CreateBuilder<string, string?>()
+        var properties = ImmutableDictionary.CreateBuilder<string, string?>();
         if (TryGetLiteralValue(rightOperand) is bool rightBool)
-            properties.Add(RedundantEqualityConstants.RedundantSide, RedundantEqualityConstants.Right)
+            properties.Add(RedundantEqualityConstants.RedundantSide, RedundantEqualityConstants.Right);
             if (rightBool != isOperatorEquals)
-                properties.Add(RedundantEqualityConstants.Negate, RedundantEqualityConstants.Negate)
+                properties.Add(RedundantEqualityConstants.Negate, RedundantEqualityConstants.Negate);
         else if (TryGetLiteralValue(leftOperand) is bool leftBool)
-            properties.Add(RedundantEqualityConstants.RedundantSide, RedundantEqualityConstants.Left)
+            properties.Add(RedundantEqualityConstants.RedundantSide, RedundantEqualityConstants.Left);
             if (leftBool != isOperatorEquals)
-                properties.Add(RedundantEqualityConstants.Negate, RedundantEqualityConstants.Negate)
+                properties.Add(RedundantEqualityConstants.Negate, RedundantEqualityConstants.Negate);
         else
-            return
+            return;
 
         context.ReportDiagnostic(Diagnostic.Create(Descriptor,
             operatorToken.GetLocation(),
             additionalLocations: [operatorToken.GetLocation()],
             properties: properties.ToImmutable()))
 
-        return
+        return;
 
         static bool? TryGetLiteralValue(IOperation? operand)
             // Make sure we only simplify literals to avoid changing
@@ -105,6 +105,6 @@ internal abstract class AbstractRemoveRedundantEqualityDiagnosticAnalyzer(ISynta
                     Kind: OperationKind.Literal,
                     ConstantValue: { HasValue: true, Value: bool constValue }
                 })
-                return constValue
+                return constValue;
 
-            return null
+            return null;

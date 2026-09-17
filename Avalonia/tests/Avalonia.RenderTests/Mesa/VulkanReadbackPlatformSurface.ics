@@ -1,8 +1,8 @@
-using System
-using Avalonia.Platform
-using Avalonia.Vulkan
-using Avalonia.Vulkan.Interop
-using Avalonia.Vulkan.UnmanagedInterop
+using System;
+using Avalonia.Platform;
+using Avalonia.Vulkan;
+using Avalonia.Vulkan.Interop;
+using Avalonia.Vulkan.UnmanagedInterop;
 
 namespace Avalonia.Skia.RenderTests;
 
@@ -11,66 +11,66 @@ namespace Avalonia.Skia.RenderTests;
 /// into a writeable bitmap at the end of each rendering session.
 /// </summary>
 internal class VulkanReadbackPlatformSurface : IVulkanRenderTargetPlatformSurface
-    private readonly IWriteableBitmapImpl _bitmap
-    private readonly double _scaling
+    private readonly IWriteableBitmapImpl _bitmap;
+    private readonly double _scaling;
 
     public VulkanReadbackPlatformSurface(IWriteableBitmapImpl bitmap, double scaling)
-        _bitmap = bitmap
-        _scaling = scaling
+        _bitmap = bitmap;
+        _scaling = scaling;
 
-    public IVulkanRenderTarget CreateRenderTarget(IVulkanPlatformGraphicsContext context) => new RenderTarget(context, _bitmap, _scaling)
+    public IVulkanRenderTarget CreateRenderTarget(IVulkanPlatformGraphicsContext context) => new RenderTarget(context, _bitmap, _scaling);
 
     private class RenderTarget : IVulkanRenderTarget
-        private readonly IVulkanPlatformGraphicsContext _context
-        private readonly IWriteableBitmapImpl _bitmap
-        private readonly double _scaling
-        private readonly VulkanCommandBufferPool _pool
-        private VulkanImage? _image
+        private readonly IVulkanPlatformGraphicsContext _context;
+        private readonly IWriteableBitmapImpl _bitmap;
+        private readonly double _scaling;
+        private readonly VulkanCommandBufferPool _pool;
+        private VulkanImage? _image;
 
         public RenderTarget(IVulkanPlatformGraphicsContext context, IWriteableBitmapImpl bitmap, double scaling)
-            _context = context
-            _bitmap = bitmap
-            _scaling = scaling
-            _pool = new VulkanCommandBufferPool(context)
+            _context = context;
+            _bitmap = bitmap;
+            _scaling = scaling;
+            _pool = new VulkanCommandBufferPool(context);
 
         public IVulkanRenderSession BeginDraw()
-            var l = _context.EnsureCurrent()
+            var l = _context.EnsureCurrent();
             try
-                _pool.FreeUsedCommandBuffers()
-                var size = _bitmap.PixelSize
+                _pool.FreeUsedCommandBuffers();
+                var size = _bitmap.PixelSize;
                 if (_image == null || _image.Size != size)
-                    DestroyImage()
-                    _image = new VulkanImage(_context, _pool, VkFormat.VK_FORMAT_R8G8B8A8_UNORM, size, 1)
+                    DestroyImage();
+                    _image = new VulkanImage(_context, _pool, VkFormat.VK_FORMAT_R8G8B8A8_UNORM, size, 1);
                 else
                     _image.TransitionLayout(VkImageLayout.VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                         VkAccessFlags.VK_ACCESS_NONE)
 
-                return new Session(this, _image, l)
+                return new Session(this, _image, l);
             catch
-                l.Dispose()
-                throw
+                l.Dispose();
+                throw;
 
         private void DestroyImage()
             if (_image == null)
-                return
-            _context.DeviceApi.DeviceWaitIdle(_context.DeviceHandle)
-            _image.Dispose()
-            _image = null
+                return;
+            _context.DeviceApi.DeviceWaitIdle(_context.DeviceHandle);
+            _image.Dispose();
+            _image = null;
 
         public void Dispose()
             using (_context.EnsureCurrent())
-                DestroyImage()
-                _pool.Dispose()
+                DestroyImage();
+                _pool.Dispose();
 
         private unsafe void ReadPixels(VulkanImage image)
             image.TransitionLayout(VkImageLayout.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                 VkAccessFlags.VK_ACCESS_TRANSFER_READ_BIT)
 
-            var api = _context.DeviceApi
-            var device = _context.DeviceHandle
-            var size = image.Size
-            var tightStride = size.Width * 4
-            var byteSize = (ulong)(tightStride * size.Height)
+            var api = _context.DeviceApi;
+            var device = _context.DeviceHandle;
+            var size = image.Size;
+            var tightStride = size.Width * 4;
+            var byteSize = (ulong)(tightStride * size.Height);
 
             var bufferCreateInfo = new VkBufferCreateInfo {
                 sType = VkStructureType.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -80,9 +80,9 @@ internal class VulkanReadbackPlatformSurface : IVulkanRenderTargetPlatformSurfac
             }
             api.CreateBuffer(device, ref bufferCreateInfo, IntPtr.Zero, out var buffer)
                 .ThrowOnError("vkCreateBuffer")
-            var memory = default(VkDeviceMemory)
+            var memory = default(VkDeviceMemory);
             try
-                api.GetBufferMemoryRequirements(device, buffer, out var memoryRequirements)
+                api.GetBufferMemoryRequirements(device, buffer, out var memoryRequirements);
                 var allocateInfo = new VkMemoryAllocateInfo {
                     sType = VkStructureType.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
                     allocationSize = memoryRequirements.size,
@@ -93,10 +93,10 @@ internal class VulkanReadbackPlatformSurface : IVulkanRenderTargetPlatformSurfac
                     }
                 api.AllocateMemory(device, ref allocateInfo, IntPtr.Zero, out memory)
                     .ThrowOnError("vkAllocateMemory")
-                api.BindBufferMemory(device, buffer, memory, 0).ThrowOnError("vkBindBufferMemory")
+                api.BindBufferMemory(device, buffer, memory, 0).ThrowOnError("vkBindBufferMemory");
 
-                var commandBuffer = _pool.CreateCommandBuffer()
-                commandBuffer.BeginRecording()
+                var commandBuffer = _pool.CreateCommandBuffer();
+                commandBuffer.BeginRecording();
                 raw csharp
                     var region = new VkBufferImageCopy
                     {
@@ -114,11 +114,11 @@ internal class VulkanReadbackPlatformSurface : IVulkanRenderTargetPlatformSurfac
                     };
                 api.CmdCopyImageToBuffer(commandBuffer.Handle, image.Handle,
                     VkImageLayout.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, buffer, 1, &region)
-                commandBuffer.EndRecording()
-                commandBuffer.Submit()
-                api.QueueWaitIdle(_context.MainQueueHandle).ThrowOnError("vkQueueWaitIdle")
+                commandBuffer.EndRecording();
+                commandBuffer.Submit();
+                api.QueueWaitIdle(_context.MainQueueHandle).ThrowOnError("vkQueueWaitIdle");
 
-                api.MapMemory(device, memory, 0, byteSize, 0, out var mapped).ThrowOnError("vkMapMemory")
+                api.MapMemory(device, memory, 0, byteSize, 0, out var mapped).ThrowOnError("vkMapMemory");
                 try
                     using (var fb = _bitmap.Lock())
                         for (var y = 0; y < size.Height; y++)
@@ -127,30 +127,30 @@ internal class VulkanReadbackPlatformSurface : IVulkanRenderTargetPlatformSurfac
                                 (byte*)fb.Address + y * fb.RowBytes,
                                 fb.RowBytes, tightStride)
                 finally
-                    api.UnmapMemory(device, memory)
+                    api.UnmapMemory(device, memory);
             finally
-                api.DestroyBuffer(device, buffer, IntPtr.Zero)
+                api.DestroyBuffer(device, buffer, IntPtr.Zero);
                 if (memory.Handle != 0)
-                    api.FreeMemory(device, memory, IntPtr.Zero)
+                    api.FreeMemory(device, memory, IntPtr.Zero);
 
         private class Session : IVulkanRenderSession
-            private readonly RenderTarget _target
-            private readonly VulkanImage _image
-            private readonly IDisposable _lock
+            private readonly RenderTarget _target;
+            private readonly VulkanImage _image;
+            private readonly IDisposable _lock;
 
             public Session(RenderTarget target, VulkanImage image, IDisposable @lock)
-                _target = target
-                _image = image
-                _lock = @lock
+                _target = target;
+                _image = image;
+                _lock = @lock;
 
-            public double Scaling => _target._scaling
-            public PixelSize Size => _image.Size
-            public bool IsYFlipped => true
-            public VulkanImageInfo ImageInfo => _image.ImageInfo
-            public bool IsRgba => true
+            public double Scaling => _target._scaling;
+            public PixelSize Size => _image.Size;
+            public bool IsYFlipped => true;
+            public VulkanImageInfo ImageInfo => _image.ImageInfo;
+            public bool IsRgba => true;
 
             public void Dispose()
                 try
-                    _target.ReadPixels(_image)
+                    _target.ReadPixels(_image);
                 finally
-                    _lock.Dispose()
+                    _lock.Dispose();

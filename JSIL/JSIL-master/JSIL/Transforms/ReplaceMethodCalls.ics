@@ -1,45 +1,45 @@
-using System
-using System.Collections.Generic
-using System.Diagnostics
-using System.Linq
-using System.Text
-using ICSharpCode.Decompiler.ILAst
-using JSIL.Ast
-using JSIL.Internal
-using Mono.Cecil
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using System.Text;
+using ICSharpCode.Decompiler.ILAst;
+using JSIL.Ast;
+using JSIL.Internal;
+using Mono.Cecil;
 
 namespace JSIL.Transforms
     public class ReplaceMethodCalls : JSAstVisitor
-        public readonly TypeSystem TypeSystem
-        public readonly JSILIdentifier JSIL
-        public readonly JSSpecialIdentifiers JS
-        public readonly MethodReference Method
+        public readonly TypeSystem TypeSystem;
+        public readonly JSILIdentifier JSIL;
+        public readonly JSSpecialIdentifiers JS;
+        public readonly MethodReference Method;
 
-        private JSExpression _ResultReferenceReplacement = null
+        private JSExpression _ResultReferenceReplacement = null;
 
         public ReplaceMethodCalls(
             MethodReference method, JSILIdentifier jsil, JSSpecialIdentifiers js, TypeSystem typeSystem
             )
-            Method = method
-            JSIL = jsil
-            JS = js
-            TypeSystem = typeSystem
+            Method = method;
+            JSIL = jsil;
+            JS = js;
+            TypeSystem = typeSystem;
 
         public void VisitNode(JSPublicInterfaceOfExpression poe)
-            VisitChildren(poe)
+            VisitChildren(poe);
 
             // Replace foo.__Type__.__PublicInterface__ with foo
-            var innerTypeOf = poe.Inner as ITypeOfExpression
+            var innerTypeOf = poe.Inner as ITypeOfExpression;
             if (innerTypeOf != null)
-                var replacement = new JSType(innerTypeOf.Type)
+                var replacement = new JSType(innerTypeOf.Type);
 
-                ParentNode.ReplaceChild(poe, replacement)
-                VisitReplacement(replacement)
+                ParentNode.ReplaceChild(poe, replacement);
+                VisitReplacement(replacement);
 
         public void VisitNode(JSInvocationExpression ie)
-            var type = ie.JSType
-            var method = ie.JSMethod
-            var thisExpression = ie.ThisReference
+            var type = ie.JSType;
+            var method = ie.JSMethod;
+            var thisExpression = ie.ThisReference;
 
             if (method != null)
                 if (
@@ -48,24 +48,24 @@ namespace JSIL.Transforms
                     )
                     switch (method.Method.Member.Name)
                         case ".ctor":
-                                var replacement = new JSNullExpression()
-                                ParentNode.ReplaceChild(ie, replacement)
-                                VisitReplacement(replacement)
+                                var replacement = new JSNullExpression();
+                                ParentNode.ReplaceChild(ie, replacement);
+                                VisitReplacement(replacement);
 
-                                return
+                                return;
 
                         case "ReferenceEquals":
-                                var lhs = ie.Arguments[0]
-                                var rhs = ie.Arguments[1]
+                                var lhs = ie.Arguments[0];
+                                var rhs = ie.Arguments[1];
 
-                                var lhsType = lhs.GetActualType(TypeSystem)
-                                var rhsType = rhs.GetActualType(TypeSystem)
+                                var lhsType = lhs.GetActualType(TypeSystem);
+                                var rhsType = rhs.GetActualType(TypeSystem);
 
-                                JSNode replacement
+                                JSNode replacement;
 
                                 // Structs can never compare equal with ReferenceEquals
                                 if (TypeUtil.IsStruct(lhsType) || TypeUtil.IsStruct(rhsType))
-                                    replacement = JSLiteral.New(false)
+                                    replacement = JSLiteral.New(false);
                                 else
                                     replacement = new JSBinaryOperatorExpression(
                                         JSOperator.Equal,
@@ -73,17 +73,17 @@ namespace JSIL.Transforms
                                         TypeSystem.Boolean
                                     )
 
-                                ParentNode.ReplaceChild(ie, replacement)
-                                VisitReplacement(replacement)
+                                ParentNode.ReplaceChild(ie, replacement);
+                                VisitReplacement(replacement);
 
-                                return
+                                return;
 
                         case "GetType":
-                                JSNode replacement
+                                JSNode replacement;
 
-                                var thisType = JSExpression.DeReferenceType(thisExpression.GetActualType(TypeSystem), false)
+                                var thisType = JSExpression.DeReferenceType(thisExpression.GetActualType(TypeSystem), false);
                                 if ((thisType is GenericInstanceType) && thisType.FullName.StartsWith("System.Nullable"))
-                                    var git = (GenericInstanceType)thisType
+                                    var git = (GenericInstanceType)thisType;
 
                                     replacement = new JSTernaryOperatorExpression(
                                         new JSBinaryOperatorExpression(
@@ -96,46 +96,46 @@ namespace JSIL.Transforms
                                         TypeSystem.SystemType()
                                     )
                                 else
-                                    replacement = JSIL.GetTypeOf(thisExpression)
+                                    replacement = JSIL.GetTypeOf(thisExpression);
 
-                                ParentNode.ReplaceChild(ie, replacement)
-                                VisitReplacement(replacement)
+                                ParentNode.ReplaceChild(ie, replacement);
+                                VisitReplacement(replacement);
 
-                                return
+                                return;
                 else if (
                     (type != null) &&
                         (type.Type.FullName == "System.ValueType")
                     )
                     switch (method.Method.Member.Name)
                         case "Equals":
-                                var replacement = JSIL.StructEquals(ie.ThisReference, ie.Arguments.First())
-                                ParentNode.ReplaceChild(ie, replacement)
-                                VisitReplacement(replacement)
+                                var replacement = JSIL.StructEquals(ie.ThisReference, ie.Arguments.First());
+                                ParentNode.ReplaceChild(ie, replacement);
+                                VisitReplacement(replacement);
 
-                                return
+                                return;
                 else if (
                     (type != null) &&
                         IsNullable(type.Type)
                     )
-                    var t = (type.Type as GenericInstanceType).GenericArguments[0]
-                    var @null = JSLiteral.Null(t)
-                    var @default = new JSDefaultValueLiteral(t)
+                    var t = (type.Type as GenericInstanceType).GenericArguments[0];
+                    var @null = JSLiteral.Null(t);
+                    var @default = new JSDefaultValueLiteral(t);
 
                     switch (method.Method.Member.Name)
                         case ".ctor":
-                            JSExpression value
+                            JSExpression value;
                             if (ie.Arguments.Count == 0)
-                                value = @null
+                                value = @null;
                             else
-                                value = ie.Arguments[0]
+                                value = ie.Arguments[0];
 
-                            JSExpression replacementNode
+                            JSExpression replacementNode;
 
-                            var readThroughReference = ie.ThisReference as JSReadThroughReferenceExpression
+                            var readThroughReference = ie.ThisReference as JSReadThroughReferenceExpression;
                             if (readThroughReference != null)
-                                replacementNode = new JSWriteThroughReferenceExpression(readThroughReference.Variable, value)
+                                replacementNode = new JSWriteThroughReferenceExpression(readThroughReference.Variable, value);
                             else
-                                var readThroughPointer = ie.ThisReference as JSReadThroughPointerExpression
+                                var readThroughPointer = ie.ThisReference as JSReadThroughPointerExpression;
                                 if (readThroughPointer != null)
                                     replacementNode = new JSWriteThroughPointerExpression(readThroughPointer.Pointer, value,
                                         type.Type, readThroughPointer.OffsetInBytes)
@@ -143,10 +143,10 @@ namespace JSIL.Transforms
                                     replacementNode = new JSBinaryOperatorExpression(JSOperator.Assignment, ie.ThisReference,
                                         value, type.Type)
 
-                            ParentNode.ReplaceChild(ie, replacementNode)
-                            VisitReplacement(replacementNode)
+                            ParentNode.ReplaceChild(ie, replacementNode);
+                            VisitReplacement(replacementNode);
 
-                            break
+                            break;
 
                         case "GetValueOrDefault":
                                 var replacement = JSIL.ValueOfNullableOrDefault(
@@ -159,23 +159,23 @@ namespace JSIL.Transforms
                                 if (ParentNode is JSResultReferenceExpression)
                                     // HACK: Replacing the invocation inside a result reference is incorrect, so we need to walk up the stack
                                     //  and replace the result reference with the ternary instead.
-                                    _ResultReferenceReplacement = replacement
+                                    _ResultReferenceReplacement = replacement;
                                 else
-                                    ParentNode.ReplaceChild(ie, replacement)
-                                    VisitReplacement(replacement)
+                                    ParentNode.ReplaceChild(ie, replacement);
+                                    VisitReplacement(replacement);
 
-                                break
+                                break;
 
                         case "Equals":
-                            JSBinaryOperatorExpression equality = new JSBinaryOperatorExpression(JSOperator.Equal, ie.ThisReference, ie.Parameters.First().Value, type.Type)
-                            ParentNode.ReplaceChild(ie, equality)
-                            VisitReplacement(equality)
-                            break
+                            JSBinaryOperatorExpression equality = new JSBinaryOperatorExpression(JSOperator.Equal, ie.ThisReference, ie.Parameters.First().Value, type.Type);
+                            ParentNode.ReplaceChild(ie, equality);
+                            VisitReplacement(equality);
+                            break;
 
                         default:
-                            throw new NotImplementedException(method.Method.Member.FullName)
+                            throw new NotImplementedException(method.Method.Member.FullName);
 
-                    return
+                    return;
                 else if (
                     (type != null) &&
                         TypeUtil.TypesAreEqual(TypeSystem.String, type.Type) &&
@@ -198,31 +198,31 @@ namespace JSIL.Transforms
                                 boe
                             )
 
-                            VisitReplacement(boe)
+                            VisitReplacement(boe);
                     else if (
                         // HACK: Fix for #239, only convert concat call into + if both sides are non-null literals
                         (ie.Arguments.Count == 2)
                         )
-                        var lhs = ie.Arguments[0]
-                        var rhs = ie.Arguments[1]
+                        var lhs = ie.Arguments[0];
+                        var rhs = ie.Arguments[1];
 
-                        var isAddOk = (lhs is JSStringLiteral) && (rhs is JSStringLiteral)
+                        var isAddOk = (lhs is JSStringLiteral) && (rhs is JSStringLiteral);
 
-                        var lhsType = TypeUtil.DereferenceType(lhs.GetActualType(TypeSystem))
+                        var lhsType = TypeUtil.DereferenceType(lhs.GetActualType(TypeSystem));
                         if (!(
                             TypeUtil.TypesAreEqual(TypeSystem.String, lhsType) ||
                                 TypeUtil.TypesAreEqual(TypeSystem.Char, lhsType)
                             ))
-                            lhs = JSInvocationExpression.InvokeMethod(lhsType, JS.toString, lhs, null)
-                            isAddOk = true
+                            lhs = JSInvocationExpression.InvokeMethod(lhsType, JS.toString, lhs, null);
+                            isAddOk = true;
 
-                        var rhsType = TypeUtil.DereferenceType(rhs.GetActualType(TypeSystem))
+                        var rhsType = TypeUtil.DereferenceType(rhs.GetActualType(TypeSystem));
                         if (!(
                             TypeUtil.TypesAreEqual(TypeSystem.String, rhsType) ||
                                 TypeUtil.TypesAreEqual(TypeSystem.Char, rhsType)
                             ))
-                            rhs = JSInvocationExpression.InvokeMethod(rhsType, JS.toString, rhs, null)
-                            isAddOk = true
+                            rhs = JSInvocationExpression.InvokeMethod(rhsType, JS.toString, rhs, null);
+                            isAddOk = true;
 
                         if (isAddOk)
                             var boe = new JSBinaryOperatorExpression(
@@ -233,21 +233,21 @@ namespace JSIL.Transforms
                                 ie, boe
                             )
 
-                            VisitReplacement(boe)
+                            VisitReplacement(boe);
                     else if (
                         TypeUtil.GetTypeDefinition(ie.Arguments[0].GetActualType(TypeSystem)).FullName == "System.Array"
                         )
                         ;
                     else
-                        var firstArg = ie.Arguments.FirstOrDefault()
+                        var firstArg = ie.Arguments.FirstOrDefault();
 
                         ParentNode.ReplaceChild(
                             ie, firstArg
                         )
 
                         if (firstArg != null)
-                            VisitReplacement(firstArg)
-                    return
+                            VisitReplacement(firstArg);
+                    return;
                 else if (
                     TypeUtil.IsDelegateType(method.Reference.DeclaringType) &&
                         (method.Method.Name == "Invoke")
@@ -255,10 +255,10 @@ namespace JSIL.Transforms
                     var newIe = new JSDelegateInvocationExpression(
                         thisExpression, ie.GetActualType(TypeSystem), ie.Arguments.ToArray()
                     )
-                    ParentNode.ReplaceChild(ie, newIe)
+                    ParentNode.ReplaceChild(ie, newIe);
 
-                    VisitReplacement(newIe)
-                    return
+                    VisitReplacement(newIe);
+                    return;
                 else if (
                     (method.Reference.DeclaringType.FullName == "System.Runtime.CompilerServices.RuntimeHelpers") &&
                         (method.Method.Name == "InitializeArray") &&
@@ -266,36 +266,36 @@ namespace JSIL.Transforms
                         (method.Method.Parameters[0].ParameterType.FullName == "System.Array") &&
                         (method.Method.Parameters[1].ParameterType.FullName == "System.RuntimeFieldHandle")
                     )
-                    var array = ie.Arguments[0]
-                    var arrayType = array.GetActualType(TypeSystem)
-                    var field = ie.Arguments[1].SelfAndChildrenRecursive.OfType<JSField>().First()
-                    var initializer = JSArrayExpression.UnpackArrayInitializer(arrayType, field.Field.Member.InitialValue)
+                    var array = ie.Arguments[0];
+                    var arrayType = array.GetActualType(TypeSystem);
+                    var field = ie.Arguments[1].SelfAndChildrenRecursive.OfType<JSField>().First();
+                    var initializer = JSArrayExpression.UnpackArrayInitializer(arrayType, field.Field.Member.InitialValue);
 
-                    var copy = JSIL.ShallowCopy(array, initializer, arrayType)
-                    ParentNode.ReplaceChild(ie, copy)
-                    VisitReplacement(copy)
-                    return
+                    var copy = JSIL.ShallowCopy(array, initializer, arrayType);
+                    ParentNode.ReplaceChild(ie, copy);
+                    VisitReplacement(copy);
+                    return;
                 else if (
                     method.Reference.DeclaringType.FullName == "System.Reflection.Assembly"
                     )
                     switch (method.Reference.Name)
                         case "GetExecutingAssembly":
-                                var assembly = Method.DeclaringType.Module.Assembly
-                                var asmNode = new JSReflectionAssembly(assembly)
-                                ParentNode.ReplaceChild(ie, asmNode)
-                                VisitReplacement(asmNode)
+                                var assembly = Method.DeclaringType.Module.Assembly;
+                                var asmNode = new JSReflectionAssembly(assembly);
+                                ParentNode.ReplaceChild(ie, asmNode);
+                                VisitReplacement(asmNode);
 
-                                return
+                                return;
 
-            VisitChildren(ie)
+            VisitChildren(ie);
 
         protected bool IsNullable(TypeReference type)
-            var git = TypeUtil.DereferenceType(type) as GenericInstanceType
+            var git = TypeUtil.DereferenceType(type) as GenericInstanceType;
 
-            return (git != null) && (git.Name == "Nullable`1")
+            return (git != null) && (git.Name == "Nullable`1");
 
         public void VisitNode(JSDefaultValueLiteral dvl)
-            var expectedType = dvl.GetActualType(TypeSystem)
+            var expectedType = dvl.GetActualType(TypeSystem);
 
             if (
                 IsNullable(expectedType)
@@ -304,10 +304,10 @@ namespace JSIL.Transforms
                     dvl, JSLiteral.Null(expectedType)
                 )
             else
-                VisitChildren(dvl)
+                VisitChildren(dvl);
 
         public void VisitNode(JSNewExpression ne)
-            var expectedType = ne.GetActualType(TypeSystem)
+            var expectedType = ne.GetActualType(TypeSystem);
             if (
                 IsNullable(expectedType)
                 )
@@ -319,16 +319,16 @@ namespace JSIL.Transforms
                     ParentNode.ReplaceChild(
                         ne, ne.Arguments[0]
                     )
-                    VisitReplacement(ne.Arguments[0])
+                    VisitReplacement(ne.Arguments[0]);
             else
-                VisitChildren(ne)
+                VisitChildren(ne);
 
         public void VisitNode(JSResultReferenceExpression rre)
-            VisitChildren(rre)
+            VisitChildren(rre);
 
             if (_ResultReferenceReplacement != null)
-                var replacement = _ResultReferenceReplacement
-                _ResultReferenceReplacement = null
+                var replacement = _ResultReferenceReplacement;
+                _ResultReferenceReplacement = null;
 
-                ParentNode.ReplaceChild(rre, replacement)
-                VisitReplacement(replacement)
+                ParentNode.ReplaceChild(rre, replacement);
+                VisitReplacement(replacement);

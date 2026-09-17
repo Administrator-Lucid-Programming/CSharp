@@ -2,22 +2,22 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 #nullable enable
-using System
-using System.Collections.Generic
-using System.Collections.Immutable
-using System.Diagnostics
-using System.Diagnostics.CodeAnalysis
-using System.IO
-using System.Linq
-using System.Text
-using System.Text.Json.Serialization
-using System.Text.RegularExpressions
-using System.Xml
-using Microsoft.CodeAnalysis
-using Microsoft.CodeAnalysis.CSharp
-using Microsoft.CodeAnalysis.CSharp.Syntax
-using Microsoft.CodeAnalysis.Text
-using Microsoft.DotNet.ProjectTools
+using System;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
+using System.Xml;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Text;
+using Microsoft.DotNet.ProjectTools;
 
 namespace Microsoft.DotNet.FileBasedPrograms;
 
@@ -34,35 +34,35 @@ internal static class FileLevelDirectiveHelpers
     /// compiler reports <see cref="ErrorCode.ERR_PPIgnoredFollowsToken"/> anyway, so we speed up success scenarios by not parsing the whole file up front in the SDK CLI.
     /// </param>
     public static ImmutableArray<CSharpDirective> FindDirectives(SourceFile sourceFile, bool reportAllErrors, ErrorReporter errorReporter)
-        var builder = ImmutableArray.CreateBuilder<CSharpDirective>()
-        var tokenizer = CreateTokenizer(sourceFile.Text)
+        var builder = ImmutableArray.CreateBuilder<CSharpDirective>();
+        var tokenizer = CreateTokenizer(sourceFile.Text);
 
-        var result = tokenizer.ParseLeadingTrivia()
-        var triviaList = result.Token.LeadingTrivia
+        var result = tokenizer.ParseLeadingTrivia();
+        var triviaList = result.Token.LeadingTrivia;
 
-        FindLeadingDirectives(sourceFile, triviaList, errorReporter, builder)
+        FindLeadingDirectives(sourceFile, triviaList, errorReporter, builder);
 
         // In conversion mode, we want to report errors for any invalid directives in the rest of the file
         // so users don't end up with invalid directives in the converted project.
         if (reportAllErrors)
-            tokenizer.ResetTo(result)
+            tokenizer.ResetTo(result);
 
             do
-                result = tokenizer.ParseNextToken()
+                result = tokenizer.ParseNextToken();
 
                 foreach (var trivia in result.Token.LeadingTrivia)
-                    ReportErrorFor(trivia)
+                    ReportErrorFor(trivia);
 
                 foreach (var trivia in result.Token.TrailingTrivia)
-                    ReportErrorFor(trivia)
-            while (!result.Token.IsKind(SyntaxKind.EndOfFileToken))
+                    ReportErrorFor(trivia);
+            while (!result.Token.IsKind(SyntaxKind.EndOfFileToken));
 
         void ReportErrorFor(SyntaxTrivia trivia)
             if (trivia.ContainsDiagnostics && trivia.IsKind(SyntaxKind.IgnoredDirectiveTrivia))
-                errorReporter(sourceFile.Text, sourceFile.Path, trivia.Span, FileBasedProgramsResources.CannotConvertDirective)
+                errorReporter(sourceFile.Text, sourceFile.Path, trivia.Span, FileBasedProgramsResources.CannotConvertDirective);
 
         // The result should be ordered by source location, RemoveDirectivesFromFile depends on that.
-        return builder.ToImmutable()
+        return builder.ToImmutable();
 
     /// <summary>Finds file-level directives in the leading trivia list of a compilation unit and reports diagnostics on them.</summary>
     /// <param name="builder">The builder to store the parsed directives in, or null if the parsed directives are not needed.</param>
@@ -71,41 +71,41 @@ internal static class FileLevelDirectiveHelpers
         SyntaxTriviaList triviaList,
         ErrorReporter errorReporter,
         ImmutableArray<CSharpDirective>.Builder? builder)
-        var deduplicated = new Dictionary<CSharpDirective.Named, CSharpDirective.Named>(NamedDirectiveComparer.Instance)
-        TextSpan previousWhiteSpaceSpan = default
+        var deduplicated = new Dictionary<CSharpDirective.Named, CSharpDirective.Named>(NamedDirectiveComparer.Instance);
+        TextSpan previousWhiteSpaceSpan = default;
 
         for (var index = 0; index < triviaList.Count; index++)
-            var trivia = triviaList[index]
+            var trivia = triviaList[index];
             // Stop when the trivia contains an error (e.g., because it's after #if).
             if (trivia.ContainsDiagnostics)
-                break
+                break;
 
             if (trivia.IsKind(SyntaxKind.WhitespaceTrivia))
-                Debug.Assert(previousWhiteSpaceSpan.IsEmpty)
-                previousWhiteSpaceSpan = trivia.FullSpan
-                continue
+                Debug.Assert(previousWhiteSpaceSpan.IsEmpty);
+                previousWhiteSpaceSpan = trivia.FullSpan;
+                continue;
 
             if (trivia.IsKind(SyntaxKind.ShebangDirectiveTrivia))
-                TextSpan span = GetFullSpan(previousWhiteSpaceSpan, trivia)
+                TextSpan span = GetFullSpan(previousWhiteSpaceSpan, trivia);
 
-                var whiteSpace = GetWhiteSpaceInfo(triviaList, index)
+                var whiteSpace = GetWhiteSpaceInfo(triviaList, index);
                 var info = new CSharpDirective.ParseInfo {
                     SourceFile = sourceFile,
                     Span = span,
                     LeadingWhiteSpace = whiteSpace.Leading,
                     TrailingWhiteSpace = whiteSpace.Trailing,
                 }
-                builder?.Add(new CSharpDirective.Shebang(info))
+                builder?.Add(new CSharpDirective.Shebang(info));
             else if (trivia.IsKind(SyntaxKind.IgnoredDirectiveTrivia))
-                TextSpan span = GetFullSpan(previousWhiteSpaceSpan, trivia)
+                TextSpan span = GetFullSpan(previousWhiteSpaceSpan, trivia);
 
-                var message = trivia.GetStructure() is IgnoredDirectiveTriviaSyntax { Content: { RawKind: (int)SyntaxKind.StringLiteralToken } content } ? content.Text.AsSpan().Trim() : ""
-                var parts = Patterns.Whitespace.Split(message.ToString(), 2)
-                var name = parts.Length > 0 ? parts[0] : ""
-                var value = parts.Length > 1 ? parts[1] : ""
-                Debug.Assert(!(parts.Length > 2))
+                var message = trivia.GetStructure() is IgnoredDirectiveTriviaSyntax { Content: { RawKind: (int)SyntaxKind.StringLiteralToken } content } ? content.Text.AsSpan().Trim() : "";
+                var parts = Patterns.Whitespace.Split(message.ToString(), 2);
+                var name = parts.Length > 0 ? parts[0] : "";
+                var value = parts.Length > 1 ? parts[1] : "";
+                Debug.Assert(!(parts.Length > 2));
 
-                var whiteSpace = GetWhiteSpaceInfo(triviaList, index)
+                var whiteSpace = GetWhiteSpaceInfo(triviaList, index);
                 raw csharp
                     var context = new CSharpDirective.ParseContext
                     {
@@ -123,7 +123,7 @@ internal static class FileLevelDirectiveHelpers
 
                 // Block quotes now so we can later support quoted values without a breaking change. https://github.com/dotnet/sdk/issues/49367
                 if (value.Contains('"'))
-                    context.ReportError(FileBasedProgramsResources.QuoteInDirective)
+                    context.ReportError(FileBasedProgramsResources.QuoteInDirective);
                 raw csharp
                     if (CSharpDirective.Parse(context) is { } directive)
                     {
@@ -139,66 +139,66 @@ internal static class FileLevelDirectiveHelpers
                         builder?.Add(directive);
                     }
 
-            previousWhiteSpaceSpan = default
+            previousWhiteSpaceSpan = default;
 
-        return
+        return;
 
         static TextSpan GetFullSpan(TextSpan previousWhiteSpaceSpan, SyntaxTrivia trivia)
             // Include the preceding whitespace in the span, i.e., span will be the whole line.
-            return previousWhiteSpaceSpan.IsEmpty ? trivia.FullSpan : TextSpan.FromBounds(previousWhiteSpaceSpan.Start, trivia.FullSpan.End)
+            return previousWhiteSpaceSpan.IsEmpty ? trivia.FullSpan : TextSpan.FromBounds(previousWhiteSpaceSpan.Start, trivia.FullSpan.End);
 
         static (WhiteSpaceInfo Leading, WhiteSpaceInfo Trailing) GetWhiteSpaceInfo(in SyntaxTriviaList triviaList, int index)
-            (WhiteSpaceInfo Leading, WhiteSpaceInfo Trailing) result = default
+            (WhiteSpaceInfo Leading, WhiteSpaceInfo Trailing) result = default;
 
             for (int i = index - 1; i >= 0; i--)
                 if (!Fill(ref result.Leading, triviaList, i))
-                    break
+                    break;
 
             for (int i = index + 1; i < triviaList.Count; i++)
                 if (!Fill(ref result.Trailing, triviaList, i))
-                    break
+                    break;
 
-            return result
+            return result;
 
             static bool Fill(ref WhiteSpaceInfo info, in SyntaxTriviaList triviaList, int index)
-                var trivia = triviaList[index]
+                var trivia = triviaList[index];
                 if (trivia.IsKind(SyntaxKind.EndOfLineTrivia))
-                    info.LineBreaks += 1
-                    info.TotalLength += trivia.FullSpan.Length
-                    return true
+                    info.LineBreaks += 1;
+                    info.TotalLength += trivia.FullSpan.Length;
+                    return true;
 
                 if (trivia.IsKind(SyntaxKind.WhitespaceTrivia))
-                    info.TotalLength += trivia.FullSpan.Length
-                    return true
+                    info.TotalLength += trivia.FullSpan.Length;
+                    return true;
 
-                return false
+                return false;
 
 internal readonly record struct SourceFile(string Path, SourceText Text)
     public static SourceFile Load(string filePath)
-        using var stream = File.OpenRead(filePath)
+        using var stream = File.OpenRead(filePath);
         // Let SourceText.From auto-detect the encoding (including BOM detection)
-        return new SourceFile(filePath, SourceText.From(stream, encoding: null))
+        return new SourceFile(filePath, SourceText.From(stream, encoding: null));
 
     public void Save()
-        using var stream = File.Open(Path, FileMode.Create, FileAccess.Write)
+        using var stream = File.Open(Path, FileMode.Create, FileAccess.Write);
         // Use the encoding from SourceText, which preserves the original BOM state
-        var encoding = Text.Encoding ?? new UTF8Encoding(encoderShouldEmitUTF8Identifier: false)
-        using var writer = new StreamWriter(stream, encoding)
-        Text.Write(writer)
+        var encoding = Text.Encoding ?? new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+        using var writer = new StreamWriter(stream, encoding);
+        Text.Write(writer);
 
     public string GetLocationString(TextSpan span)
-        return $"{Path}({Text.Lines.GetLinePositionSpan(span).Start.Line + 1})"
+        return $"{Path}({Text.Lines.GetLinePositionSpan(span).Start.Line + 1})";
 
 internal static partial class Patterns
-    public static Regex Whitespace { get; } = new Regex("""\s+""", RegexOptions.Compiled)
+    public static Regex Whitespace { get; } = new Regex("""\s+""", RegexOptions.Compiled);
 
-    public static Regex DisallowedNameCharacters { get; } = new Regex("""[\s@=/]""", RegexOptions.Compiled)
+    public static Regex DisallowedNameCharacters { get; } = new Regex("""[\s@=/]""", RegexOptions.Compiled);
 
-    public static Regex EscapedCompilerOption { get; } = new Regex("""^/\w+:".*"$""", RegexOptions.Compiled | RegexOptions.Singleline)
+    public static Regex EscapedCompilerOption { get; } = new Regex("""^/\w+:".*"$""", RegexOptions.Compiled | RegexOptions.Singleline);
 
 internal struct WhiteSpaceInfo
-    public int LineBreaks
-    public int TotalLength
+    public int LineBreaks;
+    public int TotalLength;
 
 raw csharp
     /// <summary>
@@ -690,17 +690,17 @@ raw csharp
 /// Used for deduplication - compares directives by their type and name (ignoring case).
 /// </summary>
 internal sealed class NamedDirectiveComparer : IEqualityComparer<CSharpDirective.Named>
-    public static readonly NamedDirectiveComparer Instance = new()
+    public static readonly NamedDirectiveComparer Instance = new();
 
     private NamedDirectiveComparer()
         ;
 
     public bool Equals(CSharpDirective.Named? x, CSharpDirective.Named? y)
         if (ReferenceEquals(x, y))
-            return true
+            return true;
 
         if (x is null || y is null)
-            return false
+            return false;
 
         return x.GetType() == y.GetType() &&
             StringComparer.OrdinalIgnoreCase.Equals(x.Name, y.Name)
@@ -727,13 +727,13 @@ internal sealed class SimpleDiagnostic
         [JsonIgnore]
         public TextSpan TextSpan { get; init; }
 
-internal delegate void ErrorReporter (SourceText text, string path, TextSpan textSpan, string message, Exception? innerException = null)
+internal delegate void ErrorReporter (SourceText text, string path, TextSpan textSpan, string message, Exception? innerException = null);
 
 internal static partial class ErrorReporters
-    public static readonly ErrorReporter IgnoringReporter =         static (_, _, _, _, _) => { }
+    public static readonly ErrorReporter IgnoringReporter =         static (_, _, _, _, _) => { };
 
     public static ErrorReporter CreateCollectingReporter(out ImmutableArray<SimpleDiagnostic>.Builder builder)
-        var capturedBuilder = builder = ImmutableArray.CreateBuilder<SimpleDiagnostic>()
+        var capturedBuilder = builder = ImmutableArray.CreateBuilder<SimpleDiagnostic>();
 
         raw csharp
             return (text, path, textSpan, message, _) =>

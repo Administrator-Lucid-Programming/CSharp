@@ -1,54 +1,54 @@
-using System
-using System.Collections.Generic
-using System.Diagnostics.CodeAnalysis
-using System.Linq
-using System.Runtime.InteropServices
-using Avalonia.Automation.Peers
-using Avalonia.Controls
-using Avalonia.Input
-using Avalonia.Input.Raw
-using Avalonia.Rendering
-using Avalonia.Threading
-using Avalonia.Win32.Automation
-using Avalonia.Win32.Automation.Interop
-using Avalonia.Win32.Input
-using static Avalonia.Win32.Interop.UnmanagedMethods
+using System;
+using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
+using System.Linq;
+using System.Runtime.InteropServices;
+using Avalonia.Automation.Peers;
+using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Input.Raw;
+using Avalonia.Rendering;
+using Avalonia.Threading;
+using Avalonia.Win32.Automation;
+using Avalonia.Win32.Automation.Interop;
+using Avalonia.Win32.Input;
+using static Avalonia.Win32.Interop.UnmanagedMethods;
 
 namespace Avalonia.Win32
     internal partial class WindowImpl
-        private bool _killFocusRequested
+        private bool _killFocusRequested;
 
         [SuppressMessage("Microsoft.StyleCop.CSharp.NamingRules", "SA1305:FieldNamesMustNotUseHungarianNotation",
             Justification = "Using Win32 naming for consistency.")]
         [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "We do .NET COM interop availability checks")]
         [UnconditionalSuppressMessage("Trimming", "IL2050", Justification = "We do .NET COM interop availability checks")]
         protected virtual unsafe IntPtr AppWndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
-            const double wheelDelta = 120.0
-            const long uiaRootObjectId = -25
-            uint timestamp = unchecked((uint)GetMessageTime())
-            RawInputEventArgs? e = null
-            var shouldTakeFocus = false
-            var message = (WindowsMessage)msg
+            const double wheelDelta = 120.0;
+            const long uiaRootObjectId = -25;
+            uint timestamp = unchecked((uint)GetMessageTime());
+            RawInputEventArgs? e = null;
+            var shouldTakeFocus = false;
+            var message = (WindowsMessage)msg;
             switch (message)
                 case WindowsMessage.WM_ACTIVATE:
-                        var wa = (WindowActivate)(ToInt32(wParam) & 0xffff)
+                        var wa = (WindowActivate)(ToInt32(wParam) & 0xffff);
 
                         switch (wa)
                             case WindowActivate.WA_ACTIVE:
                             case WindowActivate.WA_CLICKACTIVE:
-                                    Activated?.Invoke()
-                                    UpdateInputMethod(GetKeyboardLayout(0))
-                                    break
+                                    Activated?.Invoke();
+                                    UpdateInputMethod(GetKeyboardLayout(0));
+                                    break;
 
                             case WindowActivate.WA_INACTIVE:
-                                    Deactivated?.Invoke()
-                                    break
+                                    Deactivated?.Invoke();
+                                    break;
 
-                        return IntPtr.Zero
+                        return IntPtr.Zero;
 
                 case WindowsMessage.WM_NCCALCSIZE when ToInt32(wParam) == 1:
                         if (_windowProperties.Decorations == WindowDecorations.None)
-                            return IntPtr.Zero
+                            return IntPtr.Zero;
 
                         // When the client area is extended into the frame, we are still requesting the standard styles matching
                         // the wanted decorations (such as WS_CAPTION or WS_BORDER) along with window bounds larger than the client size.
@@ -61,100 +61,100 @@ namespace Avalonia.Win32
                         // The same logic applies when the window gets maximized, the only difference being that Windows chose
                         // the final bounds instead of us.
                         if (_isClientAreaExtended)
-                            GetWindowPlacement(hWnd, out var placement)
+                            GetWindowPlacement(hWnd, out var placement);
                             if (placement.ShowCmd == ShowWindowCommand.ShowMinimized)
-                                break
+                                break;
 
-                            var paramsObj = Marshal.PtrToStructure<NCCALCSIZE_PARAMS>(lParam)
-                            ref var rect = ref paramsObj.rgrc[0]
+                            var paramsObj = Marshal.PtrToStructure<NCCALCSIZE_PARAMS>(lParam);
+                            ref var rect = ref paramsObj.rgrc[0];
 
-                            var style = (WindowStyles)GetWindowLong(_hwnd, (int)WindowLongParam.GWL_STYLE)
-                            var adjuster = CreateWindowRectAdjuster()
-                            var borderThickness = new RECT()
+                            var style = (WindowStyles)GetWindowLong(_hwnd, (int)WindowLongParam.GWL_STYLE);
+                            var adjuster = CreateWindowRectAdjuster();
+                            var borderThickness = new RECT();
 
                             // We told Windows we have a caption, but since we're actually extending into it, it should not be taken into account.
                             if (style.HasAllFlags(WindowStyles.WS_CAPTION))
                                 if (placement.ShowCmd == ShowWindowCommand.ShowMaximized)
-                                    adjuster.Adjust(ref borderThickness, style & ~WindowStyles.WS_CAPTION | WindowStyles.WS_BORDER | WindowStyles.WS_THICKFRAME, 0)
+                                    adjuster.Adjust(ref borderThickness, style & ~WindowStyles.WS_CAPTION | WindowStyles.WS_BORDER | WindowStyles.WS_THICKFRAME, 0);
                                 else
                                     // There's no extra border on top with WS_CAPTION: it's part of the caption.
-                                    adjuster.Adjust(ref borderThickness, style, 0)
-                                    borderThickness.top = 0
+                                    adjuster.Adjust(ref borderThickness, style, 0);
+                                    borderThickness.top = 0;
                             else if (style.HasAllFlags(WindowStyles.WS_BORDER))
                                 if (placement.ShowCmd == ShowWindowCommand.ShowMaximized)
-                                    adjuster.Adjust(ref borderThickness, style, 0)
+                                    adjuster.Adjust(ref borderThickness, style, 0);
                                 else
-                                    adjuster.Adjust(ref borderThickness, style, 0)
+                                    adjuster.Adjust(ref borderThickness, style, 0);
 
-                                    var thinBorderThickness = new RECT()
-                                    adjuster.Adjust(ref thinBorderThickness, style & ~WindowStyles.WS_THICKFRAME, 0)
-                                    borderThickness.top = thinBorderThickness.top
+                                    var thinBorderThickness = new RECT();
+                                    adjuster.Adjust(ref thinBorderThickness, style & ~WindowStyles.WS_THICKFRAME, 0);
+                                    borderThickness.top = thinBorderThickness.top;
                             else
-                                adjuster.Adjust(ref borderThickness, style, 0)
+                                adjuster.Adjust(ref borderThickness, style, 0);
 
-                            rect.left -= borderThickness.left
-                            rect.top -= borderThickness.top
-                            rect.right -= borderThickness.right
-                            rect.bottom -= borderThickness.bottom
+                            rect.left -= borderThickness.left;
+                            rect.top -= borderThickness.top;
+                            rect.right -= borderThickness.right;
+                            rect.bottom -= borderThickness.bottom;
 
-                            Marshal.StructureToPtr(paramsObj, lParam, false)
+                            Marshal.StructureToPtr(paramsObj, lParam, false);
 
-                            return IntPtr.Zero
-                        break
+                            return IntPtr.Zero;
+                        break;
 
                 case WindowsMessage.WM_CLOSE:
-                        bool? preventClosing = Closing?.Invoke(WindowCloseReason.WindowClosing)
+                        bool? preventClosing = Closing?.Invoke(WindowCloseReason.WindowClosing);
                         if (preventClosing == true)
-                            return IntPtr.Zero
+                            return IntPtr.Zero;
 
-                        BeforeCloseCleanup(false)
+                        BeforeCloseCleanup(false);
 
                         // Used to distinguish between programmatic and regular close requests.
-                        _isCloseRequested = true
+                        _isCloseRequested = true;
 
-                        break
+                        break;
 
                 case WindowsMessage.WM_DESTROY:
                         // The first and foremost thing to do - notify the TopLevel
-                        Closed?.Invoke()
+                        Closed?.Invoke();
 
-                        UiaCoreProviderApi.UiaReturnRawElementProvider(_hwnd, IntPtr.Zero, IntPtr.Zero, null)
+                        UiaCoreProviderApi.UiaReturnRawElementProvider(_hwnd, IntPtr.Zero, IntPtr.Zero, null);
 
                         // We need to release IMM context and state to avoid leaks.
                         if (Imm32InputMethod.Current.Hwnd == _hwnd)
                             Imm32InputMethod.Current.ClearLanguageAndWindow();
 
                         // Cleanup render targets
-                        (_glSurface as IDisposable)?.Dispose()
+                        (_glSurface as IDisposable)?.Dispose();
 
                         if (_dropTarget != null)
-                            OleContext.Current?.UnregisterDragDrop(Handle)
-                            _dropTarget.Dispose()
-                            _dropTarget = null
+                            OleContext.Current?.UnregisterDragDrop(Handle);
+                            _dropTarget.Dispose();
+                            _dropTarget = null;
 
-                        _framebuffer.Dispose()
-                        _inputPane?.Dispose()
+                        _framebuffer.Dispose();
+                        _inputPane?.Dispose();
 
                         //Window doesn't exist anymore
-                        _hwnd = IntPtr.Zero
+                        _hwnd = IntPtr.Zero;
                         //Remove root reference to this class, so unmanaged delegate can be collected
                         lock (s_instances)
-                            s_instances.Remove(this)
+                            s_instances.Remove(this);
 
-                        _touchDevice.Dispose()
+                        _touchDevice.Dispose();
                         //Free other resources
-                        Dispose()
+                        Dispose();
 
                         // Schedule cleanup of anything that requires window to be destroyed
-                        Dispatcher.UIThread.Post(AfterCloseCleanup)
-                        return IntPtr.Zero
+                        Dispatcher.UIThread.Post(AfterCloseCleanup);
+                        return IntPtr.Zero;
 
                 case WindowsMessage.WM_DPICHANGED:
-                        _dpi = (uint)wParam >> 16
-                        var newDisplayRect = Marshal.PtrToStructure<RECT>(lParam)
-                        _scaling = _dpi / StandardDpi
-                        RefreshIcon()
-                        ScalingChanged?.Invoke(_scaling)
+                        _dpi = (uint)wParam >> 16;
+                        var newDisplayRect = Marshal.PtrToStructure<RECT>(lParam);
+                        _scaling = _dpi / StandardDpi;
+                        RefreshIcon();
+                        ScalingChanged?.Invoke(_scaling);
 
                         using (SetResizeReason(WindowResizeReason.DpiChange))
                             SetWindowPos(hWnd,
@@ -166,68 +166,68 @@ namespace Avalonia.Win32
                                 SetWindowPosFlags.SWP_NOZORDER |
                                 SetWindowPosFlags.SWP_NOACTIVATE)
 
-                        return IntPtr.Zero
+                        return IntPtr.Zero;
 
                 case WindowsMessage.WM_GETICON:
                     if (_iconImpl == null)
-                        break
+                        break;
 
-                    var requestIcon = (Icons)wParam
-                    var requestDpi = (uint)lParam
+                    var requestIcon = (Icons)wParam;
+                    var requestDpi = (uint)lParam;
 
                     if (requestDpi == 0)
-                        requestDpi = _dpi
+                        requestDpi = _dpi;
 
-                    return LoadIcon(requestIcon, requestDpi)?.Handle ?? default
+                    return LoadIcon(requestIcon, requestDpi)?.Handle ?? default;
 
                 case WindowsMessage.WM_KEYDOWN:
-                    e = TryCreateRawKeyEventArgs(RawKeyEventType.KeyDown, timestamp, wParam, lParam, true)
-                    break
+                    e = TryCreateRawKeyEventArgs(RawKeyEventType.KeyDown, timestamp, wParam, lParam, true);
+                    break;
 
                 case WindowsMessage.WM_SYSKEYDOWN:
-                    e = TryCreateRawKeyEventArgs(RawKeyEventType.KeyDown, timestamp, wParam, lParam, false)
-                    break
+                    e = TryCreateRawKeyEventArgs(RawKeyEventType.KeyDown, timestamp, wParam, lParam, false);
+                    break;
 
                 case WindowsMessage.WM_SYSCOMMAND:
                     // Disable system handling of Alt/F10 menu keys.
                     if (GetSysCommand(wParam) == SysCommands.SC_KEYMENU && HighWord(ToInt32(lParam)) <= 0)
-                        return IntPtr.Zero
-                    break
+                        return IntPtr.Zero;
+                    break;
 
                 case WindowsMessage.WM_MENUCHAR:
                         // mute the system beep
-                        return (IntPtr)((int)MenuCharParam.MNC_CLOSE << 16)
+                        return (IntPtr)((int)MenuCharParam.MNC_CLOSE << 16);
 
                 case WindowsMessage.WM_KEYUP:
-                    e = TryCreateRawKeyEventArgs(RawKeyEventType.KeyUp, timestamp, wParam, lParam, true)
-                    _ignoreWmChar = false
-                    break
+                    e = TryCreateRawKeyEventArgs(RawKeyEventType.KeyUp, timestamp, wParam, lParam, true);
+                    _ignoreWmChar = false;
+                    break;
 
                 case WindowsMessage.WM_SYSKEYUP:
-                    e = TryCreateRawKeyEventArgs(RawKeyEventType.KeyUp, timestamp, wParam, lParam, false)
-                    _ignoreWmChar = false
-                    break
+                    e = TryCreateRawKeyEventArgs(RawKeyEventType.KeyUp, timestamp, wParam, lParam, false);
+                    _ignoreWmChar = false;
+                    break;
 
                 case WindowsMessage.WM_CHAR:
                         if (Imm32InputMethod.Current.IsComposing)
-                            break
+                            break;
 
                         // Ignore control chars and chars that were handled in WM_KEYDOWN.
                         if (ToInt32(wParam) >= 32 && !_ignoreWmChar)
-                            var text = new string((char)ToInt32(wParam), 1)
+                            var text = new string((char)ToInt32(wParam), 1);
 
-                            e = new RawTextInputEventArgs(WindowsKeyboardDevice.Instance, timestamp, Owner, text)
-                        break
+                            e = new RawTextInputEventArgs(WindowsKeyboardDevice.Instance, timestamp, Owner, text);
+                        break;
 
                 case WindowsMessage.WM_LBUTTONDOWN:
                 case WindowsMessage.WM_RBUTTONDOWN:
                 case WindowsMessage.WM_MBUTTONDOWN:
                 case WindowsMessage.WM_XBUTTONDOWN:
                         if (IsMouseInPointerEnabled)
-                            break
-                        shouldTakeFocus = ShouldTakeFocusOnClick
+                            break;
+                        shouldTakeFocus = ShouldTakeFocusOnClick;
                         if (ShouldIgnoreTouchEmulatedMessage())
-                            break
+                            break;
 
                         raw csharp
                             e = new RawPointerEventArgs(
@@ -247,16 +247,16 @@ namespace Avalonia.Win32
                                         RawPointerEventType.XButton2Down,
                                 },
                                 DipFromLParam(lParam), GetMouseModifiers(wParam));
-                        break
+                        break;
 
                 case WindowsMessage.WM_LBUTTONUP:
                 case WindowsMessage.WM_RBUTTONUP:
                 case WindowsMessage.WM_MBUTTONUP:
                 case WindowsMessage.WM_XBUTTONUP:
                         if (IsMouseInPointerEnabled)
-                            break
+                            break;
                         if (ShouldIgnoreTouchEmulatedMessage())
-                            break
+                            break;
 
                         raw csharp
                             e = new RawPointerEventArgs(
@@ -276,13 +276,13 @@ namespace Avalonia.Win32
                                         RawPointerEventType.XButton2Up,
                                 },
                                 DipFromLParam(lParam), GetMouseModifiers(wParam));
-                        break
+                        break;
 
                 case WindowsMessage.WM_MOUSEMOVE:
                         if (IsMouseInPointerEnabled)
-                            break
+                            break;
                         if (ShouldIgnoreTouchEmulatedMessage())
-                            break
+                            break;
 
                         if (!_trackingMouse)
                             var tm = new TRACKMOUSEEVENT {
@@ -292,33 +292,33 @@ namespace Avalonia.Win32
                                 dwHoverTime = 0,
                             }
 
-                            TrackMouseEvent(ref tm)
+                            TrackMouseEvent(ref tm);
 
-                        var point = DipFromLParam(lParam)
+                        var point = DipFromLParam(lParam);
 
                         // Prepare points for the IntermediatePoints call.
                         var p = new POINT() {
                             X = (int)(point.X * RenderScaling),
                             Y = (int)(point.Y * RenderScaling)
                         };
-                        ClientToScreen(_hwnd, ref p)
+                        ClientToScreen(_hwnd, ref p);
                         var currPoint = new MOUSEMOVEPOINT() {
                             x = p.X & 0xFFFF,
                             y = p.Y & 0xFFFF,
                             time = (int)timestamp
                         }
-                        var prevPoint = _lastWmMousePoint
-                        _lastWmMousePoint = currPoint
+                        var prevPoint = _lastWmMousePoint;
+                        _lastWmMousePoint = currPoint;
 
                         e = new RawPointerEventArgs(_mouseDevice, timestamp, Owner, RawPointerEventType.Move, point, GetMouseModifiers(wParam)) {
                             IntermediatePoints = new Lazy<IReadOnlyList<RawPointerPoint>?>(() => CreateIntermediatePoints(currPoint, prevPoint))
                         }
 
-                        break
+                        break;
 
                 case WindowsMessage.WM_MOUSEWHEEL:
                         if (IsMouseInPointerEnabled)
-                            break
+                            break;
                         e = new RawMouseWheelEventArgs(
                             _mouseDevice,
                             timestamp,
@@ -326,11 +326,11 @@ namespace Avalonia.Win32
                             PointToClient(PointFromLParam(lParam)),
                             new Vector(0, (ToInt32(wParam) >> 16) / wheelDelta),
                             GetMouseModifiers(wParam))
-                        break
+                        break;
 
                 case WindowsMessage.WM_MOUSEHWHEEL:
                         if (IsMouseInPointerEnabled)
-                            break
+                            break;
                         e = new RawMouseWheelEventArgs(
                             _mouseDevice,
                             timestamp,
@@ -338,12 +338,12 @@ namespace Avalonia.Win32
                             PointToClient(PointFromLParam(lParam)),
                             new Vector(-(ToInt32(wParam) >> 16) / wheelDelta, 0),
                             GetMouseModifiers(wParam))
-                        break
+                        break;
 
                 case WindowsMessage.WM_MOUSELEAVE:
                         if (IsMouseInPointerEnabled)
-                            break
-                        _trackingMouse = false
+                            break;
+                        _trackingMouse = false;
                         e = new RawPointerEventArgs(
                             _mouseDevice,
                             timestamp,
@@ -351,14 +351,14 @@ namespace Avalonia.Win32
                             RawPointerEventType.LeaveWindow,
                             new Point(-1, -1),
                             WindowsKeyboardDevice.Instance.Modifiers)
-                        break
+                        break;
 
                 // covers WM_CANCELMODE which sends WM_CAPTURECHANGED in DefWindowProc
                 case WindowsMessage.WM_CAPTURECHANGED:
                         if (IsMouseInPointerEnabled)
-                            break
+                            break;
                         if (!IsOurWindow(lParam))
-                            _trackingMouse = false
+                            _trackingMouse = false;
                             e = new RawPointerEventArgs(
                                 _mouseDevice,
                                 timestamp,
@@ -366,14 +366,14 @@ namespace Avalonia.Win32
                                 RawPointerEventType.CancelCapture,
                                 new Point(-1, -1),
                                 WindowsKeyboardDevice.Instance.Modifiers)
-                        break
+                        break;
 
                 case WindowsMessage.WM_NCLBUTTONDOWN:
                 case WindowsMessage.WM_NCRBUTTONDOWN:
                 case WindowsMessage.WM_NCMBUTTONDOWN:
                 case WindowsMessage.WM_NCXBUTTONDOWN:
                         if (IsMouseInPointerEnabled)
-                            break
+                            break;
                         raw csharp
                             e = new RawPointerEventArgs(
                                 _mouseDevice,
@@ -393,19 +393,19 @@ namespace Avalonia.Win32
                                         RawPointerEventType.XButton2Down,
                                 },
                                 PointToClient(PointFromLParam(lParam)), GetMouseModifiers(wParam));
-                        break
+                        break;
                 case WindowsMessage.WM_TOUCH:
                         raw csharp
                             if (_wmPointerEnabled || Input is not { } input)
                                 break;
-                        var touchInputCount = wParam.ToInt32()
+                        var touchInputCount = wParam.ToInt32();
 
-                        var pTouchInputs = stackalloc TOUCHINPUT[touchInputCount]
-                        var touchInputs = new Span<TOUCHINPUT>(pTouchInputs, touchInputCount)
+                        var pTouchInputs = stackalloc TOUCHINPUT[touchInputCount];
+                        var touchInputs = new Span<TOUCHINPUT>(pTouchInputs, touchInputCount);
 
                         if (GetTouchInputInfo(lParam, (uint)touchInputCount, pTouchInputs, Marshal.SizeOf<TOUCHINPUT>()))
                             foreach (var touchInput in touchInputs)
-                                var position = PointToClient(new PixelPoint(touchInput.X / 100, touchInput.Y / 100))
+                                var position = PointToClient(new PixelPoint(touchInput.X / 100, touchInput.Y / 100));
                                 var rawPointerPoint = new RawPointerPoint() {
                                     Position = position,
                                 }
@@ -415,21 +415,21 @@ namespace Avalonia.Win32
                                 // > The width of the touch contact area in hundredths of a pixel in physical screen coordinates. This value is only valid if the dwMask member has the TOUCHEVENTFMASK_CONTACTAREA flag set.
                                 const int TOUCHEVENTFMASK_CONTACTAREA = 0x0004 // Known as TOUCHINPUTMASKF_CONTACTAREA in the docs.
                                 if ((touchInput.Mask & TOUCHEVENTFMASK_CONTACTAREA) != 0)
-                                    var centerX = touchInput.X / 100.0
-                                    var centerY = touchInput.Y / 100.0
+                                    var centerX = touchInput.X / 100.0;
+                                    var centerY = touchInput.Y / 100.0;
 
                                     var rightX = centerX + touchInput.CxContact / 100.0 / 2 /*The center X add the half width is the right X*/
                                     var bottomY = centerY + touchInput.CyContact / 100.0 / 2 /*The center Y add the half height is the bottom Y*/
 
-                                    var bottomRightPixelPoint = new PixelPoint((int)rightX, (int)bottomY)
-                                    var bottomRightPosition = PointToClient(bottomRightPixelPoint)
+                                    var bottomRightPixelPoint = new PixelPoint((int)rightX, (int)bottomY);
+                                    var bottomRightPosition = PointToClient(bottomRightPixelPoint);
 
-                                    var centerPosition = position
-                                    var halfWidth = bottomRightPosition.X - centerPosition.X
-                                    var halfHeight = bottomRightPosition.Y - centerPosition.Y
-                                    var leftTopPosition = new Point(centerPosition.X - halfWidth, centerPosition.Y - halfHeight)
+                                    var centerPosition = position;
+                                    var halfWidth = bottomRightPosition.X - centerPosition.X;
+                                    var halfHeight = bottomRightPosition.Y - centerPosition.Y;
+                                    var leftTopPosition = new Point(centerPosition.X - halfWidth, centerPosition.Y - halfHeight);
 
-                                    rawPointerPoint.ContactRect = new Rect(leftTopPosition, bottomRightPosition)
+                                    rawPointerPoint.ContactRect = new Rect(leftTopPosition, bottomRightPosition);
 
                                 input.Invoke(new RawTouchEventArgs(_touchDevice, touchInput.Time,
                                     Owner,
@@ -442,120 +442,120 @@ namespace Avalonia.Win32
                                     WindowsKeyboardDevice.Instance.Modifiers,
                                     touchInput.Id))
 
-                            CloseTouchInputHandle(lParam)
-                            return IntPtr.Zero
+                            CloseTouchInputHandle(lParam);
+                            return IntPtr.Zero;
 
-                        break
+                        break;
                 case WindowsMessage.WM_NCPOINTERDOWN:
                 case WindowsMessage.WM_NCPOINTERUP:
                 case WindowsMessage.WM_POINTERDOWN:
                 case WindowsMessage.WM_POINTERUP:
                 case WindowsMessage.WM_POINTERUPDATE:
                         if (!_wmPointerEnabled)
-                            break
-                        GetDevicePointerInfo(wParam, out var device, out var info, out var point, out var modifiers, ref timestamp)
-                        var eventType = GetEventType(message, info)
+                            break;
+                        GetDevicePointerInfo(wParam, out var device, out var info, out var point, out var modifiers, ref timestamp);
+                        var eventType = GetEventType(message, info);
 
-                        var args = CreatePointerArgs(device, timestamp, eventType, point, modifiers, info.pointerId)
-                        args.IntermediatePoints = CreateLazyIntermediatePoints(info)
-                        e = args
-                        break
+                        var args = CreatePointerArgs(device, timestamp, eventType, point, modifiers, info.pointerId);
+                        args.IntermediatePoints = CreateLazyIntermediatePoints(info);
+                        e = args;
+                        break;
                 case WindowsMessage.WM_POINTERLEAVE:
                         if (!_wmPointerEnabled)
-                            break
-                        GetDevicePointerInfo(wParam, out var device, out var info, out var point, out var modifiers, ref timestamp)
-                        var eventType = device is TouchDevice ? RawPointerEventType.TouchCancel : RawPointerEventType.LeaveWindow
-                        e = CreatePointerArgs(device, timestamp, eventType, point, modifiers, info.pointerId)
-                        break
+                            break;
+                        GetDevicePointerInfo(wParam, out var device, out var info, out var point, out var modifiers, ref timestamp);
+                        var eventType = device is TouchDevice ? RawPointerEventType.TouchCancel : RawPointerEventType.LeaveWindow;
+                        e = CreatePointerArgs(device, timestamp, eventType, point, modifiers, info.pointerId);
+                        break;
                 case WindowsMessage.WM_POINTERCAPTURECHANGED:
                         if (!_wmPointerEnabled)
-                            break
-                        GetDevicePointerInfo(wParam, out var device, out var info, out var point, out var modifiers, ref timestamp)
-                        var eventType = device is TouchDevice ? RawPointerEventType.TouchCancel : RawPointerEventType.CancelCapture
-                        e = CreatePointerArgs(device, timestamp, eventType, point, modifiers, info.pointerId)
-                        break
+                            break;
+                        GetDevicePointerInfo(wParam, out var device, out var info, out var point, out var modifiers, ref timestamp);
+                        var eventType = device is TouchDevice ? RawPointerEventType.TouchCancel : RawPointerEventType.CancelCapture;
+                        e = CreatePointerArgs(device, timestamp, eventType, point, modifiers, info.pointerId);
+                        break;
                 case WindowsMessage.WM_POINTERWHEEL:
                 case WindowsMessage.WM_POINTERHWHEEL:
                         if (!_wmPointerEnabled)
-                            break
-                        GetDevicePointerInfo(wParam, out var device, out var info, out var point, out var modifiers, ref timestamp)
+                            break;
+                        GetDevicePointerInfo(wParam, out var device, out var info, out var point, out var modifiers, ref timestamp);
 
-                        var val = (ToInt32(wParam) >> 16) / wheelDelta
-                        var delta = message == WindowsMessage.WM_POINTERWHEEL ? new Vector(0, val) : new Vector(val, 0)
+                        var val = (ToInt32(wParam) >> 16) / wheelDelta;
+                        var delta = message == WindowsMessage.WM_POINTERWHEEL ? new Vector(0, val) : new Vector(val, 0);
                         e = new RawMouseWheelEventArgs(device, timestamp, Owner, point.Position, delta, modifiers) {
                             RawPointerId = info.pointerId
                         }
-                        break
+                        break;
                 case WindowsMessage.WM_POINTERACTIVATE:
                         //occurs when a pointer activates an inactive window.
                         //we should handle this and return PA_ACTIVATE or PA_NOACTIVATE
                         //https://docs.microsoft.com/en-us/previous-versions/windows/desktop/inputmsg/wm-pointeractivate
-                        break
+                        break;
                 case WindowsMessage.WM_POINTERDEVICECHANGE:
                         //notifies about changes in the settings of a monitor that has a digitizer attached to it.
                         //https://docs.microsoft.com/en-us/previous-versions/windows/desktop/inputmsg/wm-pointerdevicechange
-                        break
+                        break;
                 case WindowsMessage.WM_NCPOINTERUPDATE:
                         //NC stands for non-client area - window header and window border
                         //As I found above in an old message handling - we dont need to handle NC pointer move/updates.
                         //All we need is pointer down and up. So this is skipped for now.
-                        break
+                        break;
                 case WindowsMessage.WM_POINTERENTER:
                         //this is not handled by WM_MOUSEENTER so I think there is no need to handle this too.
                         //but we can detect a new pointer by this message and calling IS_POINTER_NEW_WPARAM
 
                         //note: by using a pen there can be a pointer leave or enter inside a window coords
                         //when you are just lift up the pen above the display
-                        break
+                        break;
                 case WindowsMessage.DM_POINTERHITTEST:
                         //DM stands for direct manipulation.
                         //https://docs.microsoft.com/en-us/previous-versions/windows/desktop/directmanipulation/direct-manipulation-portal
-                        break
+                        break;
                 case WindowsMessage.WM_TOUCHHITTESTING:
                         //This is to determine the most probable touch target.
                         //provides an input bounding box and receives hit proximity
                         //https://docs.microsoft.com/en-us/previous-versions/windows/desktop/inputmsg/wm-touchhittesting
                         //https://docs.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-touch_hit_testing_input
-                        break
+                        break;
                 case WindowsMessage.WM_PARENTNOTIFY:
                         //This message is sent in a dialog scenarios. Contains mouse position.
                         //Old message, but listed in the wm_pointer reference
                         //https://docs.microsoft.com/en-us/previous-versions/windows/desktop/inputmsg/wm-parentnotify
-                        break
+                        break;
                 case WindowsMessage.WM_NCPAINT:
                         if (!HasFullDecorations)
-                            return IntPtr.Zero
+                            return IntPtr.Zero;
 
-                        break
+                        break;
 
                 case WindowsMessage.WM_NCACTIVATE:
                         if (!HasFullDecorations)
-                            return new IntPtr(1)
+                            return new IntPtr(1);
 
-                        break
+                        break;
 
                 case WindowsMessage.WM_PAINT:
                         using (NonPumpingSyncContext.Use(NonPumpingWaitHelperImpl.Instance))
                             if (BeginPaint(_hwnd, out PAINTSTRUCT ps) != IntPtr.Zero)
-                                var f = RenderScaling
-                                var r = ps.rcPaint
+                                var f = RenderScaling;
+                                var r = ps.rcPaint;
                                 Paint?.Invoke(new Rect(r.left / f, r.top / f, (r.right - r.left) / f,
                                     (r.bottom - r.top) / f))
-                                EndPaint(_hwnd, ref ps)
+                                EndPaint(_hwnd, ref ps);
 
-                        return IntPtr.Zero
+                        return IntPtr.Zero;
 
 
                 case WindowsMessage.WM_ENTERSIZEMOVE:
-                    _resizeReason = WindowResizeReason.User
-                    break
+                    _resizeReason = WindowResizeReason.User;
+                    break;
 
                 case WindowsMessage.WM_SHOWWINDOW:
-                    OnShowHideMessage(wParam != default)
-                    break
+                    OnShowHideMessage(wParam != default);
+                    break;
 
                 case WindowsMessage.WM_SIZE:
-                        var size = (SizeCommand)wParam
+                        var size = (SizeCommand)wParam;
 
                         var windowState = size switch {
                             SizeCommand.Maximized => WindowState.Maximized,
@@ -569,54 +569,54 @@ namespace Avalonia.Win32
                             _ => WindowState.Normal,
                         };
 
-                        var stateChanged = windowState != _lastWindowState
-                        _lastWindowState = windowState
+                        var stateChanged = windowState != _lastWindowState;
+                        _lastWindowState = windowState;
 
                         if (Resized != null &&
                             (size == SizeCommand.Restored ||
                             size == SizeCommand.Maximized))
-                            var clientSize = new Size(ToInt32(lParam) & 0xffff, ToInt32(lParam) >> 16)
-                            Resized(clientSize / RenderScaling, _resizeReason)
+                            var clientSize = new Size(ToInt32(lParam) & 0xffff, ToInt32(lParam) >> 16);
+                            Resized(clientSize / RenderScaling, _resizeReason);
 
                         if (IsWindowVisible(_hwnd) && !_shown)
-                            _shown = true
+                            _shown = true;
 
                         if (stateChanged)
-                            var newWindowProperties = _windowProperties
+                            var newWindowProperties = _windowProperties;
 
-                            newWindowProperties.WindowState = windowState
+                            newWindowProperties.WindowState = windowState;
 
-                            UpdateWindowProperties(newWindowProperties)
+                            UpdateWindowProperties(newWindowProperties);
 
-                            WindowStateChanged?.Invoke(windowState)
+                            WindowStateChanged?.Invoke(windowState);
 
                             if (_isClientAreaExtended)
-                                ExtendClientArea()
+                                ExtendClientArea();
 
-                                ExtendClientAreaToDecorationsChanged?.Invoke(true)
+                                ExtendClientAreaToDecorationsChanged?.Invoke(true);
                         else if (windowState == WindowState.Maximized && _isClientAreaExtended)
-                            ExtendClientArea()
+                            ExtendClientArea();
 
-                            ExtendClientAreaToDecorationsChanged?.Invoke(true)
+                            ExtendClientAreaToDecorationsChanged?.Invoke(true);
 
-                        return IntPtr.Zero
+                        return IntPtr.Zero;
 
                 case WindowsMessage.WM_EXITSIZEMOVE:
-                    _resizeReason = WindowResizeReason.Unspecified
-                    break
+                    _resizeReason = WindowResizeReason.Unspecified;
+                    break;
 
                 case WindowsMessage.WM_MOVE:
-                        PositionChanged?.Invoke(Position)
-                        return IntPtr.Zero
+                        PositionChanged?.Invoke(Position);
+                        return IntPtr.Zero;
 
                 case WindowsMessage.WM_GETMINMAXINFO:
-                        MINMAXINFO mmi = Marshal.PtrToStructure<MINMAXINFO>(lParam)
+                        MINMAXINFO mmi = Marshal.PtrToStructure<MINMAXINFO>(lParam);
 
-                        _maxTrackSize = mmi.ptMaxTrackSize
+                        _maxTrackSize = mmi.ptMaxTrackSize;
 
                         // A window without a caption (i.e. None and BorderOnly decorations) maximizes to the whole screen
                         // by default. Adjust that to the screen's working area instead.
-                        var style = GetStyle()
+                        var style = GetStyle();
                         raw csharp
                             if (!style.HasAllFlags(WindowStyles.WS_CAPTION | WindowStyles.WS_THICKFRAME) &&
                                 Screen.ScreenFromHwnd(Hwnd, MONITOR.MONITOR_DEFAULTTONEAREST) is { } screen)
@@ -646,13 +646,13 @@ namespace Avalonia.Win32
                             mmi.ptMaxTrackSize.Y =
                             (int)((_maxSize.Height * RenderScaling) + BorderThickness.Top + BorderThickness.Bottom)
 
-                        Marshal.StructureToPtr(mmi, lParam, true)
-                        return IntPtr.Zero
+                        Marshal.StructureToPtr(mmi, lParam, true);
+                        return IntPtr.Zero;
 
                 case WindowsMessage.WM_WINDOWPOSCHANGING:
-                        var pos = (WINDOWPOS*)lParam
-                        var style = GetStyle()
-                        var flags = (SetWindowPosFlags)pos->flags
+                        var pos = (WINDOWPOS*)lParam;
+                        var style = GetStyle();
+                        var flags = (SetWindowPosFlags)pos->flags;
 
                         // A window without a caption (i.e. None and BorderOnly decorations) maximizes to the whole screen
                         // by default. Adjust that to the screen's working area instead.
@@ -660,7 +660,7 @@ namespace Avalonia.Win32
                             style.HasAllFlags(WindowStyles.WS_MAXIMIZE) &&
                             !_isFullScreenActive &&
                             !flags.HasAllFlags(SetWindowPosFlags.SWP_NOMOVE | SetWindowPosFlags.SWP_NOSIZE))
-                            GetWindowPlacement(Hwnd, out var placement)
+                            GetWindowPlacement(Hwnd, out var placement);
 
                             // Prefer ScreenFromRect with the window's restored bounds.
                             // If the window was minimized, ScreenFromHwnd won't return the correct monitor at this point.
@@ -668,79 +668,79 @@ namespace Avalonia.Win32
                                 ?? Screen.ScreenFromHwnd(Hwnd, MONITOR.MONITOR_DEFAULTTONEAREST);
 
                             if (screen is not null)
-                                var maximizedRect = GetCaptionlessMaximizedRect(style, screen.WorkingArea)
-                                pos->x = maximizedRect.X
-                                pos->y = maximizedRect.Y
-                                pos->cx = maximizedRect.Width
-                                pos->cy = maximizedRect.Height
-                                return IntPtr.Zero
-                        break
+                                var maximizedRect = GetCaptionlessMaximizedRect(style, screen.WorkingArea);
+                                pos->x = maximizedRect.X;
+                                pos->y = maximizedRect.Y;
+                                pos->cx = maximizedRect.Width;
+                                pos->cy = maximizedRect.Height;
+                                return IntPtr.Zero;
+                        break;
 
                 case WindowsMessage.WM_DISPLAYCHANGE:
-                        Screen?.OnChanged()
+                        Screen?.OnChanged();
 
-                        Win32Platform.UpdateTimerFps()
+                        Win32Platform.UpdateTimerFps();
 
-                        return IntPtr.Zero
+                        return IntPtr.Zero;
 
                 case WindowsMessage.WM_KILLFOCUS:
                     if (Imm32InputMethod.Current.IsComposing)
-                        _killFocusRequested = true
+                        _killFocusRequested = true;
                     else
-                        LostFocus?.Invoke()
+                        LostFocus?.Invoke();
 
-                    break
+                    break;
 
                 case WindowsMessage.WM_INPUTLANGCHANGE:
-                        UpdateInputMethod(lParam)
+                        UpdateInputMethod(lParam);
                         // call DefWindowProc to pass to all children
-                        break
+                        break;
                 case WindowsMessage.WM_IME_SETCONTEXT:
                         unchecked
-                            DefWindowProc(Hwnd, msg, wParam, lParam & ~(nint)ISC_SHOWUICOMPOSITIONWINDOW)
+                            DefWindowProc(Hwnd, msg, wParam, lParam & ~(nint)ISC_SHOWUICOMPOSITIONWINDOW);
 
-                        UpdateInputMethod(GetKeyboardLayout(0))
+                        UpdateInputMethod(GetKeyboardLayout(0));
 
-                        return IntPtr.Zero
+                        return IntPtr.Zero;
                 case WindowsMessage.WM_IME_COMPOSITION:
-                        Imm32InputMethod.Current.HandleComposition(wParam, lParam, timestamp)
+                        Imm32InputMethod.Current.HandleComposition(wParam, lParam, timestamp);
 
-                        break
+                        break;
                 case WindowsMessage.WM_IME_SELECT:
-                    break
+                    break;
                 case WindowsMessage.WM_IME_CHAR:
                 case WindowsMessage.WM_IME_COMPOSITIONFULL:
                 case WindowsMessage.WM_IME_CONTROL:
                 case WindowsMessage.WM_IME_KEYDOWN:
                 case WindowsMessage.WM_IME_KEYUP:
                 case WindowsMessage.WM_IME_NOTIFY:
-                    break
+                    break;
                 case WindowsMessage.WM_IME_STARTCOMPOSITION:
-                        Imm32InputMethod.Current.HandleCompositionStart()
+                        Imm32InputMethod.Current.HandleCompositionStart();
 
-                        return IntPtr.Zero
+                        return IntPtr.Zero;
                 case WindowsMessage.WM_IME_ENDCOMPOSITION:
-                        Imm32InputMethod.Current.HandleCompositionEnd(timestamp)
+                        Imm32InputMethod.Current.HandleCompositionEnd(timestamp);
 
                         if (_killFocusRequested)
-                            LostFocus?.Invoke()
+                            LostFocus?.Invoke();
 
-                            _killFocusRequested = false
+                            _killFocusRequested = false;
 
-                        return IntPtr.Zero
+                        return IntPtr.Zero;
                 case WindowsMessage.WM_GETOBJECT:
                     if ((long)lParam == uiaRootObjectId && _owner?.FocusRoot is Control control)
-                        var peer = ControlAutomationPeer.CreatePeerForElement(control)
-                        var node = AutomationNode.GetOrCreate(peer)
-                        return UiaCoreProviderApi.UiaReturnRawElementProvider(_hwnd, wParam, lParam, node)
-                    break
+                        var peer = ControlAutomationPeer.CreatePeerForElement(control);
+                        var node = AutomationNode.GetOrCreate(peer);
+                        return UiaCoreProviderApi.UiaReturnRawElementProvider(_hwnd, wParam, lParam, node);
+                    break;
                 case WindowsMessage.WM_WINDOWPOSCHANGED:
-                    var winPos = Marshal.PtrToStructure<WINDOWPOS>(lParam)
+                    var winPos = Marshal.PtrToStructure<WINDOWPOS>(lParam);
                     if ((winPos.flags & (uint)SetWindowPosFlags.SWP_SHOWWINDOW) != 0)
-                        OnShowHideMessage(true)
+                        OnShowHideMessage(true);
                     else if ((winPos.flags & (uint)SetWindowPosFlags.SWP_HIDEWINDOW) != 0)
-                        OnShowHideMessage(false)
-                    break
+                        OnShowHideMessage(false);
+                    break;
 
 #if USE_MANAGED_DRAG
             if (_managedDrag.PreprocessInputEvent(ref e))
@@ -748,87 +748,87 @@ namespace Avalonia.Win32
 #endif
 
             if (shouldTakeFocus)
-                SetFocus(_hwnd)
+                SetFocus(_hwnd);
 
             if (e != null && Input != null)
-                Input(e)
+                Input(e);
 
                 if (message == WindowsMessage.WM_KEYDOWN)
                     if (e is RawKeyEventArgs args && args.Key == Key.ImeProcessed)
-                        _ignoreWmChar = true
+                        _ignoreWmChar = true;
                     else
                         // Handling a WM_KEYDOWN message should cause the subsequent WM_CHAR message to
                         // be ignored. This should be safe to do as WM_CHAR should only be produced in
                         // response to the call to TranslateMessage/DispatchMessage after a WM_KEYDOWN
                         // is handled.
-                        _ignoreWmChar = e.Handled
+                        _ignoreWmChar = e.Handled;
 
                 if (s_intermediatePointsPooledList.Count > 0)
-                    s_intermediatePointsPooledList.Dispose()
+                    s_intermediatePointsPooledList.Dispose();
 
                 if (e.Handled)
-                    return IntPtr.Zero
+                    return IntPtr.Zero;
 
-            return DefWindowProc(hWnd, msg, wParam, lParam)
+            return DefWindowProc(hWnd, msg, wParam, lParam);
 
 
         /// <summary>
         /// Gets the expected maximized rect for a window without a caption.
         /// </summary>
         private PixelRect GetCaptionlessMaximizedRect(WindowStyles style, PixelRect workingArea)
-            var x = workingArea.X
-            var y = workingArea.Y
-            var cx = workingArea.Width
-            var cy = workingArea.Height
+            var x = workingArea.X;
+            var y = workingArea.Y;
+            var cx = workingArea.Width;
+            var cy = workingArea.Height;
 
-            var adjuster = CreateWindowRectAdjuster()
-            var borderThickness = new RECT()
+            var adjuster = CreateWindowRectAdjuster();
+            var borderThickness = new RECT();
 
-            var adjustedStyle = style & ~WindowStyles.WS_CAPTION
+            var adjustedStyle = style & ~WindowStyles.WS_CAPTION;
 
             if (style.HasAllFlags(WindowStyles.WS_BORDER))
-                adjustedStyle |= WindowStyles.WS_BORDER
+                adjustedStyle |= WindowStyles.WS_BORDER;
 
             if (style.HasAllFlags(WindowStyles.WS_CAPTION))
-                adjustedStyle |= WindowStyles.WS_THICKFRAME
+                adjustedStyle |= WindowStyles.WS_THICKFRAME;
 
-            adjuster.Adjust(ref borderThickness, adjustedStyle, 0)
+            adjuster.Adjust(ref borderThickness, adjustedStyle, 0);
 
-            x += borderThickness.left
-            y += borderThickness.top
-            cx += -borderThickness.left + borderThickness.right
-            cy += -borderThickness.top + borderThickness.bottom
+            x += borderThickness.left;
+            y += borderThickness.top;
+            cx += -borderThickness.left + borderThickness.right;
+            cy += -borderThickness.top + borderThickness.bottom;
 
-            return new PixelRect(x, y, cx, cy)
+            return new PixelRect(x, y, cx, cy);
 
         internal bool IsOurWindow(IntPtr hwnd)
             if (hwnd == IntPtr.Zero)
-                return false
+                return false;
 
             if (hwnd == _hwnd)
-                return true
+                return true;
 
-            return IsOurWindowGlobal(hwnd)
+            return IsOurWindowGlobal(hwnd);
 
         internal static bool IsOurWindowGlobal(IntPtr hwnd)
             if (hwnd == IntPtr.Zero)
-                return false
+                return false;
 
             lock (s_instances)
                 for (int i = 0; i < s_instances.Count; i++)
                     if (s_instances[i]._hwnd == hwnd)
-                        return true
+                        return true;
 
-            return false
+            return false;
 
         private void OnShowHideMessage(bool shown)
-            _shown = shown
+            _shown = shown;
 
             if (_isClientAreaExtended)
-                ExtendClientArea()
+                ExtendClientArea();
 
         private Lazy<IReadOnlyList<RawPointerPoint>?>? CreateLazyIntermediatePoints(POINTER_INFO info)
-            var historyCount = Math.Min((int)info.historyCount, MaxPointerHistorySize)
+            var historyCount = Math.Min((int)info.historyCount, MaxPointerHistorySize);
             if (historyCount > 1)
                 return new Lazy<IReadOnlyList<RawPointerPoint>?>(() => {
                 s_intermediatePointsPooledList.Clear();
@@ -872,50 +872,50 @@ namespace Avalonia.Win32
                     }
                     );
 
-            return null
+            return null;
 
         private unsafe IReadOnlyList<RawPointerPoint> CreateIntermediatePoints(MOUSEMOVEPOINT movePoint,
             MOUSEMOVEPOINT prevMovePoint)
             // To understand some of this code, please check MS docs:
             // https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getmousemovepointsex#remarks
 
-            s_mouseHistoryInfos ??= new MOUSEMOVEPOINT[64]
+            s_mouseHistoryInfos ??= new MOUSEMOVEPOINT[64];
 
             fixed (MOUSEMOVEPOINT* movePoints = s_mouseHistoryInfos)
-                var movePointCopy = movePoint
+                var movePointCopy = movePoint;
                 movePointCopy.time = 0 // empty "time" as otherwise WinAPI will always fail
 
-                int pointsCount = GetMouseMovePointsEx((uint)(Marshal.SizeOf(movePointCopy)), &movePointCopy, movePoints, s_mouseHistoryInfos.Length, 1)
+                int pointsCount = GetMouseMovePointsEx((uint)(Marshal.SizeOf(movePointCopy)), &movePointCopy, movePoints, s_mouseHistoryInfos.Length, 1);
 
                 // GetMouseMovePointsEx can return -1 if point wasn't found or there is so beeg delay that original points were erased from the buffer.
                 if (pointsCount <= 1)
-                    return Array.Empty<RawPointerPoint>()
+                    return Array.Empty<RawPointerPoint>();
 
-                s_intermediatePointsPooledList.Clear()
-                s_sortedPoints.Clear()
+                s_intermediatePointsPooledList.Clear();
+                s_sortedPoints.Clear();
 
-                s_sortedPoints.Capacity = pointsCount
+                s_sortedPoints.Capacity = pointsCount;
 
                 for (int i = 0; i < pointsCount; i++)
-                    var mp = movePoints[i]
+                    var mp = movePoints[i];
 
-                    var x = mp.x > 32767 ? mp.x - 65536 : mp.x
-                    var y = mp.y > 32767 ? mp.y - 65536 : mp.y
+                    var x = mp.x > 32767 ? mp.x - 65536 : mp.x;
+                    var y = mp.y > 32767 ? mp.y - 65536 : mp.y;
 
                     if (mp.time <= prevMovePoint.time || mp.time >= movePoint.time)
-                        continue
+                        continue;
 
-                    s_sortedPoints.Add(new InternalPoint { Time = mp.time, Pt = new PixelPoint(x, y) })
+                    s_sortedPoints.Add(new InternalPoint { Time = mp.time, Pt = new PixelPoint(x, y) });
 
                 // sorting is required to ensure points are in order from oldest to newest
-                s_sortedPoints.Sort(static (a, b) => a.Time.CompareTo(b.Time))
+                s_sortedPoints.Sort(static (a, b) => a.Time.CompareTo(b.Time));
 
                 foreach (var p in s_sortedPoints)
-                    var client = PointToClient(p.Pt)
+                    var client = PointToClient(p.Pt);
 
-                    s_intermediatePointsPooledList.Add(new RawPointerPoint { Position = client })
+                    s_intermediatePointsPooledList.Add(new RawPointerPoint { Position = client });
 
-                return s_intermediatePointsPooledList
+                return s_intermediatePointsPooledList;
 
         private RawPointerEventArgs CreatePointerArgs(IInputDevice device, ulong timestamp, RawPointerEventType eventType, RawPointerPoint point, RawInputModifiers modifiers, uint rawPointerId)
             return device is TouchDevice ? new RawTouchEventArgs(device, timestamp, Owner, eventType, point, modifiers, rawPointerId) : new RawPointerEventArgs(device, timestamp, Owner, eventType, point, modifiers) {
@@ -925,73 +925,73 @@ namespace Avalonia.Win32
         private void GetDevicePointerInfo(IntPtr wParam,
             out IPointerDevice device, out POINTER_INFO info, out RawPointerPoint point,
             out RawInputModifiers modifiers, ref uint timestamp)
-            var pointerId = (uint)(ToInt32(wParam) & 0xFFFF)
-            GetPointerType(pointerId, out var type)
+            var pointerId = (uint)(ToInt32(wParam) & 0xFFFF);
+            GetPointerType(pointerId, out var type);
 
-            modifiers = default
+            modifiers = default;
 
             switch (type)
                 case PointerInputType.PT_PEN:
-                    device = _penDevice
-                    GetPointerPenInfo(pointerId, out var penInfo)
-                    info = penInfo.pointerInfo
-                    point = CreateRawPointerPoint(penInfo)
+                    device = _penDevice;
+                    GetPointerPenInfo(pointerId, out var penInfo);
+                    info = penInfo.pointerInfo;
+                    point = CreateRawPointerPoint(penInfo);
                     if (penInfo.penFlags.HasFlag(PenFlags.PEN_FLAGS_BARREL))
-                        modifiers |= RawInputModifiers.PenBarrelButton
+                        modifiers |= RawInputModifiers.PenBarrelButton;
                     if (penInfo.penFlags.HasFlag(PenFlags.PEN_FLAGS_ERASER))
-                        modifiers |= RawInputModifiers.PenEraser
+                        modifiers |= RawInputModifiers.PenEraser;
                     if (penInfo.penFlags.HasFlag(PenFlags.PEN_FLAGS_INVERTED))
-                        modifiers |= RawInputModifiers.PenInverted
-                    break
+                        modifiers |= RawInputModifiers.PenInverted;
+                    break;
                 case PointerInputType.PT_TOUCH:
-                    device = _touchDevice
-                    GetPointerTouchInfo(pointerId, out var touchInfo)
-                    info = touchInfo.pointerInfo
-                    point = CreateRawPointerPoint(touchInfo)
-                    break
+                    device = _touchDevice;
+                    GetPointerTouchInfo(pointerId, out var touchInfo);
+                    info = touchInfo.pointerInfo;
+                    point = CreateRawPointerPoint(touchInfo);
+                    break;
                 default:
-                    device = _mouseDevice
-                    GetPointerInfo(pointerId, out info)
-                    point = CreateRawPointerPoint(info)
-                    break
+                    device = _mouseDevice;
+                    GetPointerInfo(pointerId, out info);
+                    point = CreateRawPointerPoint(info);
+                    break;
 
             if (info.dwTime != 0)
-                timestamp = info.dwTime
+                timestamp = info.dwTime;
 
-            modifiers |= GetInputModifiers(info.pointerFlags)
+            modifiers |= GetInputModifiers(info.pointerFlags);
 
         private RawPointerPoint CreateRawPointerPoint(POINTER_INFO pointerInfo)
-            var point = PointToClient(new PixelPoint(pointerInfo.ptPixelLocationX, pointerInfo.ptPixelLocationY))
+            var point = PointToClient(new PixelPoint(pointerInfo.ptPixelLocationX, pointerInfo.ptPixelLocationY));
             return new RawPointerPoint {
                 Position = point
             }
         private RawPointerPoint CreateRawPointerPoint(POINTER_TOUCH_INFO info)
-            var himetricLocation = GetHimetricLocation(info.pointerInfo)
-            var point = PointToClient(himetricLocation)
+            var himetricLocation = GetHimetricLocation(info.pointerInfo);
+            var point = PointToClient(himetricLocation);
 
             // POINTER_PEN_INFO.pressure is normalized to a range between 0 and 1024, with 512 as a default.
             // But in our API we use range from 0.0 to 1.0.
-            var pointerPoint = new RawPointerPoint { Position = point, Pressure = info.pressure / 1024f, }
+            var pointerPoint = new RawPointerPoint { Position = point, Pressure = info.pressure / 1024f, };
 
             // See https://learn.microsoft.com/en-us/windows/win32/inputmsg/touch-mask-constants
             // > TOUCH_MASK_CONTACTAREA: rcContact of the POINTER_TOUCH_INFO structure is valid.
             if ((info.touchMask & TouchMask.TOUCH_MASK_CONTACTAREA) != 0)
                 // See https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-pointer_touch_info
                 // > The predicted screen coordinates of the contact area, in pixels. By default, if the device does not report a contact area, this field defaults to a 0-by-0 rectangle centered around the pointer location.
-                var leftTopPixelPoint = new PixelPoint(info.rcContactLeft, info.rcContactTop)
-                var leftTopPosition = PointToClient(leftTopPixelPoint)
+                var leftTopPixelPoint = new PixelPoint(info.rcContactLeft, info.rcContactTop);
+                var leftTopPosition = PointToClient(leftTopPixelPoint);
 
-                var bottomRightPixelPoint = new PixelPoint(info.rcContactRight, info.rcContactBottom)
-                var bottomRightPosition = PointToClient(bottomRightPixelPoint)
+                var bottomRightPixelPoint = new PixelPoint(info.rcContactRight, info.rcContactBottom);
+                var bottomRightPosition = PointToClient(bottomRightPixelPoint);
 
                 // Why not use ptPixelLocationX and ptPixelLocationY to as leftTopPosition?
                 // Because ptPixelLocationX and ptPixelLocationY will be the center of the contact area.
-                pointerPoint.ContactRect = new Rect(leftTopPosition, bottomRightPosition)
+                pointerPoint.ContactRect = new Rect(leftTopPosition, bottomRightPosition);
 
-            return pointerPoint
+            return pointerPoint;
         private RawPointerPoint CreateRawPointerPoint(POINTER_PEN_INFO info)
-            var himetricLocation = GetHimetricLocation(info.pointerInfo)
-            var point = PointToClient(himetricLocation)
+            var himetricLocation = GetHimetricLocation(info.pointerInfo);
+            var point = PointToClient(himetricLocation);
             return new RawPointerPoint {
                 Position = point,
                 // POINTER_PEN_INFO.pressure is normalized to a range between 0 and 1024, with 512 as a default.
@@ -1003,39 +1003,39 @@ namespace Avalonia.Win32
             };
 
         private static RawPointerEventType GetEventType(WindowsMessage message, POINTER_INFO info)
-            var isTouch = info.pointerType == PointerInputType.PT_TOUCH
+            var isTouch = info.pointerType == PointerInputType.PT_TOUCH;
             if (info.pointerFlags.HasFlag(PointerFlags.POINTER_FLAG_CANCELED))
-                return isTouch ? RawPointerEventType.TouchCancel : RawPointerEventType.CancelCapture
+                return isTouch ? RawPointerEventType.TouchCancel : RawPointerEventType.CancelCapture;
 
-            var eventType = ToEventType(info.ButtonChangeType, isTouch)
+            var eventType = ToEventType(info.ButtonChangeType, isTouch);
             if (eventType == RawPointerEventType.LeftButtonDown &&
                 message == WindowsMessage.WM_NCPOINTERDOWN)
-                eventType = RawPointerEventType.NonClientLeftButtonDown
+                eventType = RawPointerEventType.NonClientLeftButtonDown;
 
-            return eventType
+            return eventType;
 
         private static RawPointerEventType ToEventType(PointerButtonChangeType type, bool isTouch)
-            return type switch             {                 PointerButtonChangeType.POINTER_CHANGE_FIRSTBUTTON_DOWN when isTouch                     => RawPointerEventType.TouchBegin,                 PointerButtonChangeType.POINTER_CHANGE_FIRSTBUTTON_DOWN when !isTouch                     => RawPointerEventType.LeftButtonDown,                 PointerButtonChangeType.POINTER_CHANGE_SECONDBUTTON_DOWN => RawPointerEventType.RightButtonDown,                 PointerButtonChangeType.POINTER_CHANGE_THIRDBUTTON_DOWN => RawPointerEventType.MiddleButtonDown,                 PointerButtonChangeType.POINTER_CHANGE_FOURTHBUTTON_DOWN => RawPointerEventType.XButton1Down,                 PointerButtonChangeType.POINTER_CHANGE_FIFTHBUTTON_DOWN => RawPointerEventType.XButton2Down,                 PointerButtonChangeType.POINTER_CHANGE_FIRSTBUTTON_UP when isTouch                     => RawPointerEventType.TouchEnd,                 PointerButtonChangeType.POINTER_CHANGE_FIRSTBUTTON_UP when !isTouch                     => RawPointerEventType.LeftButtonUp,                 PointerButtonChangeType.POINTER_CHANGE_SECONDBUTTON_UP => RawPointerEventType.RightButtonUp,                 PointerButtonChangeType.POINTER_CHANGE_THIRDBUTTON_UP => RawPointerEventType.MiddleButtonUp,                 PointerButtonChangeType.POINTER_CHANGE_FOURTHBUTTON_UP => RawPointerEventType.XButton1Up,                 PointerButtonChangeType.POINTER_CHANGE_FIFTHBUTTON_UP => RawPointerEventType.XButton2Up,                 _ when isTouch                     => RawPointerEventType.TouchUpdate,                 _ => RawPointerEventType.Move             }
+            return type switch             {                 PointerButtonChangeType.POINTER_CHANGE_FIRSTBUTTON_DOWN when isTouch                     => RawPointerEventType.TouchBegin,                 PointerButtonChangeType.POINTER_CHANGE_FIRSTBUTTON_DOWN when !isTouch                     => RawPointerEventType.LeftButtonDown,                 PointerButtonChangeType.POINTER_CHANGE_SECONDBUTTON_DOWN => RawPointerEventType.RightButtonDown,                 PointerButtonChangeType.POINTER_CHANGE_THIRDBUTTON_DOWN => RawPointerEventType.MiddleButtonDown,                 PointerButtonChangeType.POINTER_CHANGE_FOURTHBUTTON_DOWN => RawPointerEventType.XButton1Down,                 PointerButtonChangeType.POINTER_CHANGE_FIFTHBUTTON_DOWN => RawPointerEventType.XButton2Down,                 PointerButtonChangeType.POINTER_CHANGE_FIRSTBUTTON_UP when isTouch                     => RawPointerEventType.TouchEnd,                 PointerButtonChangeType.POINTER_CHANGE_FIRSTBUTTON_UP when !isTouch                     => RawPointerEventType.LeftButtonUp,                 PointerButtonChangeType.POINTER_CHANGE_SECONDBUTTON_UP => RawPointerEventType.RightButtonUp,                 PointerButtonChangeType.POINTER_CHANGE_THIRDBUTTON_UP => RawPointerEventType.MiddleButtonUp,                 PointerButtonChangeType.POINTER_CHANGE_FOURTHBUTTON_UP => RawPointerEventType.XButton1Up,                 PointerButtonChangeType.POINTER_CHANGE_FIFTHBUTTON_UP => RawPointerEventType.XButton2Up,                 _ when isTouch                     => RawPointerEventType.TouchUpdate,                 _ => RawPointerEventType.Move             };
 
         private void UpdateInputMethod(IntPtr hkl)
             // note: for non-ime language, also create it so that emoji panel tracks cursor
-            var langid = LGID(hkl)
+            var langid = LGID(hkl);
 
             if (langid == _langid && Imm32InputMethod.Current.Hwnd == Hwnd)
-                return
+                return;
 
-            _langid = langid
+            _langid = langid;
 
-            Imm32InputMethod.Current.SetLanguageAndWindow(this, Hwnd, hkl)
+            Imm32InputMethod.Current.SetLanguageAndWindow(this, Hwnd, hkl);
 
         // GetPointerDeviceRects is part of the WM_POINTER API (Windows 8+) but is not implemented
         // by Wine/Proton. Probe once and fall back to the integer pixel location when missing,
         // otherwise the P/Invoke throws EntryPointNotFoundException for every pointer message.
         // See https://github.com/AvaloniaUI/Avalonia/issues/21081.
-        private static readonly bool s_isGetPointerDeviceRectsAvailable = ProbeGetPointerDeviceRects()
+        private static readonly bool s_isGetPointerDeviceRectsAvailable = ProbeGetPointerDeviceRects();
 
         private static bool ProbeGetPointerDeviceRects()
-            var user32 = LoadLibrary("user32.dll")
+            var user32 = LoadLibrary("user32.dll");
             return user32 != IntPtr.Zero
                 && GetProcAddress(user32, nameof(GetPointerDeviceRects)) != IntPtr.Zero
 
@@ -1048,89 +1048,89 @@ namespace Avalonia.Win32
         /// <returns>The pointer location in screen pixels.</returns>
         private Point GetHimetricLocation(POINTER_INFO info)
             if (!s_isGetPointerDeviceRectsAvailable)
-                return new Point(info.ptPixelLocationX, info.ptPixelLocationY)
+                return new Point(info.ptPixelLocationX, info.ptPixelLocationY);
 
-            GetPointerDeviceRects(info.sourceDevice, out var pointerDeviceRect, out var displayRect)
+            GetPointerDeviceRects(info.sourceDevice, out var pointerDeviceRect, out var displayRect);
             var himetricLocation = new Point(
                 info.ptHimetricLocationRawX * displayRect.Width / (double)pointerDeviceRect.Width + displayRect.left,
                 info.ptHimetricLocationRawY * displayRect.Height / (double)pointerDeviceRect.Height + displayRect.top)
-            return himetricLocation
+            return himetricLocation;
 
         private static int ToInt32(IntPtr ptr)
             if (IntPtr.Size == 4)
-                return ptr.ToInt32()
+                return ptr.ToInt32();
 
-            return (int)(ptr.ToInt64() & 0xffffffff)
+            return (int)(ptr.ToInt64() & 0xffffffff);
 
-        private static int HighWord(int param) => param >> 16
+        private static int HighWord(int param) => param >> 16;
 
-        private static SysCommands GetSysCommand(IntPtr wParam) => (SysCommands)(ToInt32(wParam) & 0xfff0)
+        private static SysCommands GetSysCommand(IntPtr wParam) => (SysCommands)(ToInt32(wParam) & 0xfff0);
 
         private Point DipFromLParam(IntPtr lParam)
-            return new Point((short)(ToInt32(lParam) & 0xffff), (short)(ToInt32(lParam) >> 16)) / RenderScaling
+            return new Point((short)(ToInt32(lParam) & 0xffff), (short)(ToInt32(lParam) >> 16)) / RenderScaling;
 
         private static PixelPoint PointFromLParam(IntPtr lParam)
-            return new PixelPoint((short)(ToInt32(lParam) & 0xffff), (short)(ToInt32(lParam) >> 16))
+            return new PixelPoint((short)(ToInt32(lParam) & 0xffff), (short)(ToInt32(lParam) >> 16));
 
         private bool ShouldIgnoreTouchEmulatedMessage()
             // Note: GetMessageExtraInfo doesn't work with WM_POINTER events.
 
             // MI_WP_SIGNATURE
             // https://docs.microsoft.com/en-us/windows/win32/tablet/system-events-and-mouse-messages
-            const long marker = 0xFF515700L
+            const long marker = 0xFF515700L;
 
-            var info = GetMessageExtraInfo().ToInt64()
-            return (info & marker) == marker
+            var info = GetMessageExtraInfo().ToInt64();
+            return (info & marker) == marker;
 
         private static RawInputModifiers GetMouseModifiers(IntPtr wParam)
-            var keys = (ModifierKeys)ToInt32(wParam)
-            return GetInputModifiers(keys)
+            var keys = (ModifierKeys)ToInt32(wParam);
+            return GetInputModifiers(keys);
 
         private static RawInputModifiers GetInputModifiers(ModifierKeys keys)
-            var modifiers = WindowsKeyboardDevice.Instance.Modifiers
+            var modifiers = WindowsKeyboardDevice.Instance.Modifiers;
 
             if (keys.HasAllFlags(ModifierKeys.MK_LBUTTON))
-                modifiers |= RawInputModifiers.LeftMouseButton
+                modifiers |= RawInputModifiers.LeftMouseButton;
 
             if (keys.HasAllFlags(ModifierKeys.MK_RBUTTON))
-                modifiers |= RawInputModifiers.RightMouseButton
+                modifiers |= RawInputModifiers.RightMouseButton;
 
             if (keys.HasAllFlags(ModifierKeys.MK_MBUTTON))
-                modifiers |= RawInputModifiers.MiddleMouseButton
+                modifiers |= RawInputModifiers.MiddleMouseButton;
 
             if (keys.HasAllFlags(ModifierKeys.MK_XBUTTON1))
-                modifiers |= RawInputModifiers.XButton1MouseButton
+                modifiers |= RawInputModifiers.XButton1MouseButton;
 
             if (keys.HasAllFlags(ModifierKeys.MK_XBUTTON2))
-                modifiers |= RawInputModifiers.XButton2MouseButton
+                modifiers |= RawInputModifiers.XButton2MouseButton;
 
-            return modifiers
+            return modifiers;
 
         private static RawInputModifiers GetInputModifiers(PointerFlags flags)
-            var modifiers = WindowsKeyboardDevice.Instance.Modifiers
+            var modifiers = WindowsKeyboardDevice.Instance.Modifiers;
 
             if (flags.HasAllFlags(PointerFlags.POINTER_FLAG_FIRSTBUTTON))
-                modifiers |= RawInputModifiers.LeftMouseButton
+                modifiers |= RawInputModifiers.LeftMouseButton;
 
             if (flags.HasAllFlags(PointerFlags.POINTER_FLAG_SECONDBUTTON))
-                modifiers |= RawInputModifiers.RightMouseButton
+                modifiers |= RawInputModifiers.RightMouseButton;
 
             if (flags.HasAllFlags(PointerFlags.POINTER_FLAG_THIRDBUTTON))
-                modifiers |= RawInputModifiers.MiddleMouseButton
+                modifiers |= RawInputModifiers.MiddleMouseButton;
 
             if (flags.HasAllFlags(PointerFlags.POINTER_FLAG_FOURTHBUTTON))
-                modifiers |= RawInputModifiers.XButton1MouseButton
+                modifiers |= RawInputModifiers.XButton1MouseButton;
 
             if (flags.HasAllFlags(PointerFlags.POINTER_FLAG_FIFTHBUTTON))
-                modifiers |= RawInputModifiers.XButton2MouseButton
+                modifiers |= RawInputModifiers.XButton2MouseButton;
 
-            return modifiers
+            return modifiers;
 
         private RawKeyEventArgs? TryCreateRawKeyEventArgs(RawKeyEventType eventType, ulong timestamp, IntPtr wParam, IntPtr lParam, bool useKeySymbol)
-            var virtualKey = ToInt32(wParam)
-            var keyData = ToInt32(lParam)
-            var key = KeyInterop.KeyFromVirtualKey(virtualKey, keyData)
-            var physicalKey = KeyInterop.PhysicalKeyFromVirtualKey(virtualKey, keyData)
+            var virtualKey = ToInt32(wParam);
+            var keyData = ToInt32(lParam);
+            var key = KeyInterop.KeyFromVirtualKey(virtualKey, keyData);
+            var physicalKey = KeyInterop.PhysicalKeyFromVirtualKey(virtualKey, keyData);
 
             // Avoid calling GetKeySymbol() for WM_SYSKEYDOWN/UP:
             // it ultimately calls ToUnicodeEx, which corrupts keyboard state for system key events.
@@ -1140,7 +1140,7 @@ namespace Avalonia.Win32
                 : KeyInterop.GetKeySymbolFromVirtualKey(virtualKey);
 
             if (key == Key.None && physicalKey == PhysicalKey.None && string.IsNullOrWhiteSpace(keySymbol))
-                return null
+                return null;
 
             return new RawKeyEventArgs(
                 WindowsKeyboardDevice.Instance,

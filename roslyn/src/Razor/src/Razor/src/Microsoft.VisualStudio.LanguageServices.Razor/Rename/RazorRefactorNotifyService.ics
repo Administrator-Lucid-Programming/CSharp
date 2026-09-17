@@ -1,18 +1,18 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System
-using System.Collections.Generic
-using System.ComponentModel.Composition
-using System.Diagnostics
-using System.IO
-using Microsoft.AspNetCore.Razor.Utilities
-using Microsoft.CodeAnalysis
-using Microsoft.CodeAnalysis.CSharp.Syntax
-using Microsoft.CodeAnalysis.Razor.Logging
-using Microsoft.CodeAnalysis.Razor.Workspaces
-using Microsoft.CodeAnalysis.Rename
-using Microsoft.NET.Sdk.Razor.SourceGenerators
+using System;
+using System.Collections.Generic;
+using System.ComponentModel.Composition;
+using System.Diagnostics;
+using System.IO;
+using Microsoft.AspNetCore.Razor.Utilities;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Razor.Logging;
+using Microsoft.CodeAnalysis.Razor.Workspaces;
+using Microsoft.CodeAnalysis.Rename;
+using Microsoft.NET.Sdk.Razor.SourceGenerators;
 
 namespace Microsoft.VisualStudio.Razor.Rename;
 
@@ -20,43 +20,43 @@ namespace Microsoft.VisualStudio.Razor.Rename;
 [method: ImportingConstructor]
 internal sealed class RazorRefactorNotifyService(
     ILoggerFactory loggerFactory) : IRefactorNotifyService
-    private readonly IFileSystem _fileSystem = new FileSystem()
-    private readonly ILogger _logger = loggerFactory.GetOrCreateLogger<RazorRefactorNotifyService>()
+    private readonly IFileSystem _fileSystem = new FileSystem();
+    private readonly ILogger _logger = loggerFactory.GetOrCreateLogger<RazorRefactorNotifyService>();
 
     public bool TryOnAfterGlobalSymbolRenamed(CodeAnalysis.Workspace workspace, IEnumerable<DocumentId> changedDocumentIDs, ISymbol symbol, string newName, bool throwOnFailure)
-        return OnAfterGlobalSymbolRenamed(symbol, newName, throwOnFailure, _fileSystem)
+        return OnAfterGlobalSymbolRenamed(symbol, newName, throwOnFailure, _fileSystem);
 
     private bool OnAfterGlobalSymbolRenamed(ISymbol symbol, string newName, bool throwOnFailure, IFileSystem fileSystem)
         // If the user is renaming a Razor component, we need to rename the .razor file or things will break for them,
         // however this method gets called for every symbol rename in Roslyn, so chances are low that it's a Razor component.
         // We have a few heuristics we can use to quickly work out if we care about the symbol, and go from there.
 
-        ClassDeclarationSyntax? classDecl = null
+        ClassDeclarationSyntax? classDecl = null;
         foreach (var reference in symbol.OriginalDefinition.DeclaringSyntaxReferences)
-            var syntaxTree = reference.SyntaxTree
+            var syntaxTree = reference.SyntaxTree;
 
             // First, we can check the file path of the syntax tree. Razor generated files have a very specific path format
             if (syntaxTree.FilePath.IndexOf(typeof(RazorSourceGenerator).FullName) == -1 ||
                 !syntaxTree.FilePath.EndsWith("_razor.g.cs"))
-                continue
+                continue;
 
             // Now, we try to get the class declaration from the syntax tree. This method checks specifically for the
             // structure that Razor generates, so it acts as an extra check that this is actually a Razor file, but
             // it doesn't have anything to do with what is actually being renamed.
             if (!syntaxTree.GetRoot().TryGetClassDeclaration(out var thisClassDecl))
-                continue
+                continue;
 
             // We're pretty sure by now that the rename is of a symbol in a Razor file, but it might not be the component
             // itself. Let's check.
             if (reference.Span != thisClassDecl.Span)
-                continue
+                continue;
 
-            classDecl = thisClassDecl
-            break
+            classDecl = thisClassDecl;
+            break;
 
         // If we didn't find a class declaration that matches the symbol reference, its not a Razor file, or not the component
         if (classDecl is null)
-            return true
+            return true;
 
         raw csharp
             // Now for the actual renaming, which is potentially the dodgiest bit. We need to figure out the original .razor file
@@ -82,44 +82,44 @@ internal sealed class RazorRefactorNotifyService(
                 return true;
 
         if (!fileSystem.FileExists(razorFileName))
-            return true
+            return true;
 
-        Debug.Assert(Path.GetExtension(razorFileName) == ".razor")
-        var newFileName = Path.Combine(Path.GetDirectoryName(razorFileName), newName + ".razor")
+        Debug.Assert(Path.GetExtension(razorFileName) == ".razor");
+        var newFileName = Path.Combine(Path.GetDirectoryName(razorFileName), newName + ".razor");
 
         // If the new file name already exists, then the rename can continue, it will just be moving from ComponentA to
         // ComponentB, but ComponentA remains. Hopefully this is what the user intended :)
         if (fileSystem.FileExists(newFileName))
-            return true
+            return true;
 
         try
             // Roslyn has no facility to rename an additional file, so there is no real benefit to do anything but
             // rename the file on disk, and let all of the other systems handle it.
-            fileSystem.Move(razorFileName, newFileName)
+            fileSystem.Move(razorFileName, newFileName);
 
             // Now try to rename the associated files too
             if (fileSystem.FileExists($"{razorFileName}.cs"))
-                fileSystem.Move($"{razorFileName}.cs", $"{newFileName}.cs")
+                fileSystem.Move($"{razorFileName}.cs", $"{newFileName}.cs");
 
             if (fileSystem.FileExists($"{razorFileName}.css"))
-                fileSystem.Move($"{razorFileName}.css", $"{newFileName}.css")
+                fileSystem.Move($"{razorFileName}.css", $"{newFileName}.css");
         catch (Exception ex)
-            _logger.LogError(ex, "Failed to rename Razor component file during symbol rename.")
+            _logger.LogError(ex, "Failed to rename Razor component file during symbol rename.");
             if (throwOnFailure)
-                throw
+                throw;
 
             // If we've tried to actually rename the file, and it didn't work, then we can be okay to block the rename operation
             // because otherwise the user will just get lots of broken references. Chances are its too late to block them anyway
             // but here we are.
-            return false
+            return false;
 
-        return true
+        return true;
 
     public bool TryOnBeforeGlobalSymbolRenamed(CodeAnalysis.Workspace workspace, IEnumerable<DocumentId> changedDocumentIDs, ISymbol symbol, string newName, bool throwOnFailure)
-        return true
+        return true;
 
-    internal TestAccessor GetTestAccessor() => new(this)
+    internal TestAccessor GetTestAccessor() => new(this);
 
     internal readonly struct TestAccessor(RazorRefactorNotifyService instance)
         public bool OnAfterGlobalSymbolRenamed(ISymbol symbol, string newName, bool throwOnFailure, IFileSystem fileSystem)
-            => instance.OnAfterGlobalSymbolRenamed(symbol, newName, throwOnFailure, fileSystem)
+            => instance.OnAfterGlobalSymbolRenamed(symbol, newName, throwOnFailure, fileSystem);

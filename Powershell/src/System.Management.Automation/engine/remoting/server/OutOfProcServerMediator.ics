@@ -1,64 +1,64 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-using System.IO
-using System.Management.Automation.Internal
-using System.Management.Automation.Tracing
-using System.Threading
+using System.IO;
+using System.Management.Automation.Internal;
+using System.Management.Automation.Tracing;
+using System.Threading;
 #if !UNIX
-using System.Security.Principal
+using System.Security.Principal;
 #endif
 
-using Dbg = System.Management.Automation.Diagnostics
+using Dbg = System.Management.Automation.Diagnostics;
 
 namespace System.Management.Automation.Remoting.Server
     internal abstract class OutOfProcessMediatorBase
         #region Protected Data
 
-        protected TextReader originalStdIn
-        protected OutOfProcessTextWriter originalStdOut
-        protected OutOfProcessTextWriter originalStdErr
-        protected OutOfProcessServerSessionTransportManager sessionTM
-        protected OutOfProcessUtils.DataProcessingDelegates callbacks
+        protected TextReader originalStdIn;
+        protected OutOfProcessTextWriter originalStdOut;
+        protected OutOfProcessTextWriter originalStdErr;
+        protected OutOfProcessServerSessionTransportManager sessionTM;
+        protected OutOfProcessUtils.DataProcessingDelegates callbacks;
 
-        protected static object SyncObject = new object()
-        protected object _syncObject = new object()
-        protected string _initialCommand
-        protected ManualResetEvent allcmdsClosedEvent
+        protected static object SyncObject = new object();
+        protected object _syncObject = new object();
+        protected string _initialCommand;
+        protected ManualResetEvent allcmdsClosedEvent;
 
 #if !UNIX
         // Thread impersonation.
-        protected WindowsIdentity _windowsIdentityToImpersonate
+        protected WindowsIdentity _windowsIdentityToImpersonate;
 #endif
 
         /// <summary>
         /// Count of commands in progress.
         /// </summary>
-        protected int _inProgressCommandsCount = 0
+        protected int _inProgressCommandsCount = 0;
 
-        protected PowerShellTraceSource tracer = PowerShellTraceSourceFactory.GetTraceSource()
+        protected PowerShellTraceSource tracer = PowerShellTraceSourceFactory.GetTraceSource();
 
-        protected bool _exitProcessOnError
+        protected bool _exitProcessOnError;
 
         #endregion
 
         #region Constructor
 
         protected OutOfProcessMediatorBase(bool exitProcessOnError)
-            _exitProcessOnError = exitProcessOnError
+            _exitProcessOnError = exitProcessOnError;
 
             // Set up data handling callbacks.
-            callbacks = new OutOfProcessUtils.DataProcessingDelegates()
-            callbacks.DataPacketReceived += new OutOfProcessUtils.DataPacketReceived(OnDataPacketReceived)
-            callbacks.DataAckPacketReceived += new OutOfProcessUtils.DataAckPacketReceived(OnDataAckPacketReceived)
-            callbacks.CommandCreationPacketReceived += new OutOfProcessUtils.CommandCreationPacketReceived(OnCommandCreationPacketReceived)
-            callbacks.CommandCreationAckReceived += new OutOfProcessUtils.CommandCreationAckReceived(OnCommandCreationAckReceived)
-            callbacks.ClosePacketReceived += new OutOfProcessUtils.ClosePacketReceived(OnClosePacketReceived)
-            callbacks.CloseAckPacketReceived += new OutOfProcessUtils.CloseAckPacketReceived(OnCloseAckPacketReceived)
-            callbacks.SignalPacketReceived += new OutOfProcessUtils.SignalPacketReceived(OnSignalPacketReceived)
-            callbacks.SignalAckPacketReceived += new OutOfProcessUtils.SignalAckPacketReceived(OnSignalAckPacketReceived)
+            callbacks = new OutOfProcessUtils.DataProcessingDelegates();
+            callbacks.DataPacketReceived += new OutOfProcessUtils.DataPacketReceived(OnDataPacketReceived);
+            callbacks.DataAckPacketReceived += new OutOfProcessUtils.DataAckPacketReceived(OnDataAckPacketReceived);
+            callbacks.CommandCreationPacketReceived += new OutOfProcessUtils.CommandCreationPacketReceived(OnCommandCreationPacketReceived);
+            callbacks.CommandCreationAckReceived += new OutOfProcessUtils.CommandCreationAckReceived(OnCommandCreationAckReceived);
+            callbacks.ClosePacketReceived += new OutOfProcessUtils.ClosePacketReceived(OnClosePacketReceived);
+            callbacks.CloseAckPacketReceived += new OutOfProcessUtils.CloseAckPacketReceived(OnCloseAckPacketReceived);
+            callbacks.SignalPacketReceived += new OutOfProcessUtils.SignalPacketReceived(OnSignalPacketReceived);
+            callbacks.SignalAckPacketReceived += new OutOfProcessUtils.SignalAckPacketReceived(OnSignalAckPacketReceived);
 
-            allcmdsClosedEvent = new ManualResetEvent(true)
+            allcmdsClosedEvent = new ManualResetEvent(true);
 
         #endregion
 
@@ -66,8 +66,8 @@ namespace System.Management.Automation.Remoting.Server
 
         protected void ProcessingThreadStart(object state)
             try
-                string data = state as string
-                OutOfProcessUtils.ProcessData(data, callbacks)
+                string data = state as string;
+                OutOfProcessUtils.ProcessData(data, callbacks);
             catch (Exception e)
                 PSEtwLog.LogOperationalError(
                     PSEventId.TransportError,
@@ -93,35 +93,35 @@ namespace System.Management.Automation.Remoting.Server
 
                 // notify the remote client of any errors and fail gracefully
                 if (_exitProcessOnError)
-                    originalStdErr.WriteLine(e.Message + e.StackTrace)
-                    Environment.Exit(OutOfProcessUtils.EXITCODE_UNHANDLED_EXCEPTION)
+                    originalStdErr.WriteLine(e.Message + e.StackTrace);
+                    Environment.Exit(OutOfProcessUtils.EXITCODE_UNHANDLED_EXCEPTION);
 
         protected void OnDataPacketReceived(byte[] rawData, string stream, Guid psGuid)
-            string streamTemp = System.Management.Automation.Remoting.Client.WSManNativeApi.WSMAN_STREAM_ID_STDIN
+            string streamTemp = System.Management.Automation.Remoting.Client.WSManNativeApi.WSMAN_STREAM_ID_STDIN;
             if (stream.Equals(nameof(DataPriorityType.PromptResponse), StringComparison.OrdinalIgnoreCase))
-                streamTemp = System.Management.Automation.Remoting.Client.WSManNativeApi.WSMAN_STREAM_ID_PROMPTRESPONSE
+                streamTemp = System.Management.Automation.Remoting.Client.WSManNativeApi.WSMAN_STREAM_ID_PROMPTRESPONSE;
 
             if (psGuid == Guid.Empty)
                 lock (_syncObject)
-                    sessionTM.ProcessRawData(rawData, streamTemp)
+                    sessionTM.ProcessRawData(rawData, streamTemp);
             else
                 // this is for a command
-                AbstractServerTransportManager cmdTM = null
+                AbstractServerTransportManager cmdTM = null;
 
                 lock (_syncObject)
-                    cmdTM = sessionTM.GetCommandTransportManager(psGuid)
+                    cmdTM = sessionTM.GetCommandTransportManager(psGuid);
 
                 if (cmdTM != null)
                     // not throwing when there is no associated command as the command might have
                     // legitimately closed while the client is sending data. however the client
                     // should die after timeout as we are not sending an ACK back.
-                    cmdTM.ProcessRawData(rawData, streamTemp)
+                    cmdTM.ProcessRawData(rawData, streamTemp);
                 else
                     // There is no command transport manager to process the input data.
                     // However, we still need to acknowledge to the client that this input data
                     // was received.  This can happen with some cmdlets such as Select-Object -First
                     // where the cmdlet completes before all input data is received.
-                    originalStdOut.WriteLine(OutOfProcessUtils.CreateDataAckPacket(psGuid))
+                    originalStdOut.WriteLine(OutOfProcessUtils.CreateDataAckPacket(psGuid));
 
         protected void OnDataAckPacketReceived(Guid psGuid)
             throw new PSRemotingTransportException(
@@ -131,14 +131,14 @@ namespace System.Management.Automation.Remoting.Server
 
         protected void OnCommandCreationPacketReceived(Guid psGuid)
             lock (_syncObject)
-                sessionTM.CreateCommandTransportManager(psGuid)
+                sessionTM.CreateCommandTransportManager(psGuid);
 
                 if (_inProgressCommandsCount == 0)
-                    allcmdsClosedEvent.Reset()
+                    allcmdsClosedEvent.Reset();
 
-                _inProgressCommandsCount++
+                _inProgressCommandsCount++;
 
-                tracer.WriteMessage("OutOfProcessMediator.OnCommandCreationPacketReceived, in progress command count : " + _inProgressCommandsCount + " psGuid : " + psGuid.ToString())
+                tracer.WriteMessage("OutOfProcessMediator.OnCommandCreationPacketReceived, in progress command count : " + _inProgressCommandsCount + " psGuid : " + psGuid.ToString());
 
         protected void OnCommandCreationAckReceived(Guid psGuid)
             throw new PSRemotingTransportException(PSRemotingErrorId.IPCUnknownElementReceived, RemotingErrorIdStrings.IPCUnknownElementReceived,
@@ -150,70 +150,70 @@ namespace System.Management.Automation.Remoting.Server
                     OutOfProcessUtils.PS_OUT_OF_PROC_SIGNAL_TAG)
             else
                 // this is for a command
-                AbstractServerTransportManager cmdTM = null
+                AbstractServerTransportManager cmdTM = null;
 
                 try
                     lock (_syncObject)
-                        cmdTM = sessionTM.GetCommandTransportManager(psGuid)
+                        cmdTM = sessionTM.GetCommandTransportManager(psGuid);
 
                     // dont throw if there is no cmdTM as it might have legitimately closed
-                    cmdTM?.Close(null)
+                    cmdTM?.Close(null);
                 finally
                     // Always send ack signal to avoid not responding in client.
-                    originalStdOut.WriteLine(OutOfProcessUtils.CreateSignalAckPacket(psGuid))
+                    originalStdOut.WriteLine(OutOfProcessUtils.CreateSignalAckPacket(psGuid));
 
         protected void OnSignalAckPacketReceived(Guid psGuid)
             throw new PSRemotingTransportException(PSRemotingErrorId.IPCUnknownElementReceived, RemotingErrorIdStrings.IPCUnknownElementReceived,
                 OutOfProcessUtils.PS_OUT_OF_PROC_SIGNAL_ACK_TAG)
 
         protected void OnClosePacketReceived(Guid psGuid)
-            PowerShellTraceSource tracer = PowerShellTraceSourceFactory.GetTraceSource()
+            PowerShellTraceSource tracer = PowerShellTraceSourceFactory.GetTraceSource();
 
             if (psGuid == Guid.Empty)
-                tracer.WriteMessage("BEGIN calling close on session transport manager")
+                tracer.WriteMessage("BEGIN calling close on session transport manager");
 
-                bool waitForAllcmdsClosedEvent = false
+                bool waitForAllcmdsClosedEvent = false;
 
                 lock (_syncObject)
                     if (_inProgressCommandsCount > 0)
-                        waitForAllcmdsClosedEvent = true
+                        waitForAllcmdsClosedEvent = true;
 
                 // Wait outside sync lock if required for all cmds to be closed
                 //
                 if (waitForAllcmdsClosedEvent)
-                    allcmdsClosedEvent.WaitOne()
+                    allcmdsClosedEvent.WaitOne();
 
                 lock (_syncObject)
-                    tracer.WriteMessage("OnClosePacketReceived, in progress commands count should be zero : " + _inProgressCommandsCount + ", psGuid : " + psGuid.ToString())
+                    tracer.WriteMessage("OnClosePacketReceived, in progress commands count should be zero : " + _inProgressCommandsCount + ", psGuid : " + psGuid.ToString());
 
                     // it appears that when closing PowerShell ISE, therefore closing OutOfProcServerMediator, there are 2 Close command requests
                     // changing PSRP/IPC at this point is too risky, therefore protecting about this duplication
-                    sessionTM?.Close(null)
+                    sessionTM?.Close(null);
 
-                    tracer.WriteMessage("END calling close on session transport manager")
-                    sessionTM = null
+                    tracer.WriteMessage("END calling close on session transport manager");
+                    sessionTM = null;
             else
-                tracer.WriteMessage("Closing command with GUID " + psGuid.ToString())
+                tracer.WriteMessage("Closing command with GUID " + psGuid.ToString());
 
                 // this is for a command
-                AbstractServerTransportManager cmdTM = null
+                AbstractServerTransportManager cmdTM = null;
 
                 lock (_syncObject)
-                    cmdTM = sessionTM.GetCommandTransportManager(psGuid)
+                    cmdTM = sessionTM.GetCommandTransportManager(psGuid);
 
                 // dont throw if there is no cmdTM as it might have legitimately closed
-                cmdTM?.Close(null)
+                cmdTM?.Close(null);
 
                 lock (_syncObject)
-                    tracer.WriteMessage("OnClosePacketReceived, in progress commands count should be greater than zero : " + _inProgressCommandsCount + ", psGuid : " + psGuid.ToString())
+                    tracer.WriteMessage("OnClosePacketReceived, in progress commands count should be greater than zero : " + _inProgressCommandsCount + ", psGuid : " + psGuid.ToString());
 
-                    _inProgressCommandsCount--
+                    _inProgressCommandsCount--;
 
                     if (_inProgressCommandsCount == 0)
-                        allcmdsClosedEvent.Set()
+                        allcmdsClosedEvent.Set();
 
             // send close ack
-            originalStdOut.WriteLine(OutOfProcessUtils.CreateCloseAckPacket(psGuid))
+            originalStdOut.WriteLine(OutOfProcessUtils.CreateCloseAckPacket(psGuid));
 
         protected void OnCloseAckPacketReceived(Guid psGuid)
             throw new PSRemotingTransportException(PSRemotingErrorId.IPCUnknownElementReceived, RemotingErrorIdStrings.IPCUnknownElementReceived,
@@ -230,7 +230,7 @@ namespace System.Management.Automation.Remoting.Server
             string workingDirectory)
             PSSenderInfo senderInfo;
 #if !UNIX
-            WindowsIdentity currentIdentity = WindowsIdentity.GetCurrent()
+            WindowsIdentity currentIdentity = WindowsIdentity.GetCurrent();
             PSPrincipal userPrincipal = new PSPrincipal(
                 new PSIdentity(string.Empty, true, currentIdentity.Name, null),
                 currentIdentity)
@@ -245,7 +245,7 @@ namespace System.Management.Automation.Remoting.Server
             var tm = new OutOfProcessServerSessionTransportManager(
                 originalStdOut,
                 originalStdErr,
-                cryptoHelper)
+                cryptoHelper);
 
             ServerRemoteSession.CreateServerRemoteSession(
                 senderInfo: senderInfo,
@@ -257,7 +257,7 @@ namespace System.Management.Automation.Remoting.Server
                 configurationFile: configurationFile,
                 initialLocation: workingDirectory)
 
-            return tm
+            return tm;
 
         protected void Start(
             string initialCommand,
@@ -265,7 +265,7 @@ namespace System.Management.Automation.Remoting.Server
             string workingDirectory,
             string configurationName,
             string configurationFile)
-            _initialCommand = initialCommand
+            _initialCommand = initialCommand;
 
             sessionTM = CreateSessionTransportManager(
                 configurationName: configurationName,
@@ -337,16 +337,16 @@ namespace System.Management.Automation.Remoting.Server
 
                 if (_exitProcessOnError)
                     // notify the remote client of any errors and fail gracefully
-                    originalStdErr.WriteLine(e.Message)
+                    originalStdErr.WriteLine(e.Message);
 
-                    Environment.Exit(OutOfProcessUtils.EXITCODE_UNHANDLED_EXCEPTION)
+                    Environment.Exit(OutOfProcessUtils.EXITCODE_UNHANDLED_EXCEPTION);
 
         #endregion
 
     internal sealed class StdIOProcessMediator : OutOfProcessMediatorBase
         #region Private Data
 
-        private static StdIOProcessMediator s_singletonInstance
+        private static StdIOProcessMediator s_singletonInstance;
 
         #endregion
 
@@ -365,21 +365,21 @@ namespace System.Management.Automation.Remoting.Server
             // TextReader has incorrect default console encoding instead of the actual
             // stream encoding.  This way the stream encoding is determined by the
             // stream BOM as needed.
-            originalStdIn = new StreamReader(Console.OpenStandardInput(), true)
+            originalStdIn = new StreamReader(Console.OpenStandardInput(), true);
 
             // Remoting errors can optionally be written to stdErr or stdOut with
             // special formatting.
-            originalStdOut = new OutOfProcessTextWriter(Console.Out)
+            originalStdOut = new OutOfProcessTextWriter(Console.Out);
             if (combineErrOutStream)
-                originalStdErr = new FormattedErrorTextWriter(Console.Out)
+                originalStdErr = new FormattedErrorTextWriter(Console.Out);
             else
-                originalStdErr = new OutOfProcessTextWriter(Console.Error)
+                originalStdErr = new OutOfProcessTextWriter(Console.Error);
 
             // Replacing StdIn, StdOut, StdErr with Null so that no other app messes with the
             // original streams.
-            Console.SetIn(TextReader.Null)
-            Console.SetOut(TextWriter.Null)
-            Console.SetError(TextWriter.Null)
+            Console.SetIn(TextReader.Null);
+            Console.SetOut(TextWriter.Null);
+            Console.SetError(TextWriter.Null);
 
         #endregion
 
@@ -401,10 +401,10 @@ namespace System.Management.Automation.Remoting.Server
             bool combineErrOutStream)
             lock (SyncObject)
                 if (s_singletonInstance != null)
-                    Dbg.Assert(false, "Run should not be called multiple times")
-                    return
+                    Dbg.Assert(false, "Run should not be called multiple times");
+                    return;
 
-                s_singletonInstance = new StdIOProcessMediator(combineErrOutStream)
+                s_singletonInstance = new StdIOProcessMediator(combineErrOutStream);
 
             s_singletonInstance.Start(
                 initialCommand: initialCommand,
@@ -418,9 +418,9 @@ namespace System.Management.Automation.Remoting.Server
     internal sealed class NamedPipeProcessMediator : OutOfProcessMediatorBase
         #region Private Data
 
-        private static NamedPipeProcessMediator s_singletonInstance
+        private static NamedPipeProcessMediator s_singletonInstance;
 
-        private readonly RemoteSessionNamedPipeServer _namedPipeServer
+        private readonly RemoteSessionNamedPipeServer _namedPipeServer;
 
         #endregion
 
@@ -428,7 +428,7 @@ namespace System.Management.Automation.Remoting.Server
 
         internal bool IsDisposed
             get
-                return _namedPipeServer.IsDisposed
+                return _namedPipeServer.IsDisposed;
 
         #endregion
 
@@ -440,13 +440,13 @@ namespace System.Management.Automation.Remoting.Server
         private NamedPipeProcessMediator(
             RemoteSessionNamedPipeServer namedPipeServer) : base(false)
             if (namedPipeServer == null)
-                throw new PSArgumentNullException(nameof(namedPipeServer))
+                throw new PSArgumentNullException(nameof(namedPipeServer));
 
-            _namedPipeServer = namedPipeServer
+            _namedPipeServer = namedPipeServer;
 
             // Create transport reader/writers from named pipe.
-            originalStdIn = namedPipeServer.TextReader
-            originalStdOut = new OutOfProcessTextWriter(namedPipeServer.TextWriter)
+            originalStdIn = namedPipeServer.TextReader;
+            originalStdOut = new OutOfProcessTextWriter(namedPipeServer.TextWriter);
             originalStdErr = new FormattedErrorTextWriter(namedPipeServer.TextWriter);
 
 #if !UNIX
@@ -464,10 +464,10 @@ namespace System.Management.Automation.Remoting.Server
             RemoteSessionNamedPipeServer namedPipeServer)
             lock (SyncObject)
                 if (s_singletonInstance != null && !s_singletonInstance.IsDisposed)
-                    Dbg.Assert(false, "Run should not be called multiple times, unless the singleton was disposed.")
-                    return
+                    Dbg.Assert(false, "Run should not be called multiple times, unless the singleton was disposed.");
+                    return;
 
-                s_singletonInstance = new NamedPipeProcessMediator(namedPipeServer)
+                s_singletonInstance = new NamedPipeProcessMediator(namedPipeServer);
 
             s_singletonInstance.Start(
                 initialCommand: initialCommand,
@@ -492,17 +492,17 @@ namespace System.Management.Automation.Remoting.Server
         // Write error data to stream with 'ErrorPrefix' prefix that will
         // be interpreted by the client.
         public override void WriteLine(string data)
-            string dataToWrite = (data != null) ? ErrorPrefix + data : null
-            base.WriteLine(dataToWrite)
+            string dataToWrite = (data != null) ? ErrorPrefix + data : null;
+            base.WriteLine(dataToWrite);
 
         #endregion
 
     internal sealed class HyperVSocketMediator : OutOfProcessMediatorBase
         #region Private Data
 
-        private static HyperVSocketMediator s_instance
+        private static HyperVSocketMediator s_instance;
 
-        private readonly RemoteSessionHyperVSocketServer _hypervSocketServer
+        private readonly RemoteSessionHyperVSocketServer _hypervSocketServer;
 
         #endregion
 
@@ -510,7 +510,7 @@ namespace System.Management.Automation.Remoting.Server
 
         internal bool IsDisposed
             get
-                return _hypervSocketServer.IsDisposed
+                return _hypervSocketServer.IsDisposed;
 
         #endregion
 
@@ -518,20 +518,20 @@ namespace System.Management.Automation.Remoting.Server
 
         private HyperVSocketMediator()
             : base(false)
-            _hypervSocketServer = new RemoteSessionHyperVSocketServer(false)
+            _hypervSocketServer = new RemoteSessionHyperVSocketServer(false);
 
-            originalStdIn = _hypervSocketServer.TextReader
-            originalStdOut = new OutOfProcessTextWriter(_hypervSocketServer.TextWriter)
-            originalStdErr = new HyperVSocketErrorTextWriter(_hypervSocketServer.TextWriter)
+            originalStdIn = _hypervSocketServer.TextReader;
+            originalStdOut = new OutOfProcessTextWriter(_hypervSocketServer.TextWriter);
+            originalStdErr = new HyperVSocketErrorTextWriter(_hypervSocketServer.TextWriter);
 
         private HyperVSocketMediator(string token,
             DateTimeOffset tokenCreationTime)
             : base(false)
-            _hypervSocketServer = new RemoteSessionHyperVSocketServer(false, token: token, tokenCreationTime: tokenCreationTime)
+            _hypervSocketServer = new RemoteSessionHyperVSocketServer(false, token: token, tokenCreationTime: tokenCreationTime);
 
-            originalStdIn = _hypervSocketServer.TextReader
-            originalStdOut = new OutOfProcessTextWriter(_hypervSocketServer.TextWriter)
-            originalStdErr = new HyperVSocketErrorTextWriter(_hypervSocketServer.TextWriter)
+            originalStdIn = _hypervSocketServer.TextReader;
+            originalStdOut = new OutOfProcessTextWriter(_hypervSocketServer.TextWriter);
+            originalStdErr = new HyperVSocketErrorTextWriter(_hypervSocketServer.TextWriter);
         #endregion
 
         #region Static Methods
@@ -540,7 +540,7 @@ namespace System.Management.Automation.Remoting.Server
             string initialCommand,
             string configurationName)
             lock (SyncObject)
-                s_instance = new HyperVSocketMediator()
+                s_instance = new HyperVSocketMediator();
 
             s_instance.Start(
                 initialCommand: initialCommand,
@@ -555,7 +555,7 @@ namespace System.Management.Automation.Remoting.Server
             string token,
             DateTimeOffset tokenCreationTime)
             lock (SyncObject)
-                s_instance = new HyperVSocketMediator(token, tokenCreationTime)
+                s_instance = new HyperVSocketMediator(token, tokenCreationTime);
 
             s_instance.Start(
                 initialCommand: initialCommand,
@@ -568,7 +568,7 @@ namespace System.Management.Automation.Remoting.Server
     internal sealed class HyperVSocketErrorTextWriter : OutOfProcessTextWriter
         #region Private Members
 
-        private const string _errorPrepend = "__HyperVSocketError__:"
+        private const string _errorPrepend = "__HyperVSocketError__:";
 
         #endregion
 
@@ -576,7 +576,7 @@ namespace System.Management.Automation.Remoting.Server
 
         internal static string ErrorPrepend
             get
-                return _errorPrepend
+                return _errorPrepend;
 
         #endregion
 
@@ -592,7 +592,7 @@ namespace System.Management.Automation.Remoting.Server
         #region Base class overrides
 
         public override void WriteLine(string data)
-            string dataToWrite = (data != null) ? _errorPrepend + data : null
-            base.WriteLine(dataToWrite)
+            string dataToWrite = (data != null) ? _errorPrepend + data : null;
+            base.WriteLine(dataToWrite);
 
         #endregion

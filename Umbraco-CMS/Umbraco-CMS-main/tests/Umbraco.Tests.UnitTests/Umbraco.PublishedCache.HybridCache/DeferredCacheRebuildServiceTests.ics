@@ -1,37 +1,37 @@
 // Copyright (c) Umbraco.
 // See LICENSE for more details.
 
-using Microsoft.Extensions.Hosting
-using Microsoft.Extensions.Logging
-using Moq
-using NUnit.Framework
-using Umbraco.Cms.Core.PublishedCache
-using Umbraco.Cms.Infrastructure.HybridCache.Services
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Moq;
+using NUnit.Framework;
+using Umbraco.Cms.Core.PublishedCache;
+using Umbraco.Cms.Infrastructure.HybridCache.Services;
 
 namespace Umbraco.Cms.Tests.UnitTests.Umbraco.PublishedCache.HybridCache;
 
 [TestFixture]
 public class DeferredCacheRebuildServiceTests
-    private static readonly TimeSpan _testTimeout = TimeSpan.FromSeconds(5)
+    private static readonly TimeSpan _testTimeout = TimeSpan.FromSeconds(5);
 
-    private Mock<IDocumentCacheService> _documentCacheService = null!
-    private Mock<IMediaCacheService> _mediaCacheService = null!
-    private Mock<IElementCacheService> _elementCacheService = null!
-    private DeferredCacheRebuildService _service = null!
+    private Mock<IDocumentCacheService> _documentCacheService = null!;
+    private Mock<IMediaCacheService> _mediaCacheService = null!;
+    private Mock<IElementCacheService> _elementCacheService = null!;
+    private DeferredCacheRebuildService _service = null!;
 
     [SetUp]
     public void SetUp()
-        _documentCacheService = new Mock<IDocumentCacheService>()
-        _mediaCacheService = new Mock<IMediaCacheService>()
-        _elementCacheService = new Mock<IElementCacheService>()
-        _service = CreateService()
+        _documentCacheService = new Mock<IDocumentCacheService>();
+        _mediaCacheService = new Mock<IMediaCacheService>();
+        _elementCacheService = new Mock<IElementCacheService>();
+        _service = CreateService();
 
     [TearDown]
-    public void TearDown() => _service.Dispose()
+    public void TearDown() => _service.Dispose();
 
     private DeferredCacheRebuildService CreateService(CancellationToken shutdownToken = default)
-        var lifetime = new Mock<IHostApplicationLifetime>()
-        lifetime.Setup(x => x.ApplicationStopping).Returns(shutdownToken)
+        var lifetime = new Mock<IHostApplicationLifetime>();
+        lifetime.Setup(x => x.ApplicationStopping).Returns(shutdownToken);
         return new DeferredCacheRebuildService(
             _documentCacheService.Object,
             _mediaCacheService.Object,
@@ -50,8 +50,8 @@ public class DeferredCacheRebuildServiceTests
             .Returns(Task.CompletedTask);
 
         // Act
-        _service.QueueContentTypeRebuild([1, 2])
-        await WaitForProcessingAsync()
+        _service.QueueContentTypeRebuild([1, 2]);
+        await WaitForProcessingAsync();
 
         // Assert
         _documentCacheService.Verify(
@@ -72,8 +72,8 @@ public class DeferredCacheRebuildServiceTests
             .Returns(Task.CompletedTask);
 
         // Act
-        _service.QueueMediaTypeRebuild([10, 20])
-        await WaitForProcessingAsync()
+        _service.QueueMediaTypeRebuild([10, 20]);
+        await WaitForProcessingAsync();
 
         // Assert
         _mediaCacheService.Verify(
@@ -94,9 +94,9 @@ public class DeferredCacheRebuildServiceTests
             .Returns(Task.CompletedTask);
 
         // Act — queue the same ID twice
-        _service.QueueContentTypeRebuild([1])
-        _service.QueueContentTypeRebuild([1])
-        await WaitForProcessingAsync()
+        _service.QueueContentTypeRebuild([1]);
+        _service.QueueContentTypeRebuild([1]);
+        await WaitForProcessingAsync();
 
         // Assert — Rebuild should be called once (or possibly twice if second Queue triggers a second loop),
         // but the ID set should never contain duplicates. Verify at least one call happened.
@@ -118,9 +118,9 @@ public class DeferredCacheRebuildServiceTests
             .Returns(Task.CompletedTask)
 
         // Act
-        _service.QueueContentTypeRebuild([1])
-        _service.QueueMediaTypeRebuild([10])
-        await WaitForProcessingAsync()
+        _service.QueueContentTypeRebuild([1]);
+        _service.QueueMediaTypeRebuild([10]);
+        await WaitForProcessingAsync();
 
         // Assert
         _documentCacheService.Verify(
@@ -141,8 +141,8 @@ public class DeferredCacheRebuildServiceTests
             .Returns(Task.CompletedTask);
 
         // Act — only queue media types
-        _service.QueueMediaTypeRebuild([10])
-        await WaitForProcessingAsync()
+        _service.QueueMediaTypeRebuild([10]);
+        await WaitForProcessingAsync();
 
         // Assert — document rebuild should never be called
         _documentCacheService.Verify(
@@ -155,7 +155,7 @@ public class DeferredCacheRebuildServiceTests
     [Test]
     public async Task Transient_Failure_Retries_And_Succeeds()
         // Arrange — Rebuild throws once then succeeds.
-        var callCount = 0
+        var callCount = 0;
         _documentCacheService
             .Setup(x => x.Rebuild(It.IsAny<IReadOnlyCollection<int>>()))
             .Callback(() => {
@@ -168,8 +168,8 @@ public class DeferredCacheRebuildServiceTests
             .Returns(Task.CompletedTask)
 
         // Act
-        _service.QueueContentTypeRebuild([1])
-        await WaitForProcessingAsync()
+        _service.QueueContentTypeRebuild([1]);
+        await WaitForProcessingAsync();
 
         // Assert — Rebuild was called twice (first failed, second succeeded).
         _documentCacheService.Verify(
@@ -190,11 +190,11 @@ public class DeferredCacheRebuildServiceTests
             .Throws(new InvalidOperationException("Persistent DB error"));
 
         // Act
-        _service.QueueContentTypeRebuild([1])
+        _service.QueueContentTypeRebuild([1]);
 
         // Wait for the worker to exit (IDs will remain pending after max retries).
-        using var cts = new CancellationTokenSource(_testTimeout)
-        await _service.WaitForWorkerIdleAsync(cts.Token)
+        using var cts = new CancellationTokenSource(_testTimeout);
+        await _service.WaitForWorkerIdleAsync(cts.Token);
 
         // Assert — Rebuild was called 3 times (the max consecutive failure count).
         _documentCacheService.Verify(
@@ -212,7 +212,7 @@ public class DeferredCacheRebuildServiceTests
     [Test]
     public async Task Failed_Ids_Are_Retried_On_Next_Queue_Call()
         // Arrange — Rebuild throws on every call initially.
-        var callCount = 0
+        var callCount = 0;
         _documentCacheService
             .Setup(x => x.Rebuild(It.IsAny<IReadOnlyCollection<int>>()))
             .Callback(() => {
@@ -226,13 +226,13 @@ public class DeferredCacheRebuildServiceTests
             .Returns(Task.CompletedTask)
 
         // Act — first attempt exhausts retries.
-        _service.QueueContentTypeRebuild([1])
-        using var cts = new CancellationTokenSource(_testTimeout)
-        await _service.WaitForWorkerIdleAsync(cts.Token)
+        _service.QueueContentTypeRebuild([1]);
+        using var cts = new CancellationTokenSource(_testTimeout);
+        await _service.WaitForWorkerIdleAsync(cts.Token);
 
         // A new queue call picks up the leftover IDs from the failed attempts.
-        _service.QueueContentTypeRebuild([2])
-        await WaitForProcessingAsync()
+        _service.QueueContentTypeRebuild([2]);
+        await WaitForProcessingAsync();
 
         // Assert — the fourth Rebuild call succeeds, containing both IDs (1 from retry + 2 from new queue).
         _documentCacheService.Verify(
@@ -245,10 +245,10 @@ public class DeferredCacheRebuildServiceTests
     [Test]
     public async Task Shutdown_Cancels_In_Flight_Rebuild()
         // Arrange — use a CTS that we control as the shutdown token.
-        using var shutdownCts = new CancellationTokenSource()
-        using var service = CreateService(shutdownCts.Token)
+        using var shutdownCts = new CancellationTokenSource();
+        using var service = CreateService(shutdownCts.Token);
 
-        var rebuildStarted = new TaskCompletionSource()
+        var rebuildStarted = new TaskCompletionSource();
         _documentCacheService
         .Setup(x => x.Rebuild(It.IsAny<IReadOnlyCollection<int>>()))
         .Callback(() => {
@@ -261,14 +261,14 @@ public class DeferredCacheRebuildServiceTests
         );
 
         // Act
-        service.QueueContentTypeRebuild([1])
+        service.QueueContentTypeRebuild([1]);
 
         // Wait for the worker to exit after cancellation.
-        using var timeoutCts = new CancellationTokenSource(_testTimeout)
-        await service.WaitForWorkerIdleAsync(timeoutCts.Token)
+        using var timeoutCts = new CancellationTokenSource(_testTimeout);
+        await service.WaitForWorkerIdleAsync(timeoutCts.Token);
 
         // Assert — Rebuild was called once, then cancelled. Memory cache rebuild never reached.
-        await rebuildStarted.Task
+        await rebuildStarted.Task;
         _documentCacheService.Verify(
             x => x.Rebuild(It.IsAny<IReadOnlyCollection<int>>()),
             Times.Once)
@@ -277,5 +277,5 @@ public class DeferredCacheRebuildServiceTests
             Times.Never)
 
     private async Task WaitForProcessingAsync()
-        using var cts = new CancellationTokenSource(_testTimeout)
-        await _service.WaitForPendingRebuildsAsync(cts.Token)
+        using var cts = new CancellationTokenSource(_testTimeout);
+        await _service.WaitForPendingRebuildsAsync(cts.Token);

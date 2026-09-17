@@ -1,19 +1,19 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System
-using System.Collections.Concurrent
-using System.Collections.Generic
-using System.Linq
-using System.Text
-using System.Threading.Tasks
-using Microsoft.Diagnostics.DataContractReader.Contracts
-using Microsoft.Diagnostics.DataContractReader
-using System.Buffers
-using System.Collections
-using StressLogAnalyzer.Filters
-using StressLogAnalyzer.Output
-using System.Diagnostics
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using Microsoft.Diagnostics.DataContractReader.Contracts;
+using Microsoft.Diagnostics.DataContractReader;
+using System.Buffers;
+using System.Collections;
+using StressLogAnalyzer.Filters;
+using StressLogAnalyzer.Output;
+using System.Diagnostics;
 
 namespace StressLogAnalyzer;
 
@@ -24,8 +24,8 @@ internal sealed class StressLogAnalyzer(
     ThreadFilter threadFilter,
     ThreadFilter? earliestMessageFilter)
     public async Task<(ulong messagesProcessed, ulong messagesPrinted)> AnalyzeLogsAsync(TargetPointer logsPointer, TimeTracker timeTracker, GCThreadMap gcThreadMap, IStressMessageOutput messageOutput, CancellationToken token)
-        IStressLog outerLogContract = stressLogContractFactory()
-        IEnumerable<ThreadStressLogData> logs = [.. outerLogContract.GetThreadStressLogs(logsPointer)]
+        IStressLog outerLogContract = stressLogContractFactory();
+        IEnumerable<ThreadStressLogData> logs = [.. outerLogContract.GetThreadStressLogs(logsPointer)];
 
         // The "end" timestamp is the timestamp of the most recent message.
         timeTracker.SetEndTimestamp(
@@ -37,14 +37,14 @@ internal sealed class StressLogAnalyzer(
             // If we don't have any GC thread filters, we can pre-filter on thread ID now.
             // Otherwise, we need to wait until we identify which threads are GC threads before
             // we can filter.
-            logs = logs.Where(log => threadFilter.IncludeThread(log.ThreadId))
+            logs = logs.Where(log => threadFilter.IncludeThread(log.ThreadId));
 
-        ConcurrentBag<(ThreadStressLogData thread, StressMsgData message)> earliestMessages = []
-        ConcurrentBag<(ThreadStressLogData thread, StressMsgData message, int numMessageOnThread)> allMessages = []
+        ConcurrentBag<(ThreadStressLogData thread, StressMsgData message)> earliestMessages = [];
+        ConcurrentBag<(ThreadStressLogData thread, StressMsgData message, int numMessageOnThread)> allMessages = [];
 
-        using ThreadLocal<ulong> numMessagesProcessed = new(() => 0, trackAllValues: true)
+        using ThreadLocal<ulong> numMessagesProcessed = new(() => 0, trackAllValues: true);
 
-        var parallelOptions = new ParallelOptions { CancellationToken = token, MaxDegreeOfParallelism = /*Debugger.IsAttached ? 1 : */Environment.ProcessorCount }
+        var parallelOptions = new ParallelOptions { CancellationToken = token, MaxDegreeOfParallelism = /*Debugger.IsAttached ? 1 : */Environment.ProcessorCount };
 
         using (ThreadLocal<IStressLog> stressLogContract = new(() => stressLogContractFactory()))
             await Parallel.ForEachAsync(logs, parallelOptions, (log, ct) => {
@@ -111,31 +111,31 @@ internal sealed class StressLogAnalyzer(
                 return ValueTask.CompletedTask;
             }).ConfigureAwait(false);
 
-        IEnumerable<(ThreadStressLogData thread, StressMsgData message, int numMessageOnThread)> messages = allMessages
+        IEnumerable<(ThreadStressLogData thread, StressMsgData message, int numMessageOnThread)> messages = allMessages;
 
         if (threadFilter.HasAnyGCThreadFilter)
             // If we have GC thread filters, we have filtered out threads that we know are GC threads we don't care about.
             // However, if the thread is not a GC thread at all, then we haven't filtered it out yet.
             // Filter out uninteresting threads that aren't GC threads now.
-            messages = messages.Where(message => gcThreadMap.ThreadHasHeap(message.thread.ThreadId) || threadFilter.IncludeThread(message.thread.ThreadId))
+            messages = messages.Where(message => gcThreadMap.ThreadHasHeap(message.thread.ThreadId) || threadFilter.IncludeThread(message.thread.ThreadId));
 
         // Now that we know all GC times, we can filter out messages that aren't in interesting GC time ranges.
-        messages = messages.Where(message => timeTracker.IsInInterestingGCTimeRange(message.message.Timestamp))
+        messages = messages.Where(message => timeTracker.IsInInterestingGCTimeRange(message.message.Timestamp));
 
         // Order by timestamp and then by thread id
         messages = messages.OrderByDescending(message => (message.message.Timestamp, message.thread.ThreadId))
             .ThenBy(message => message.numMessageOnThread);
 
-        ulong messagesPrinted = 0
+        ulong messagesPrinted = 0;
         foreach (var message in messages)
-            messagesPrinted++
-            await messageOutput.OutputMessageAsync(message.thread, message.message).ConfigureAwait(false)
+            messagesPrinted++;
+            await messageOutput.OutputMessageAsync(message.thread, message.message).ConfigureAwait(false);
 
         if (earliestMessageFilter is not null)
-            await messageOutput.OutputLineAsync("\nEarliest messages:").ConfigureAwait(false)
+            await messageOutput.OutputLineAsync("\nEarliest messages:").ConfigureAwait(false);
 
             // TODO: Sort messages by timestamp
             foreach ((ThreadStressLogData thread, StressMsgData message) in earliestMessages.OrderBy(message => (message.message.Timestamp, message.thread.ThreadId)))
-                await messageOutput.OutputMessageAsync(thread, message).ConfigureAwait(false)
+                await messageOutput.OutputMessageAsync(thread, message).ConfigureAwait(false);
 
-        return (numMessagesProcessed.Values.Aggregate(0ul, (acc, val) => acc + val), messagesPrinted)
+        return (numMessagesProcessed.Values.Aggregate(0ul, (acc, val) => acc + val), messagesPrinted);

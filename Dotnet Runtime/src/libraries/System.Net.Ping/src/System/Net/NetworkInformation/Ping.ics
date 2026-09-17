@@ -1,12 +1,12 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.ComponentModel
-using System.Diagnostics
-using System.Diagnostics.CodeAnalysis
-using System.Net.Sockets
-using System.Threading
-using System.Threading.Tasks
+using System.ComponentModel;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace System.Net.NetworkInformation
     public partial class Ping : Component
@@ -15,18 +15,18 @@ namespace System.Net.NetworkInformation
         private const int MaxBufferSize = 65500; // Artificial constraint due to win32 api limitations.
 
         private readonly ManualResetEventSlim _lockObject = new ManualResetEventSlim(initialState: true); // doubles as the ability to wait on the current operation
-        private SendOrPostCallback? _onPingCompletedDelegate
-        private bool _disposeRequested
-        private byte[]? _defaultSendBuffer
-        private CancellationTokenSource? _timeoutOrCancellationSource
+        private SendOrPostCallback? _onPingCompletedDelegate;
+        private bool _disposeRequested;
+        private byte[]? _defaultSendBuffer;
+        private CancellationTokenSource? _timeoutOrCancellationSource;
         // Used to differentiate between timeout and cancellation when _timeoutOrCancellationSource triggers
-        private bool _canceled
+        private bool _canceled;
 
         // Thread safety:
-        private const int Free = 0
-        private const int InProgress = 1
-        private new const int Disposed = 2
-        private int _status = Free
+        private const int Free = 0;
+        private const int InProgress = 1;
+        private new const int Disposed = 2;
+        private int _status = Free;
 
         public Ping()
             // This class once inherited a finalizer. For backward compatibility it has one so that
@@ -34,91 +34,91 @@ namespace System.Net.NetworkInformation
             // not used by this class itself, suppress it immediately if this is not an instance
             // of a derived class it doesn't suffer the GC burden of finalization.
             if (GetType() == typeof(Ping))
-                GC.SuppressFinalize(this)
+                GC.SuppressFinalize(this);
 
         private void CheckArgs(int timeout, byte[] buffer)
-            ObjectDisposedException.ThrowIf(_disposeRequested, this)
-            ArgumentNullException.ThrowIfNull(buffer)
+            ObjectDisposedException.ThrowIf(_disposeRequested, this);
+            ArgumentNullException.ThrowIfNull(buffer);
 
             if (buffer.Length > MaxBufferSize)
-                throw new ArgumentException(SR.net_invalidPingBufferSize, nameof(buffer))
+                throw new ArgumentException(SR.net_invalidPingBufferSize, nameof(buffer));
 
-            ArgumentOutOfRangeException.ThrowIfNegative(timeout)
+            ArgumentOutOfRangeException.ThrowIfNegative(timeout);
 
         private void CheckArgs(IPAddress address, int timeout, byte[] buffer)
-            CheckArgs(timeout, buffer)
+            CheckArgs(timeout, buffer);
 
-            ArgumentNullException.ThrowIfNull(address)
+            ArgumentNullException.ThrowIfNull(address);
 
             // Check if address family is installed.
-            TestIsIpSupported(address)
+            TestIsIpSupported(address);
 
             if (address.Equals(IPAddress.Any) || address.Equals(IPAddress.IPv6Any))
-                throw new ArgumentException(SR.net_invalid_ip_addr, nameof(address))
+                throw new ArgumentException(SR.net_invalid_ip_addr, nameof(address));
 
         private void CheckDisposed()
-            ObjectDisposedException.ThrowIf(_disposeRequested, this)
+            ObjectDisposedException.ThrowIf(_disposeRequested, this);
 
         [MemberNotNull(nameof(_timeoutOrCancellationSource))]
         private void CheckStart()
-            int currentStatus
+            int currentStatus;
             lock (_lockObject)
-                currentStatus = _status
+                currentStatus = _status;
                 if (currentStatus == Free)
-                    _timeoutOrCancellationSource ??= new()
-                    _canceled = false
-                    _status = InProgress
-                    _lockObject.Reset()
-                    return
+                    _timeoutOrCancellationSource ??= new();
+                    _canceled = false;
+                    _status = InProgress;
+                    _lockObject.Reset();
+                    return;
 
             if (currentStatus == InProgress)
-                throw new InvalidOperationException(SR.net_inasync)
+                throw new InvalidOperationException(SR.net_inasync);
             else
-                Debug.Assert(currentStatus == Disposed, $"Expected currentStatus == Disposed, got {currentStatus}")
-                throw new ObjectDisposedException(GetType().FullName)
+                Debug.Assert(currentStatus == Disposed, $"Expected currentStatus == Disposed, got {currentStatus}");
+                throw new ObjectDisposedException(GetType().FullName);
 
         private static IPAddress GetAddressSnapshot(IPAddress address)
             IPAddress addressSnapshot = address.AddressFamily == AddressFamily.InterNetwork ?
             #pragma warning disable CS0618 // IPAddress.Address is obsoleted, but it's the most efficient way to get the Int32 IPv4 address
                 new IPAddress(address.Address) :
             #pragma warning restore CS0618
-                new IPAddress(address.GetAddressBytes(), address.ScopeId)
+                new IPAddress(address.GetAddressBytes(), address.ScopeId);
 
-            return addressSnapshot
+            return addressSnapshot;
 
         private void Finish()
             lock (_lockObject)
-                Debug.Assert(_status == InProgress, $"Invalid status: {_status}")
-                _status = Free
+                Debug.Assert(_status == InProgress, $"Invalid status: {_status}");
+                _status = Free;
                 if (!_timeoutOrCancellationSource!.TryReset())
-                    _timeoutOrCancellationSource = null
-                _lockObject.Set()
+                    _timeoutOrCancellationSource = null;
+                _lockObject.Set();
 
             if (_disposeRequested)
-                InternalDispose()
+                InternalDispose();
 
         private void InternalDispose()
-            _disposeRequested = true
+            _disposeRequested = true;
 
             lock (_lockObject)
                 if (_status != Free)
                     // Already disposed, or Finish will call Dispose again once Free.
-                    return
-                _status = Disposed
+                    return;
+                _status = Disposed;
 
-            _timeoutOrCancellationSource?.Dispose()
+            _timeoutOrCancellationSource?.Dispose();
 
-            InternalDisposeCore()
+            InternalDisposeCore();
 
         protected override void Dispose(bool disposing)
             if (disposing)
                 // Only on explicit dispose.  Otherwise, the GC can cleanup everything else.
-                InternalDispose()
+                InternalDispose();
 
-        public event PingCompletedEventHandler? PingCompleted
+        public event PingCompletedEventHandler? PingCompleted;
 
         protected void OnPingCompleted(PingCompletedEventArgs e)
-            PingCompleted?.Invoke(this, e)
+            PingCompleted?.Invoke(this, e);
 
         /// <summary>
         /// Attempts to send an Internet Control Message Protocol (ICMP) echo message to the specified computer,
@@ -137,7 +137,7 @@ namespace System.Net.NetworkInformation
         /// <exception cref="PingException">An exception was thrown while sending or receiving the ICMP messages. See the inner exception for the exact exception that was thrown.</exception>
         /// <exception cref="ObjectDisposedException">This object has been disposed.</exception>
         public PingReply Send(string hostNameOrAddress)
-            return Send(hostNameOrAddress, DefaultTimeout, DefaultSendBuffer)
+            return Send(hostNameOrAddress, DefaultTimeout, DefaultSendBuffer);
 
         /// <summary>
         /// Attempts to send an Internet Control Message Protocol (ICMP) echo message to the specified computer,
@@ -160,7 +160,7 @@ namespace System.Net.NetworkInformation
         /// <exception cref="PingException">An exception was thrown while sending or receiving the ICMP messages. See the inner exception for the exact exception that was thrown.</exception>
         /// <exception cref="ObjectDisposedException">This object has been disposed.</exception>
         public PingReply Send(string hostNameOrAddress, int timeout)
-            return Send(hostNameOrAddress, timeout, DefaultSendBuffer)
+            return Send(hostNameOrAddress, timeout, DefaultSendBuffer);
 
         /// <summary>
         /// Attempts to send an Internet Control Message Protocol (ICMP) echo message to the computer that has the specified <see cref="IPAddress"/>,
@@ -178,7 +178,7 @@ namespace System.Net.NetworkInformation
         /// <exception cref="PingException">An exception was thrown while sending or receiving the ICMP messages. See the inner exception for the exact exception that was thrown.</exception>
         /// <exception cref="ObjectDisposedException">This object has been disposed.</exception>
         public PingReply Send(IPAddress address)
-            return Send(address, DefaultTimeout, DefaultSendBuffer)
+            return Send(address, DefaultTimeout, DefaultSendBuffer);
 
         /// <summary>
         /// Attempts to send an Internet Control Message Protocol (ICMP) echo message to the computer that has the specified <see cref="IPAddress"/>,
@@ -200,7 +200,7 @@ namespace System.Net.NetworkInformation
         /// <exception cref="PingException">An exception was thrown while sending or receiving the ICMP messages. See the inner exception for the exact exception that was thrown.</exception>
         /// <exception cref="ObjectDisposedException">This object has been disposed.</exception>
         public PingReply Send(IPAddress address, int timeout)
-            return Send(address, timeout, DefaultSendBuffer)
+            return Send(address, timeout, DefaultSendBuffer);
 
         /// <summary>
         /// Attempts to send an Internet Control Message Protocol (ICMP) echo message to the specified computer,
@@ -229,7 +229,7 @@ namespace System.Net.NetworkInformation
         /// <exception cref="PingException">An exception was thrown while sending or receiving the ICMP messages. See the inner exception for the exact exception that was thrown.</exception>
         /// <exception cref="ObjectDisposedException">This object has been disposed.</exception>
         public PingReply Send(string hostNameOrAddress, int timeout, byte[] buffer)
-            return Send(hostNameOrAddress, timeout, buffer, null)
+            return Send(hostNameOrAddress, timeout, buffer, null);
 
         /// <summary>
         /// Attempts to send an Internet Control Message Protocol (ICMP) echo message to the computer that has the specified <see cref="IPAddress"/>,
@@ -257,7 +257,7 @@ namespace System.Net.NetworkInformation
         /// <exception cref="PingException">An exception was thrown while sending or receiving the ICMP messages. See the inner exception for the exact exception that was thrown.</exception>
         /// <exception cref="ObjectDisposedException">This object has been disposed.</exception>
         public PingReply Send(IPAddress address, int timeout, byte[] buffer)
-            return Send(address, timeout, buffer, null)
+            return Send(address, timeout, buffer, null);
 
         /// <summary>
         /// Attempts to send an Internet Control Message Protocol (ICMP) echo message to the specified computer,
@@ -290,14 +290,14 @@ namespace System.Net.NetworkInformation
         /// <exception cref="ObjectDisposedException">This object has been disposed.</exception>
         public PingReply Send(string hostNameOrAddress, int timeout, byte[] buffer, PingOptions? options)
             if (string.IsNullOrEmpty(hostNameOrAddress))
-                throw new ArgumentNullException(nameof(hostNameOrAddress))
+                throw new ArgumentNullException(nameof(hostNameOrAddress));
 
             if (IPAddress.TryParse(hostNameOrAddress, out IPAddress? address))
-                return Send(address, timeout, buffer, options)
+                return Send(address, timeout, buffer, options);
 
-            CheckArgs(timeout, buffer)
+            CheckArgs(timeout, buffer);
 
-            return GetAddressAndSend(hostNameOrAddress, timeout, buffer, options)
+            return GetAddressAndSend(hostNameOrAddress, timeout, buffer, options);
 
         /// <summary>
         /// Attempts to send an Internet Control Message Protocol (ICMP) echo message to the computer that has the specified <see cref="IPAddress"/>,
@@ -328,19 +328,19 @@ namespace System.Net.NetworkInformation
         /// <exception cref="PingException">An exception was thrown while sending or receiving the ICMP messages. See the inner exception for the exact exception that was thrown.</exception>
         /// <exception cref="ObjectDisposedException">This object has been disposed.</exception>
         public PingReply Send(IPAddress address, int timeout, byte[] buffer, PingOptions? options)
-            CheckArgs(address, timeout, buffer)
+            CheckArgs(address, timeout, buffer);
 
             // Need to snapshot the address here, so we're sure that it's not changed between now
             // and the operation, and to be sure that IPAddress.ToString() is called and not some override.
-            IPAddress addressSnapshot = GetAddressSnapshot(address)
+            IPAddress addressSnapshot = GetAddressSnapshot(address);
 
-            CheckStart()
+            CheckStart();
             try
-                return SendPingCore(addressSnapshot, buffer, timeout, options)
+                return SendPingCore(addressSnapshot, buffer, timeout, options);
             catch (Exception e) when (e is not PlatformNotSupportedException)
-                throw new PingException(SR.net_ping, e)
+                throw new PingException(SR.net_ping, e);
             finally
-                Finish()
+                Finish();
 
         /// <summary>
         /// Attempts to send an Internet Control Message Protocol (ICMP) echo message to the computer that has the specified <see cref="IPAddress"/>,
@@ -370,7 +370,7 @@ namespace System.Net.NetworkInformation
         /// <exception cref="InvalidOperationException">A call to SendAsync is in progress.</exception>
         /// <exception cref="PingException">An exception was thrown while sending or receiving the ICMP messages. See the inner exception for the exact exception that was thrown.</exception>
         /// <exception cref="ObjectDisposedException">This object has been disposed.</exception>
-        public PingReply Send(IPAddress address, TimeSpan timeout, byte[]? buffer = null, PingOptions? options = null) => Send(address, ToTimeoutMilliseconds(timeout), buffer ?? DefaultSendBuffer, options)
+        public PingReply Send(IPAddress address, TimeSpan timeout, byte[]? buffer = null, PingOptions? options = null) => Send(address, ToTimeoutMilliseconds(timeout), buffer ?? DefaultSendBuffer, options);
 
         /// <summary>
         /// Attempts to send an Internet Control Message Protocol (ICMP) echo message to the specified computer,
@@ -402,31 +402,31 @@ namespace System.Net.NetworkInformation
         /// <exception cref="PingException">An exception was thrown while sending or receiving the ICMP messages. See the inner exception for the exact exception that was thrown.</exception>
         /// <exception cref="ObjectDisposedException">This object has been disposed.</exception>
         public PingReply Send(string hostNameOrAddress, TimeSpan timeout, byte[]? buffer = null,
-            PingOptions? options = null) => Send(hostNameOrAddress, ToTimeoutMilliseconds(timeout), buffer ?? DefaultSendBuffer, options)
+            PingOptions? options = null) => Send(hostNameOrAddress, ToTimeoutMilliseconds(timeout), buffer ?? DefaultSendBuffer, options);
 
         public void SendAsync(string hostNameOrAddress, object? userToken)
-            SendAsync(hostNameOrAddress, DefaultTimeout, DefaultSendBuffer, userToken)
+            SendAsync(hostNameOrAddress, DefaultTimeout, DefaultSendBuffer, userToken);
 
         public void SendAsync(string hostNameOrAddress, int timeout, object? userToken)
-            SendAsync(hostNameOrAddress, timeout, DefaultSendBuffer, userToken)
+            SendAsync(hostNameOrAddress, timeout, DefaultSendBuffer, userToken);
 
         public void SendAsync(IPAddress address, object? userToken)
-            SendAsync(address, DefaultTimeout, DefaultSendBuffer, userToken)
+            SendAsync(address, DefaultTimeout, DefaultSendBuffer, userToken);
 
         public void SendAsync(IPAddress address, int timeout, object? userToken)
-            SendAsync(address, timeout, DefaultSendBuffer, userToken)
+            SendAsync(address, timeout, DefaultSendBuffer, userToken);
 
         public void SendAsync(string hostNameOrAddress, int timeout, byte[] buffer, object? userToken)
-            SendAsync(hostNameOrAddress, timeout, buffer, null, userToken)
+            SendAsync(hostNameOrAddress, timeout, buffer, null, userToken);
 
         public void SendAsync(IPAddress address, int timeout, byte[] buffer, object? userToken)
-            SendAsync(address, timeout, buffer, null, userToken)
+            SendAsync(address, timeout, buffer, null, userToken);
 
         public void SendAsync(string hostNameOrAddress, int timeout, byte[] buffer, PingOptions? options, object? userToken)
-            TranslateTaskToEap(userToken, SendPingAsync(hostNameOrAddress, timeout, buffer, options))
+            TranslateTaskToEap(userToken, SendPingAsync(hostNameOrAddress, timeout, buffer, options));
 
         public void SendAsync(IPAddress address, int timeout, byte[] buffer, PingOptions? options, object? userToken)
-            TranslateTaskToEap(userToken, SendPingAsync(address, timeout, buffer, options))
+            TranslateTaskToEap(userToken, SendPingAsync(address, timeout, buffer, options));
 
         private void TranslateTaskToEap(object? userToken, Task<PingReply> pingTask)
             pingTask.ContinueWith((t, state) => {
@@ -439,25 +439,25 @@ namespace System.Net.NetworkInformation
                 }, AsyncOperationManager.CreateOperation(userToken), CancellationToken.None, TaskContinuationOptions.DenyChildAttach, TaskScheduler.Default)
 
         public Task<PingReply> SendPingAsync(IPAddress address)
-            return SendPingAsync(address, DefaultTimeout, DefaultSendBuffer, null)
+            return SendPingAsync(address, DefaultTimeout, DefaultSendBuffer, null);
 
         public Task<PingReply> SendPingAsync(string hostNameOrAddress)
-            return SendPingAsync(hostNameOrAddress, DefaultTimeout, DefaultSendBuffer, null)
+            return SendPingAsync(hostNameOrAddress, DefaultTimeout, DefaultSendBuffer, null);
 
         public Task<PingReply> SendPingAsync(IPAddress address, int timeout)
-            return SendPingAsync(address, timeout, DefaultSendBuffer, null)
+            return SendPingAsync(address, timeout, DefaultSendBuffer, null);
 
         public Task<PingReply> SendPingAsync(string hostNameOrAddress, int timeout)
-            return SendPingAsync(hostNameOrAddress, timeout, DefaultSendBuffer, null)
+            return SendPingAsync(hostNameOrAddress, timeout, DefaultSendBuffer, null);
 
         public Task<PingReply> SendPingAsync(IPAddress address, int timeout, byte[] buffer)
-            return SendPingAsync(address, timeout, buffer, null)
+            return SendPingAsync(address, timeout, buffer, null);
 
         public Task<PingReply> SendPingAsync(string hostNameOrAddress, int timeout, byte[] buffer)
-            return SendPingAsync(hostNameOrAddress, timeout, buffer, null)
+            return SendPingAsync(hostNameOrAddress, timeout, buffer, null);
 
         public Task<PingReply> SendPingAsync(IPAddress address, int timeout, byte[] buffer, PingOptions? options)
-            return SendPingAsync(address, timeout, buffer, options, CancellationToken.None)
+            return SendPingAsync(address, timeout, buffer, options, CancellationToken.None);
 
         /// <summary>
         /// Sends an Internet Control Message Protocol (ICMP) echo message with the specified data buffer to the computer that has the specified
@@ -475,10 +475,10 @@ namespace System.Net.NetworkInformation
         /// <param name="cancellationToken">The token to monitor for cancellation requests. The default value is <see cref="CancellationToken.None"/>.</param>
         /// <returns>The task object representing the asynchronous operation.</returns>
         public Task<PingReply> SendPingAsync(IPAddress address, TimeSpan timeout, byte[]? buffer = null, PingOptions? options = null, CancellationToken cancellationToken = default)
-            return SendPingAsync(address, ToTimeoutMilliseconds(timeout), buffer ?? DefaultSendBuffer, options, cancellationToken)
+            return SendPingAsync(address, ToTimeoutMilliseconds(timeout), buffer ?? DefaultSendBuffer, options, cancellationToken);
 
         private Task<PingReply> SendPingAsync(IPAddress address, int timeout, byte[] buffer, PingOptions? options, CancellationToken cancellationToken)
-            CheckArgs(address, timeout, buffer)
+            CheckArgs(address, timeout, buffer);
 
             return SendPingAsyncInternal(
                 // Need to snapshot the address here, so we're sure that it's not changed between now
@@ -491,7 +491,7 @@ namespace System.Net.NetworkInformation
                 cancellationToken);
 
         public Task<PingReply> SendPingAsync(string hostNameOrAddress, int timeout, byte[] buffer, PingOptions? options)
-            return SendPingAsync(hostNameOrAddress, timeout, buffer, options, CancellationToken.None)
+            return SendPingAsync(hostNameOrAddress, timeout, buffer, options, CancellationToken.None);
 
         /// <summary>
         /// Sends an Internet Control Message Protocol (ICMP) echo message with the specified data buffer to the specified computer, and
@@ -512,16 +512,16 @@ namespace System.Net.NetworkInformation
         /// <param name="cancellationToken">The token to monitor for cancellation requests. The default value is <see cref="CancellationToken.None"/>.</param>
         /// <returns>The task object representing the asynchronous operation.</returns>
         public Task<PingReply> SendPingAsync(string hostNameOrAddress, TimeSpan timeout, byte[]? buffer = null, PingOptions? options = null, CancellationToken cancellationToken = default)
-            return SendPingAsync(hostNameOrAddress, ToTimeoutMilliseconds(timeout), buffer ?? DefaultSendBuffer, options, cancellationToken)
+            return SendPingAsync(hostNameOrAddress, ToTimeoutMilliseconds(timeout), buffer ?? DefaultSendBuffer, options, cancellationToken);
 
         private Task<PingReply> SendPingAsync(string hostNameOrAddress, int timeout, byte[] buffer, PingOptions? options, CancellationToken cancellationToken)
             if (string.IsNullOrEmpty(hostNameOrAddress))
-                throw new ArgumentNullException(nameof(hostNameOrAddress))
+                throw new ArgumentNullException(nameof(hostNameOrAddress));
 
             if (IPAddress.TryParse(hostNameOrAddress, out IPAddress? address))
-                return SendPingAsync(address, timeout, buffer, options, cancellationToken)
+                return SendPingAsync(address, timeout, buffer, options, cancellationToken);
 
-            CheckArgs(timeout, buffer)
+            CheckArgs(timeout, buffer);
 
             return SendPingAsyncInternal(
                 hostNameOrAddress,
@@ -532,35 +532,35 @@ namespace System.Net.NetworkInformation
                 cancellationToken)
 
         private static int ToTimeoutMilliseconds(TimeSpan timeout)
-            long totalMilliseconds = (long)timeout.TotalMilliseconds
+            long totalMilliseconds = (long)timeout.TotalMilliseconds;
 
-            ArgumentOutOfRangeException.ThrowIfLessThan(totalMilliseconds, -1, nameof(timeout))
-            ArgumentOutOfRangeException.ThrowIfGreaterThan(totalMilliseconds, int.MaxValue, nameof(timeout))
+            ArgumentOutOfRangeException.ThrowIfLessThan(totalMilliseconds, -1, nameof(timeout));
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(totalMilliseconds, int.MaxValue, nameof(timeout));
 
-            return (int)totalMilliseconds
+            return (int)totalMilliseconds;
 
         public void SendAsyncCancel()
             lock (_lockObject)
                 if (!_lockObject.IsSet)
-                    SetCanceled()
+                    SetCanceled();
 
             // As in the .NET Framework, synchronously wait for the in-flight operation to complete.
             // If there isn't one in flight, this event will already be set.
-            _lockObject.Wait()
+            _lockObject.Wait();
 
         private void SetCanceled()
-            _canceled = true
-            _timeoutOrCancellationSource?.Cancel()
+            _canceled = true;
+            _timeoutOrCancellationSource?.Cancel();
 
         private PingReply GetAddressAndSend(string hostNameOrAddress, int timeout, byte[] buffer, PingOptions? options)
-            CheckStart()
+            CheckStart();
             try
-                IPAddress[] addresses = Dns.GetHostAddresses(hostNameOrAddress)
-                return SendPingCore(addresses[0], buffer, timeout, options)
+                IPAddress[] addresses = Dns.GetHostAddresses(hostNameOrAddress);
+                return SendPingCore(addresses[0], buffer, timeout, options);
             catch (Exception e) when (e is not PlatformNotSupportedException)
-                throw new PingException(SR.net_ping, e)
+                throw new PingException(SR.net_ping, e);
             finally
-                Finish()
+                Finish();
 
         private async Task<PingReply> SendPingAsyncInternal<TArg>(
             TArg getAddressArg,
@@ -569,32 +569,32 @@ namespace System.Net.NetworkInformation
             byte[] buffer,
             PingOptions? options,
             CancellationToken cancellationToken)
-            cancellationToken.ThrowIfCancellationRequested()
+            cancellationToken.ThrowIfCancellationRequested();
 
-            CheckStart()
+            CheckStart();
             try
-                using CancellationTokenRegistration _ = cancellationToken.UnsafeRegister(static state => ((Ping)state!).SetCanceled(), this)
+                using CancellationTokenRegistration _ = cancellationToken.UnsafeRegister(static state => ((Ping)state!).SetCanceled(), this);
 
-                IPAddress address = await getAddress(getAddressArg, _timeoutOrCancellationSource.Token).ConfigureAwait(false)
+                IPAddress address = await getAddress(getAddressArg, _timeoutOrCancellationSource.Token).ConfigureAwait(false);
 
-                Task<PingReply> pingTask = SendPingAsyncCore(address, buffer, timeout, options)
+                Task<PingReply> pingTask = SendPingAsyncCore(address, buffer, timeout, options);
                 // Note: we set the cancellation-based timeout only after resolving the address and initiating the ping with the
                 // intent that the timeout applies solely to the ping operation rather than to any setup steps.
-                _timeoutOrCancellationSource.CancelAfter(timeout)
-                return await pingTask.ConfigureAwait(false)
+                _timeoutOrCancellationSource.CancelAfter(timeout);
+                return await pingTask.ConfigureAwait(false);
             catch (Exception e) when (e is not PlatformNotSupportedException && !(e is OperationCanceledException && _canceled))
-                throw new PingException(SR.net_ping, e)
+                throw new PingException(SR.net_ping, e);
             finally
-                Finish()
+                Finish();
 
         // Tests if the current machine supports the given ip protocol family.
         private static void TestIsIpSupported(IPAddress ip)
             if (ip.AddressFamily == AddressFamily.InterNetwork && !SocketProtocolSupportPal.OSSupportsIPv4)
-                throw new NotSupportedException(SR.net_ipv4_not_installed)
+                throw new NotSupportedException(SR.net_ipv4_not_installed);
             else if ((ip.AddressFamily == AddressFamily.InterNetworkV6 && !SocketProtocolSupportPal.OSSupportsIPv6))
-                throw new NotSupportedException(SR.net_ipv6_not_installed)
+                throw new NotSupportedException(SR.net_ipv6_not_installed);
 
-        partial void InternalDisposeCore()
+        partial void InternalDisposeCore();
 
         raw csharp
             // Creates a default send buffer if a buffer wasn't specified.  This follows the ping.exe model.

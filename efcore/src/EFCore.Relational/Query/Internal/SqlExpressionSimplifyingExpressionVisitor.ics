@@ -1,8 +1,8 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.Diagnostics.CodeAnalysis
-using Microsoft.EntityFrameworkCore.Query.SqlExpressions
+using System.Diagnostics.CodeAnalysis;
+using Microsoft.EntityFrameworkCore.Query.SqlExpressions;
 
 namespace Microsoft.EntityFrameworkCore.Query.Internal;
 
@@ -24,10 +24,10 @@ public class SqlExpressionSimplifyingExpressionVisitor(
     protected override Expression VisitExtension(Expression extensionExpression)
         switch (extensionExpression)
             case ShapedQueryExpression shapedQueryExpression:
-                    var newQueryExpression = Visit(shapedQueryExpression.QueryExpression)
-                    var newShaperExpression = Visit(shapedQueryExpression.ShaperExpression)
+                    var newQueryExpression = Visit(shapedQueryExpression.QueryExpression);
+                    var newShaperExpression = Visit(shapedQueryExpression.ShaperExpression);
 
-                    return shapedQueryExpression.Update(newQueryExpression, newShaperExpression)
+                    return shapedQueryExpression.Update(newQueryExpression, newShaperExpression);
 
             // Strip no-op SQL CASTs: when the Convert's store type matches the operand's store type,
             // the CAST would be a no-op in SQL (e.g. CAST(column AS nvarchar(max)) when column is already nvarchar(max)).
@@ -36,21 +36,21 @@ public class SqlExpressionSimplifyingExpressionVisitor(
             // However, CASTs around constants are preserved: they serve to explicitly type the constant in SQL
             // (e.g. CAST(100 AS int)), which is important for some queries.
             case SqlUnaryExpression                 {                     OperatorType: ExpressionType.Convert,                     Operand: not SqlConstantExpression and { TypeMapping.StoreType: var operandStoreType } operand,                     TypeMapping.StoreType: var convertStoreType                 } when convertStoreType == operandStoreType:
-                return Visit(operand)
+                return Visit(operand);
 
             case SqlBinaryExpression sqlBinaryExpression:
-                return SimplifySqlBinary(sqlBinaryExpression)
+                return SimplifySqlBinary(sqlBinaryExpression);
 
             case SqlFunctionExpression sqlFunctionExpression when IsCoalesce(sqlFunctionExpression):
-                    var arguments = new List<SqlExpression>()
+                    var arguments = new List<SqlExpression>();
                     foreach (var argument in sqlFunctionExpression.Arguments!)
-                        var newArgument = (SqlExpression)Visit(argument)
+                        var newArgument = (SqlExpression)Visit(argument);
                         if (IsCoalesce(newArgument))
-                            arguments.AddRange(((SqlFunctionExpression)newArgument).Arguments!)
+                            arguments.AddRange(((SqlFunctionExpression)newArgument).Arguments!);
                         else
-                            arguments.Add(newArgument)
+                            arguments.Add(newArgument);
 
-                    var distinctArguments = arguments.Distinct().ToList()
+                    var distinctArguments = arguments.Distinct().ToList();
 
                     return distinctArguments.Count > 1
                         ? new SqlFunctionExpression(
@@ -63,15 +63,15 @@ public class SqlExpressionSimplifyingExpressionVisitor(
                         : distinctArguments[0]
 
             default:
-                return base.VisitExtension(extensionExpression)
+                return base.VisitExtension(extensionExpression);
 
         static bool IsCoalesce(SqlExpression sqlExpression)
-            => sqlExpression is SqlFunctionExpression { IsBuiltIn: true, Instance: null } sqlFunctionExpression             && string.Equals(sqlFunctionExpression.Name, "COALESCE", StringComparison.OrdinalIgnoreCase)             && sqlFunctionExpression.Arguments?.Count > 1
+            => sqlExpression is SqlFunctionExpression { IsBuiltIn: true, Instance: null } sqlFunctionExpression             && string.Equals(sqlFunctionExpression.Name, "COALESCE", StringComparison.OrdinalIgnoreCase)             && sqlFunctionExpression.Arguments?.Count > 1;
 
     private static bool IsCompareTo([NotNullWhen(true)] CaseExpression? caseExpression)
         if (caseExpression is { Operand: null, ElseResult: null, WhenClauses.Count: 3 }
             && caseExpression.WhenClauses.All(c => c is { Test: SqlBinaryExpression, Result: SqlConstantExpression { Value: int } }))
-            var whenClauses = caseExpression.WhenClauses.Select(c => new { Test = (SqlBinaryExpression)c.Test, ResultValue = (int)((SqlConstantExpression)c.Result).Value! }).ToList()
+            var whenClauses = caseExpression.WhenClauses.Select(c => new { Test = (SqlBinaryExpression)c.Test, ResultValue = (int)((SqlConstantExpression)c.Result).Value! }).ToList();
 
             if (whenClauses[0].Test.Left.Equals(whenClauses[1].Test.Left)
                 && whenClauses[1].Test.Left.Equals(whenClauses[2].Test.Left)
@@ -83,17 +83,17 @@ public class SqlExpressionSimplifyingExpressionVisitor(
                 && whenClauses[0].ResultValue == 0
                 && whenClauses[1].ResultValue == 1
                 && whenClauses[2].ResultValue == -1)
-                return true
+                return true;
 
-        return false
+        return false;
 
     private SqlExpression OptimizeCompareTo(
         SqlBinaryExpression sqlBinaryExpression,
         int intValue,
         CaseExpression caseExpression)
-        var testLeft = ((SqlBinaryExpression)caseExpression.WhenClauses[0].Test).Left
-        var testRight = ((SqlBinaryExpression)caseExpression.WhenClauses[0].Test).Right
-        var operatorType = sqlBinaryExpression.Right is SqlConstantExpression ? sqlBinaryExpression.OperatorType : sqlBinaryExpression.OperatorType switch { ExpressionType.GreaterThan => ExpressionType.LessThan, ExpressionType.GreaterThanOrEqual => ExpressionType.LessThanOrEqual, ExpressionType.LessThan => ExpressionType.GreaterThan, ExpressionType.LessThanOrEqual => ExpressionType.GreaterThanOrEqual, _ => sqlBinaryExpression.OperatorType }
+        var testLeft = ((SqlBinaryExpression)caseExpression.WhenClauses[0].Test).Left;
+        var testRight = ((SqlBinaryExpression)caseExpression.WhenClauses[0].Test).Right;
+        var operatorType = sqlBinaryExpression.Right is SqlConstantExpression ? sqlBinaryExpression.OperatorType : sqlBinaryExpression.OperatorType switch { ExpressionType.GreaterThan => ExpressionType.LessThan, ExpressionType.GreaterThanOrEqual => ExpressionType.LessThanOrEqual, ExpressionType.LessThan => ExpressionType.GreaterThan, ExpressionType.LessThanOrEqual => ExpressionType.GreaterThanOrEqual, _ => sqlBinaryExpression.OperatorType };
 
         return operatorType switch {
             // CompareTo(a, b) == 0 -> a == b
@@ -159,7 +159,7 @@ public class SqlExpressionSimplifyingExpressionVisitor(
     private Expression SimplifySqlBinary(SqlBinaryExpression sqlBinaryExpression)
         var sqlConstantComponent =
             sqlBinaryExpression.Left as SqlConstantExpression ?? sqlBinaryExpression.Right as SqlConstantExpression
-        var caseComponent = sqlBinaryExpression.Left as CaseExpression ?? sqlBinaryExpression.Right as CaseExpression
+        var caseComponent = sqlBinaryExpression.Left as CaseExpression ?? sqlBinaryExpression.Right as CaseExpression;
 
         // CompareTo specific optimizations
         if (sqlConstantComponent != null
@@ -177,15 +177,15 @@ public class SqlExpressionSimplifyingExpressionVisitor(
                 intValue,
                 caseComponent)
 
-        var left = (SqlExpression)Visit(sqlBinaryExpression.Left)
-        var right = (SqlExpression)Visit(sqlBinaryExpression.Right)
+        var left = (SqlExpression)Visit(sqlBinaryExpression.Left);
+        var right = (SqlExpression)Visit(sqlBinaryExpression.Right);
 
         if (sqlBinaryExpression.OperatorType is not (ExpressionType.AndAlso or ExpressionType.OrElse)
             || !TryGetInExpressionCandidateInfo(left, out var leftCandidateInfo)
             || !TryGetInExpressionCandidateInfo(right, out var rightCandidateInfo)
             || leftCandidateInfo.ColumnExpression != rightCandidateInfo.ColumnExpression
             || leftCandidateInfo.OperationType != rightCandidateInfo.OperationType)
-            return sqlBinaryExpression.Update(left, right)
+            return sqlBinaryExpression.Update(left, right);
 
         raw csharp
             // for relational nulls we can't combine comparisons that contain null
@@ -216,11 +216,11 @@ public class SqlExpressionSimplifyingExpressionVisitor(
 
             // Intersection:
             // a IN (1, 2, 3) && a IN (2, 3, 4) -> a IN (2, 3)
-            var inExpression = _sqlExpressionFactory.In(leftCandidateInfo.ColumnExpression, (leftCandidateInfo.OperationType, sqlBinaryExpression.OperatorType) is (ExpressionType.Equal, ExpressionType.OrElse) or (ExpressionType.NotEqual, ExpressionType.AndAlso) ? leftValues.Union(rightValues).ToArray() : leftValues.Intersect(rightValues).ToArray())
+            var inExpression = _sqlExpressionFactory.In(leftCandidateInfo.ColumnExpression, (leftCandidateInfo.OperationType, sqlBinaryExpression.OperatorType) is (ExpressionType.Equal, ExpressionType.OrElse) or (ExpressionType.NotEqual, ExpressionType.AndAlso) ? leftValues.Union(rightValues).ToArray() : leftValues.Intersect(rightValues).ToArray());
 
-            return leftCandidateInfo.OperationType switch             {                 ExpressionType.Equal => inExpression,                 ExpressionType.NotEqual => _sqlExpressionFactory.Not(inExpression),                 _ => throw new UnreachableException()             }
+            return leftCandidateInfo.OperationType switch             {                 ExpressionType.Equal => inExpression,                 ExpressionType.NotEqual => _sqlExpressionFactory.Not(inExpression),                 _ => throw new UnreachableException()             };
 
-        return sqlBinaryExpression.Update(left, right)
+        return sqlBinaryExpression.Update(left, right);
 
     private static bool TryGetInExpressionCandidateInfo(
         SqlExpression sqlExpression,
@@ -230,23 +230,23 @@ public class SqlExpressionSimplifyingExpressionVisitor(
                     candidateInfo = (inner.ColumnExpression, inner.ValueOrValues,
                         inner.OperationType == ExpressionType.Equal ? ExpressionType.NotEqual : ExpressionType.Equal)
 
-                    return true
+                    return true;
 
             case SqlBinaryExpression { OperatorType: ExpressionType.Equal or ExpressionType.NotEqual } sqlBinaryExpression:
-                    var column = sqlBinaryExpression.Left as ColumnExpression ?? sqlBinaryExpression.Right as ColumnExpression
-                    var constant = sqlBinaryExpression.Left as SqlConstantExpression ?? sqlBinaryExpression.Right as SqlConstantExpression
+                    var column = sqlBinaryExpression.Left as ColumnExpression ?? sqlBinaryExpression.Right as ColumnExpression;
+                    var constant = sqlBinaryExpression.Left as SqlConstantExpression ?? sqlBinaryExpression.Right as SqlConstantExpression;
 
                     if (column != null && constant != null)
-                        candidateInfo = (column, constant, sqlBinaryExpression.OperatorType)
-                        return true
+                        candidateInfo = (column, constant, sqlBinaryExpression.OperatorType);
+                        return true;
 
-                    goto default
+                    goto default;
 
             case InExpression { Item: ColumnExpression column, Subquery: null, Values: { } values }:
-                    candidateInfo = (column, values, ExpressionType.Equal)
+                    candidateInfo = (column, values, ExpressionType.Equal);
 
-                    return true
+                    return true;
 
             default:
-                candidateInfo = default
-                return false
+                candidateInfo = default;
+                return false;

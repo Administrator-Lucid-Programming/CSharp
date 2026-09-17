@@ -1,74 +1,74 @@
-using System
-using System.Collections.Generic
-using System.Linq
-using Microsoft.CodeAnalysis
-using Microsoft.CodeAnalysis.CSharp
-using Microsoft.CodeAnalysis.CSharp.Syntax
-using static Microsoft.CodeAnalysis.CSharp.SyntaxFactory
-using static Avalonia.SourceGenerator.CompositionGenerator.Extensions
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using static Microsoft.CodeAnalysis.CSharp.SyntaxFactory;
+using static Avalonia.SourceGenerator.CompositionGenerator.Extensions;
 namespace Avalonia.SourceGenerator.CompositionGenerator
     public partial class Generator
-        private readonly ICompositionGeneratorSink _output
-        private readonly GConfig _config
-        private readonly HashSet<string> _objects
-        private readonly HashSet<string> _brushes
-        private readonly Dictionary<string, GManualClass> _manuals
+        private readonly ICompositionGeneratorSink _output;
+        private readonly GConfig _config;
+        private readonly HashSet<string> _objects;
+        private readonly HashSet<string> _brushes;
+        private readonly Dictionary<string, GManualClass> _manuals;
         public Generator(ICompositionGeneratorSink output, GConfig config)
-            _output = output
-            _config = config
-            _manuals = _config.ManualClasses.ToDictionary(x => x.Name)
+            _output = output;
+            _config = config;
+            _manuals = _config.ManualClasses.ToDictionary(x => x.Name);
             _objects = new HashSet<string>(_config.ManualClasses.Select(x => x.Name)
                 .Concat(_config.Classes.Select(x => x.Name)))
-            _brushes = new HashSet<string>(_config.Classes.OfType<GBrush>().Select(x => x.Name)) {"CompositionBrush"}
+            _brushes = new HashSet<string>(_config.Classes.OfType<GBrush>().Select(x => x.Name)) {"CompositionBrush"};
 
         public void Generate()
             foreach (var cl in _config.Classes)
-                GenerateClass(cl)
+                GenerateClass(cl);
 
-            GenerateAnimations()
+            GenerateAnimations();
 
-        static string ServerName(string? c) => c != null ? ("Server" + c) : "ServerObject"
-        static string ChangesName(string? c) => c != null ? (c + "Changes") : "ChangeSet"
-        static string ChangedFieldsTypeName(GClass c) => c.Name + "ChangedFields"
-        static string ChangedFieldsFieldName(GClass c) => "_changedFieldsOf" + c.Name
-        static string PropertyBackingFieldName(GProperty prop) => "_" + prop.Name.WithLowerFirst()
-        static string CompositionPropertyField(GProperty prop) => "s_IdOf" + prop.Name + "Property"
+        static string ServerName(string? c) => c != null ? ("Server" + c) : "ServerObject";
+        static string ChangesName(string? c) => c != null ? (c + "Changes") : "ChangeSet";
+        static string ChangedFieldsTypeName(GClass c) => c.Name + "ChangedFields";
+        static string ChangedFieldsFieldName(GClass c) => "_changedFieldsOf" + c.Name;
+        static string PropertyBackingFieldName(GProperty prop) => "_" + prop.Name.WithLowerFirst();
+        static string CompositionPropertyField(GProperty prop) => "s_IdOf" + prop.Name + "Property";
 
-        static ExpressionSyntax ClientProperty(GClass c, GProperty p) => MemberAccess(ServerName(c.Name), CompositionPropertyField(p))
+        static ExpressionSyntax ClientProperty(GClass c, GProperty p) => MemberAccess(ServerName(c.Name), CompositionPropertyField(p));
 
         void GenerateClass(GClass cl)
-            var list = cl as GList
+            var list = cl as GList;
 
-            var unit = Unit()
+            var unit = Unit();
 
-            var clientNs = NamespaceDeclaration(IdentifierName("Avalonia.Rendering.Composition"))
-            var serverNs = NamespaceDeclaration(IdentifierName("Avalonia.Rendering.Composition.Server"))
-            var transportNs = NamespaceDeclaration(IdentifierName("Avalonia.Rendering.Composition.Transport"))
+            var clientNs = NamespaceDeclaration(IdentifierName("Avalonia.Rendering.Composition"));
+            var serverNs = NamespaceDeclaration(IdentifierName("Avalonia.Rendering.Composition.Server"));
+            var transportNs = NamespaceDeclaration(IdentifierName("Avalonia.Rendering.Composition.Transport"));
 
-            var inherits = cl.Inherits ?? "CompositionObject"
+            var inherits = cl.Inherits ?? "CompositionObject";
             raw csharp
                 var abstractModifier = cl.Abstract ? new[] {SyntaxKind.AbstractKeyword}
                 : null;
-            var visibilityModifier = cl.Internal ? SyntaxKind.InternalKeyword : SyntaxKind.PublicKeyword
+            var visibilityModifier = cl.Internal ? SyntaxKind.InternalKeyword : SyntaxKind.PublicKeyword;
 
             var client = ClassDeclaration(cl.Name)
                 .AddModifiers(abstractModifier)
                 .AddModifiers(visibilityModifier, SyntaxKind.UnsafeKeyword, SyntaxKind.PartialKeyword)
                 .WithBaseType(inherits)
 
-            var serverName = ServerName(cl.Name)
-            var serverBase = cl.ServerBase ?? ServerName(cl.Inherits)
+            var serverName = ServerName(cl.Name);
+            var serverBase = cl.ServerBase ?? ServerName(cl.Inherits);
             if (list != null)
-                serverBase = "ServerList<" + ServerName(list.ItemType) + ">"
+                serverBase = "ServerList<" + ServerName(list.ItemType) + ">";
 
             var server = ClassDeclaration(serverName)
                 .AddModifiers(abstractModifier)
                 .AddModifiers(SyntaxKind.UnsafeKeyword, SyntaxKind.PartialKeyword)
                 .WithBaseType(serverBase)
 
-            string changesName = ChangesName(cl.Name)
-            string changedFieldsTypeName = ChangedFieldsTypeName(cl)
-            string changedFieldsName = ChangedFieldsFieldName(cl)
+            string changesName = ChangesName(cl.Name);
+            string changedFieldsTypeName = ChangedFieldsTypeName(cl);
+            string changedFieldsName = ChangedFieldsFieldName(cl);
 
             if (cl.Properties.Count > 0)
                 client = client
@@ -79,10 +79,10 @@ namespace Avalonia.SourceGenerator.CompositionGenerator
                     .AddModifiers(SyntaxKind.InternalKeyword, SyntaxKind.NewKeyword)
                     .AddAccessorListAccessors(AccessorDeclaration(SyntaxKind.GetAccessorDeclaration)
                         .WithSemicolonToken(Semicolon())))
-                client = client.AddMembers(ConstructorDeclaration(cl.Name).AddModifiers(SyntaxKind.InternalKeyword).WithParameterList(ParameterList(SeparatedList(new[] { Parameter(Identifier("compositor")).WithType(ParseTypeName("Compositor")), Parameter(Identifier("server")).WithType(ParseTypeName(serverName)), }))).WithInitializer(ConstructorInitializer(SyntaxKind.BaseConstructorInitializer, ArgumentList(SeparatedList(new[] { Argument(IdentifierName("compositor")), Argument(IdentifierName("server")), })))).WithBody(Block(ExpressionStatement(AssignmentExpression(SyntaxKind.SimpleAssignmentExpression, IdentifierName("Server"), CastExpression(ParseTypeName(serverName), IdentifierName("server")))), ExpressionStatement(InvocationExpression(IdentifierName("InitializeDefaults"))))))
+                client = client.AddMembers(ConstructorDeclaration(cl.Name).AddModifiers(SyntaxKind.InternalKeyword).WithParameterList(ParameterList(SeparatedList(new[] { Parameter(Identifier("compositor")).WithType(ParseTypeName("Compositor")), Parameter(Identifier("server")).WithType(ParseTypeName(serverName)), }))).WithInitializer(ConstructorInitializer(SyntaxKind.BaseConstructorInitializer, ArgumentList(SeparatedList(new[] { Argument(IdentifierName("compositor")), Argument(IdentifierName("server")), })))).WithBody(Block(ExpressionStatement(AssignmentExpression(SyntaxKind.SimpleAssignmentExpression, IdentifierName("Server"), CastExpression(ParseTypeName(serverName), IdentifierName("server")))), ExpressionStatement(InvocationExpression(IdentifierName("InitializeDefaults"))))));
 
             if (!cl.CustomServerCtor)
-                server = server.AddMembers(ConstructorDeclaration(serverName).AddModifiers(SyntaxKind.InternalKeyword).WithParameterList(ParameterList(SeparatedList(new[] { Parameter(Identifier("compositor")).WithType(ParseTypeName("ServerCompositor")), }))).WithInitializer(ConstructorInitializer(SyntaxKind.BaseConstructorInitializer, ArgumentList(SeparatedList(new[] { Argument(IdentifierName("compositor")), })))).WithBody(Block(ParseStatement("Initialize();"))))
+                server = server.AddMembers(ConstructorDeclaration(serverName).AddModifiers(SyntaxKind.InternalKeyword).WithParameterList(ParameterList(SeparatedList(new[] { Parameter(Identifier("compositor")).WithType(ParseTypeName("ServerCompositor")), }))).WithInitializer(ConstructorInitializer(SyntaxKind.BaseConstructorInitializer, ArgumentList(SeparatedList(new[] { Argument(IdentifierName("compositor")), })))).WithBody(Block(ParseStatement("Initialize();"))));
 
             server = server.AddMembers(
                 MethodDeclaration(ParseTypeName("void"), "Initialize")
@@ -93,26 +93,26 @@ namespace Avalonia.SourceGenerator.CompositionGenerator
                     .AddParameterListParameters(Parameter(Identifier("c")).WithType(ParseTypeName("BatchStreamReader")))
                     .AddModifiers(SyntaxKind.PartialKeyword).WithSemicolonToken(Semicolon()))
 
-            var resetBody = Block()
-            var startAnimationBody = Block()
-            var serverGetPropertyBody = Block()
-            var serverGetCompositionPropertyBody = Block()
-            var serializeMethodBody = SerializeChangesPrologue(cl)
-            var deserializeMethodBody = DeserializeChangesPrologue(cl)
+            var resetBody = Block();
+            var startAnimationBody = Block();
+            var serverGetPropertyBody = Block();
+            var serverGetCompositionPropertyBody = Block();
+            var serializeMethodBody = SerializeChangesPrologue(cl);
+            var deserializeMethodBody = DeserializeChangesPrologue(cl);
 
-            var defaultsMethodBody = Block(ParseStatement("InitializeDefaultsExtra();"))
+            var defaultsMethodBody = Block(ParseStatement("InitializeDefaultsExtra();"));
 
             foreach (var prop in cl.Properties)
-                var fieldName = PropertyBackingFieldName(prop)
-                var typeInfo = GetTypeInfo(prop.Type)
+                var fieldName = PropertyBackingFieldName(prop);
+                var typeInfo = GetTypeInfo(prop.Type);
                 var (propType, filteredPropertyType, isObject, isNullable, isPassthrough,
                     serverPropertyType) = (typeInfo.RoslynType,
                     typeInfo.FilteredTypeName,
                     typeInfo.IsObject, typeInfo.IsNullable, typeInfo.IsPassthrough, typeInfo.ServerType)
 
-                var animatedServer = prop.Animated
+                var animatedServer = prop.Animated;
 
-                client = GenerateClientProperty(client, cl, prop, propType, isObject, isNullable)
+                client = GenerateClientProperty(client, cl, prop, propType, isObject, isNullable);
 
                 if (animatedServer)
                     server = server.AddMembers(
@@ -127,23 +127,23 @@ namespace Avalonia.SourceGenerator.CompositionGenerator
                                         ParseExpression($"SetAnimatedValue({CompositionPropertyField(prop)}, out {PropertyBackingFieldName(prop)}, value)")))
                                     .WithSemicolonToken(Semicolon())))
                 else
-                    server = server.AddMembers(DeclareField(serverPropertyType, fieldName)).AddMembers(PropertyDeclaration(ParseTypeName(serverPropertyType), prop.Name).AddModifiers(SyntaxKind.PublicKeyword).AddAccessorListAccessors(AccessorDeclaration(SyntaxKind.GetAccessorDeclaration, Block(ReturnStatement(IdentifierName(fieldName)))), AccessorDeclaration(SyntaxKind.SetAccessorDeclaration, Block(ParseStatement("var changed = false;"), IfStatement(BinaryExpression(SyntaxKind.NotEqualsExpression, IdentifierName(fieldName), IdentifierName("value")), Block(ParseStatement("On" + prop.Name + "Changing();"), ParseStatement($"changed = true;"))), ExpressionStatement(InvocationExpression(IdentifierName("SetValue"), ArgumentList(SeparatedList(new[] { Argument(IdentifierName(CompositionPropertyField(prop))), Argument(null, Token(SyntaxKind.RefKeyword), IdentifierName(fieldName)), Argument(IdentifierName("value")) })))), ParseStatement($"if(changed) On" + prop.Name + "Changed();"))))).AddMembers(MethodDeclaration(ParseTypeName("void"), "On" + prop.Name + "Changed").AddModifiers(SyntaxKind.PartialKeyword).WithSemicolonToken(Semicolon())).AddMembers(MethodDeclaration(ParseTypeName("void"), "On" + prop.Name + "Changing").AddModifiers(SyntaxKind.PartialKeyword).WithSemicolonToken(Semicolon()))
+                    server = server.AddMembers(DeclareField(serverPropertyType, fieldName)).AddMembers(PropertyDeclaration(ParseTypeName(serverPropertyType), prop.Name).AddModifiers(SyntaxKind.PublicKeyword).AddAccessorListAccessors(AccessorDeclaration(SyntaxKind.GetAccessorDeclaration, Block(ReturnStatement(IdentifierName(fieldName)))), AccessorDeclaration(SyntaxKind.SetAccessorDeclaration, Block(ParseStatement("var changed = false;"), IfStatement(BinaryExpression(SyntaxKind.NotEqualsExpression, IdentifierName(fieldName), IdentifierName("value")), Block(ParseStatement("On" + prop.Name + "Changing();"), ParseStatement($"changed = true;"))), ExpressionStatement(InvocationExpression(IdentifierName("SetValue"), ArgumentList(SeparatedList(new[] { Argument(IdentifierName(CompositionPropertyField(prop))), Argument(null, Token(SyntaxKind.RefKeyword), IdentifierName(fieldName)), Argument(IdentifierName("value")) })))), ParseStatement($"if(changed) On" + prop.Name + "Changed();"))))).AddMembers(MethodDeclaration(ParseTypeName("void"), "On" + prop.Name + "Changed").AddModifiers(SyntaxKind.PartialKeyword).WithSemicolonToken(Semicolon())).AddMembers(MethodDeclaration(ParseTypeName("void"), "On" + prop.Name + "Changing").AddModifiers(SyntaxKind.PartialKeyword).WithSemicolonToken(Semicolon()));
 
                 resetBody = resetBody.AddStatements(
                     ExpressionStatement(InvocationExpression(MemberAccess(prop.Name, "Reset"))))
 
-                serializeMethodBody = ApplySerializeField(serializeMethodBody, cl, prop, isObject, isPassthrough)
-                deserializeMethodBody = ApplyDeserializeField(deserializeMethodBody, cl, prop, serverPropertyType, isObject)
+                serializeMethodBody = ApplySerializeField(serializeMethodBody, cl, prop, isObject, isPassthrough);
+                deserializeMethodBody = ApplyDeserializeField(deserializeMethodBody, cl, prop, serverPropertyType, isObject);
 
                 if (animatedServer)
-                    startAnimationBody = ApplyStartAnimation(startAnimationBody, cl, prop)
+                    startAnimationBody = ApplyStartAnimation(startAnimationBody, cl, prop);
 
-                serverGetPropertyBody = ApplyGetProperty(serverGetPropertyBody, prop)
-                serverGetCompositionPropertyBody = ApplyGetProperty(serverGetCompositionPropertyBody, prop, CompositionPropertyField(prop))
+                serverGetPropertyBody = ApplyGetProperty(serverGetPropertyBody, prop);
+                serverGetCompositionPropertyBody = ApplyGetProperty(serverGetCompositionPropertyBody, prop, CompositionPropertyField(prop));
 
-                string compositionPropertyVariantGetter = "null"
+                string compositionPropertyVariantGetter = "null";
                 if (VariantPropertyTypes.Contains(prop.Type))
-                    compositionPropertyVariantGetter = $"obj => (({serverName})obj).{fieldName}"
+                    compositionPropertyVariantGetter = $"obj => (({serverName})obj).{fieldName}";
                 server = server.AddMembers(DeclareField($"CompositionProperty<{serverPropertyType}>", CompositionPropertyField(prop),
                     EqualsValueClause(ParseExpression(
                         $"CompositionProperty.Register<{serverName}, {serverPropertyType}>(\"{prop.Name}\", obj => (({serverName})obj).{fieldName}, (obj, v) => (({serverName})obj).{fieldName} = v, {compositionPropertyVariantGetter})")),
@@ -172,27 +172,27 @@ namespace Avalonia.SourceGenerator.CompositionGenerator
                         .AddModifiers(SyntaxKind.PartialKeyword).WithSemicolonToken(Semicolon()))
 
             if (cl.Properties.Count > 0)
-                serializeMethodBody = serializeMethodBody.AddStatements(SerializeChangesEpilogue(cl))
+                serializeMethodBody = serializeMethodBody.AddStatements(SerializeChangesEpilogue(cl));
                 client = client.AddMembers(((MethodDeclarationSyntax)ParseMemberDeclaration(
                     $"private protected override void SerializeChangesCore(BatchStreamWriter writer){{}}")!)
                     .WithBody(serializeMethodBody))
 
             if (list != null)
-                client = AppendListProxy(list, client)
+                client = AppendListProxy(list, client);
 
             if (startAnimationBody.Statements.Count != 0)
-                client = WithStartAnimation(client, startAnimationBody)
+                client = WithStartAnimation(client, startAnimationBody);
 
             if (!cl.ServerOnly)
                 //server = WithGetPropertyForAnimation(server, serverGetPropertyBody);
-                server = WithGetCompositionProperty(server, serverGetCompositionPropertyBody)
+                server = WithGetCompositionProperty(server, serverGetCompositionPropertyBody);
 
             if (cl.ServerOnly)
-                server = server.AddMembers(GenerateSerializeAllMethod(cl))
+                server = server.AddMembers(GenerateSerializeAllMethod(cl));
 
             if (cl.Implements.Count > 0)
                 foreach (var impl in cl.Implements)
-                    client = client.WithBaseList(client.BaseList?.AddTypes(SimpleBaseType(ParseTypeName(impl.Name))))
+                    client = client.WithBaseList(client.BaseList?.AddTypes(SimpleBaseType(ParseTypeName(impl.Name))));
                     if (impl.ServerName != null)
                         server = server.WithBaseList(
                             server.BaseList?.AddTypes(SimpleBaseType(ParseTypeName(impl.ServerName))))
@@ -212,7 +212,7 @@ namespace Avalonia.SourceGenerator.CompositionGenerator
 
         private static ClassDeclarationSyntax GenerateClientProperty(ClassDeclarationSyntax client, GClass cl, GProperty prop,
             TypeSyntax propType, bool isObject, bool isNullable)
-            var fieldName = PropertyBackingFieldName(prop)
+            var fieldName = PropertyBackingFieldName(prop);
             raw csharp
                 return client
                     .AddMembers(DeclareField(prop.Type, fieldName))
@@ -252,23 +252,23 @@ namespace Avalonia.SourceGenerator.CompositionGenerator
                         .AddModifiers(SyntaxKind.PartialKeyword).WithSemicolonToken(Semicolon()));
 
         static EnumDeclarationSyntax GenerateChangedFieldsEnum(GClass cl)
-            var changedFieldsEnum = EnumDeclaration(Identifier(ChangedFieldsTypeName(cl)))
-            int count = 0
+            var changedFieldsEnum = EnumDeclaration(Identifier(ChangedFieldsTypeName(cl)));
+            int count = 0;
 
             void AddValue(string name)
-                var value = 1ul << count
+                var value = 1ul << count;
                 changedFieldsEnum = changedFieldsEnum.AddMembers(
                     EnumMemberDeclaration(name)
                         .WithEqualsValue(EqualsValueClause(ParseExpression(value.ToString()))))
-                count++
+                count++;
 
             foreach (var prop in cl.Properties)
-                AddValue(prop.Name)
+                AddValue(prop.Name);
 
                 if (prop.Animated)
-                    AddValue(prop.Name + "Animated")
+                    AddValue(prop.Name + "Animated");
 
-            var baseType = count <= 8 ? "byte" : count <= 16 ? "ushort" : count <= 32 ? "uint" : "ulong"
+            var baseType = count <= 8 ? "byte" : count <= 16 ? "ushort" : count <= 32 ? "uint" : "ulong";
             return changedFieldsEnum.AddBaseListTypes(SimpleBaseType(ParseTypeName(baseType)))
                 .AddAttributeLists(AttributeList(SingletonSeparatedList(Attribute(IdentifierName("System.Flags")))))
 
@@ -300,7 +300,7 @@ namespace Avalonia.SourceGenerator.CompositionGenerator
     }}
 ";
 
-            return ParseStatement("{\n" + code + "\n}")
+            return ParseStatement("{\n" + code + "\n}");
 
         static BlockSyntax ApplyStartAnimation(BlockSyntax body, GClass cl, GProperty prop)
             var code = $@"
@@ -314,7 +314,7 @@ RegisterForSerialization();
 return;
 }}
 ";
-            return body.AddStatements(ParseStatement(code))
+            return body.AddStatements(ParseStatement(code));
 
         private static HashSet<string> VariantPropertyTypes = new HashSet<string> {
             "bool",
@@ -341,7 +341,7 @@ return;
                     ParseStatement($"if(name == \"{prop.Name}\")\n return  {expr ?? prop.Name};\n")
                 )
 
-            return body
+            return body;
 
         private static BlockSyntax SerializeChangesPrologue(GClass cl)
             return Block(
@@ -358,23 +358,23 @@ return;
             }
                 ).ToArray())
 
-            var changedName = ChangedFieldsTypeName(cl)
-            var bits = cl.Properties.Select(p => changedName + "." + p.Name)
-            var body = Block().AddStatements(ParseStatement($"writer.Write({string.Join("|", bits)});"))
+            var changedName = ChangedFieldsTypeName(cl);
+            var bits = cl.Properties.Select(p => changedName + "." + p.Name);
+            var body = Block().AddStatements(ParseStatement($"writer.Write({string.Join("|", bits)});"));
             foreach (var prop in cl.Properties)
-                var type = GetTypeInfo(prop.Type)
+                var type = GetTypeInfo(prop.Type);
                 body = body.AddStatements(
                     ParseStatement($"writer.Write{(type.IsObject ? "Object" : "")}({prop.Name.WithLowerFirst()});"))
 
-            return declaration.WithBody(body)
+            return declaration.WithBody(body);
 
-        private static BlockSyntax SerializeChangesEpilogue(GClass cl) => Block(ParseStatement(ChangedFieldsFieldName(cl) + " = default;"))
+        private static BlockSyntax SerializeChangesEpilogue(GClass cl) => Block(ParseStatement(ChangedFieldsFieldName(cl) + " = default;"));
 
         static BlockSyntax ApplySerializeField(BlockSyntax body, GClass cl, GProperty prop, bool isObject, bool isPassthrough)
-            var changedFields = ChangedFieldsFieldName(cl)
-            var changedFieldsType = ChangedFieldsTypeName(cl)
+            var changedFields = ChangedFieldsFieldName(cl);
+            var changedFieldsType = ChangedFieldsTypeName(cl);
 
-            var code = ""
+            var code = "";
             if (prop.Animated)
                 code = $@"
     if(({changedFields} & {changedFieldsType}.{prop.Name}Animated) == {changedFieldsType}.{prop.Name}Animated)
@@ -385,7 +385,7 @@ return;
     if(({changedFields} & {changedFieldsType}.{prop.Name}) == {changedFieldsType}.{prop.Name})
         writer.Write{(isObject ? "Object" : "")}({PropertyBackingFieldName(prop)}{(isObject && !isPassthrough ? "?.Server!":"")});
 ";
-            return body.AddStatements(ParseStatement(code))
+            return body.AddStatements(ParseStatement(code));
 
         private static BlockSyntax DeserializeChangesPrologue(GClass cl)
             return Block(
@@ -395,37 +395,37 @@ return;
             )
 
         private static BlockSyntax ApplyDeserializeChangesEpilogue(BlockSyntax body, GClass cl)
-            return body.AddStatements(ParseStatement("OnFieldsDeserialized(changed);"))
+            return body.AddStatements(ParseStatement("OnFieldsDeserialized(changed);"));
 
         static BlockSyntax ApplyDeserializeField(BlockSyntax body, GClass cl, GProperty prop, string serverType, bool isObject)
-            var changedFieldsType = ChangedFieldsTypeName(cl)
-            var code = ""
+            var changedFieldsType = ChangedFieldsTypeName(cl);
+            var code = "";
             if (prop.Animated)
                 code = $@"
     if((changed & {changedFieldsType}.{prop.Name}Animated) == {changedFieldsType}.{prop.Name}Animated)
             SetAnimatedValue({CompositionPropertyField(prop)}, ref {PropertyBackingFieldName(prop)}, committedAt, reader.ReadObject<IAnimationInstance>());
     else ";
 
-            var readValueCode = $"reader.Read{(isObject ? "Object" : "")}<{serverType}>()"
+            var readValueCode = $"reader.Read{(isObject ? "Object" : "")}<{serverType}>()";
             code += $@"
     if((changed & {changedFieldsType}.{prop.Name}) == {changedFieldsType}.{prop.Name})
 ";
-            code += $"{prop.Name} =  {readValueCode};"
-            return body.AddStatements(ParseStatement(code))
+            code += $"{prop.Name} =  {readValueCode};";
+            return body.AddStatements(ParseStatement(code));
 
         static ClassDeclarationSyntax WithGetCompositionProperty(ClassDeclarationSyntax cl, BlockSyntax body)
             if (body.Statements.Count == 0)
-                return cl
+                return cl;
             body = body.AddStatements(
                 ParseStatement("return base.GetCompositionProperty(name);"))
             var method = ((MethodDeclarationSyntax)ParseMemberDeclaration(
                 $"public override CompositionProperty? GetCompositionProperty(string name){{}}")!)
                 .WithBody(body)
 
-            return cl.AddMembers(method)
+            return cl.AddMembers(method);
 
         static ClassDeclarationSyntax WithStartAnimation(ClassDeclarationSyntax cl, BlockSyntax body)
-            body = body.AddStatements(ExpressionStatement(InvocationExpression(MemberAccess("base", "StartAnimation"), ArgumentList(SeparatedList(new[] { Argument(IdentifierName("propertyName")), Argument(IdentifierName("animation")), Argument(IdentifierName("finalValue")), })))))
+            body = body.AddStatements(ExpressionStatement(InvocationExpression(MemberAccess("base", "StartAnimation"), ArgumentList(SeparatedList(new[] { Argument(IdentifierName("propertyName")), Argument(IdentifierName("animation")), Argument(IdentifierName("finalValue")), })))));
             return cl.AddMembers(
                 ((MethodDeclarationSyntax)ParseMemberDeclaration(
                     "internal override void StartAnimation(string propertyName, CompositionAnimation animation, Avalonia.Rendering.Composition.Expressions.ExpressionVariant? finalValue){}")!)

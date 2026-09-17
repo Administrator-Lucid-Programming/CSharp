@@ -1,14 +1,14 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System
-using System.IO
-using System.Collections.Generic
-using System.Diagnostics
-using Microsoft.Diagnostics.Tracing
-using Microsoft.Diagnostics.Tracing.Parsers.Clr
-using Microsoft.Diagnostics.Tracing.Parsers
-using Microsoft.Diagnostics.Tracing.Session
+using System;
+using System.IO;
+using System.Collections.Generic;
+using System.Diagnostics;
+using Microsoft.Diagnostics.Tracing;
+using Microsoft.Diagnostics.Tracing.Parsers.Clr;
+using Microsoft.Diagnostics.Tracing.Parsers;
+using Microsoft.Diagnostics.Tracing.Session;
 
 /// <summary>
 /// Intercept module loads for assemblies we want to collect method Jit info for.
@@ -21,26 +21,26 @@ public class ReadyToRunJittedMethods : IDisposable
     /// is shut down and all events have been processes because otherwise the OS may recycle the PIDs
     /// and prevent us from back-translating the events to the actual processes being executed.
     /// </summary>
-    private List<Process> _etwProcesses
+    private List<Process> _etwProcesses;
 
-    private Dictionary<int, ProcessInfo> _pidToProcess
-    private HashSet<string> _testModuleNames
-    private HashSet<string> _testFolderNames
-    private List<long> _testModuleIds = new List<long>()
-    private Dictionary<long, string> _testModuleIdToName = new Dictionary<long, string>()
-    private Dictionary<string, HashSet<string>> _methodsJitted = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase)
+    private Dictionary<int, ProcessInfo> _pidToProcess;
+    private HashSet<string> _testModuleNames;
+    private HashSet<string> _testFolderNames;
+    private List<long> _testModuleIds = new List<long>();
+    private Dictionary<long, string> _testModuleIdToName = new Dictionary<long, string>();
+    private Dictionary<string, HashSet<string>> _methodsJitted = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
 
     public ReadyToRunJittedMethods(TraceEventSession session, List<ProcessInfo> processList, int startIndex, int endIndex)
-        _etwProcesses = new List<Process>()
-        _pidToProcess = new Dictionary<int, ProcessInfo>()
-        _testModuleNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        _testFolderNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        _etwProcesses = new List<Process>();
+        _pidToProcess = new Dictionary<int, ProcessInfo>();
+        _testModuleNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        _testFolderNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         for (int index = startIndex; index < endIndex; index++)
-            ProcessInfo process = processList[index]
+            ProcessInfo process = processList[index];
             if (process.Parameters.CollectJittedMethods)
-                _testFolderNames.UnionWith(process.Parameters.MonitorFolders)
-                _testModuleNames.UnionWith(process.Parameters.MonitorModules)
+                _testFolderNames.UnionWith(process.Parameters.MonitorFolders);
+                _testModuleNames.UnionWith(process.Parameters.MonitorModules);
 
         session.Source.Clr.LoaderModuleLoad += delegate (ModuleLoadUnloadTraceData data) {
             if (ShouldMonitorModule(data))
@@ -74,50 +74,50 @@ public class ReadyToRunJittedMethods : IDisposable
 
     public void Dispose()
         foreach (Process process in _etwProcesses)
-            process.Dispose()
+            process.Dispose();
 
     public void AddProcessMapping(ProcessInfo processInfo, Process process)
-        _pidToProcess[process.Id] = processInfo
-        _etwProcesses.Add(process)
+        _pidToProcess[process.Id] = processInfo;
+        _etwProcesses.Add(process);
 
     private bool ShouldMonitorModule(ModuleLoadUnloadTraceData data)
         if (!_pidToProcess.ContainsKey(data.ProcessID))
-            return false
+            return false;
 
         if (File.Exists(data.ModuleILPath) && _testFolderNames.Contains(Path.GetDirectoryName(data.ModuleILPath).ToAbsoluteDirectoryPath()))
-            return true
+            return true;
 
         if (_testModuleNames.Contains(data.ModuleILPath) || _testModuleNames.Contains(data.ModuleNativePath))
-            return true
+            return true;
 
-        return false
+        return false;
 
-    public IReadOnlyDictionary<string, HashSet<string>> JittedMethods => _methodsJitted
+    public IReadOnlyDictionary<string, HashSet<string>> JittedMethods => _methodsJitted;
 
     /// <summary>
     /// Returns the number of test assemblies that were loaded by the runtime
     /// </summary>
-    public int AssembliesWithEventsCount => _testModuleIds.Count
+    public int AssembliesWithEventsCount => _testModuleIds.Count;
 
     //
     // Builds a method name from event data of the form Class.Method(arg1, arg2)
     //
     private static string GetName(MethodLoadUnloadVerboseTraceData data)
-        var signature = ""
-        var signatureWithReturnType = data.MethodSignature
-        var openParenIndex = signatureWithReturnType.IndexOf('(')
+        var signature = "";
+        var signatureWithReturnType = data.MethodSignature;
+        var openParenIndex = signatureWithReturnType.IndexOf('(');
 
         if (0 <= openParenIndex)
-            signature = signatureWithReturnType.Substring(openParenIndex)
+            signature = signatureWithReturnType.Substring(openParenIndex);
 
-        var className = data.MethodNamespace
-        var firstBox = className.IndexOf('[')
-        var lastDot = className.LastIndexOf('.', firstBox >= 0 ? firstBox : className.Length - 1)
+        var className = data.MethodNamespace;
+        var firstBox = className.IndexOf('[');
+        var lastDot = className.LastIndexOf('.', firstBox >= 0 ? firstBox : className.Length - 1);
         if (0 <= lastDot)
-            className = className.Substring(lastDot + 1)
+            className = className.Substring(lastDot + 1);
 
-        var optionalSeparator = "."
+        var optionalSeparator = ".";
         if (className.Length == 0)
-            optionalSeparator = ""
+            optionalSeparator = "";
 
-        return className + optionalSeparator + data.MethodName + signature
+        return className + optionalSeparator + data.MethodName + signature;

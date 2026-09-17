@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft.  All Rights Reserved.  Licensed under the Apache License, Version 2.0.  See License.txt in the project root for license information.
 
-using System.Diagnostics
-using System.Text
+using System.Diagnostics;
+using System.Text;
 
 namespace OrchardCore.DisplayManagement;
 
@@ -25,24 +25,24 @@ namespace OrchardCore.DisplayManagement;
 internal sealed class ObjectPool<T> where T : class
     [DebuggerDisplay("{Value,nq}")]
     private struct Element
-        internal T Value
+        internal T Value;
 
     /// <remarks>
     /// Not using System.Func{T} because this file is linked into the (debugger) Formatter,
     /// which does not have that type (since it compiles against .NET 2.0).
     /// </remarks>
-    internal delegate T Factory ()
+    internal delegate T Factory ();
 
     // Storage for the pool objects. The first item is stored in a dedicated field because we
     // expect to be able to satisfy most requests from it.
-    private T _firstItem
+    private T _firstItem;
 
-    private readonly Element[] _items
+    private readonly Element[] _items;
 
     // factory is stored for the lifetime of the pool. We will call this only when pool needs to
     // expand. compared to "new T()", Func gives more flexibility to implementers and faster
     // than "new T()".
-    private readonly Factory _factory
+    private readonly Factory _factory;
 
     #if DETECT_LEAKS
         private static readonly ConditionalWeakTable<T, LeakTracker> leakTrackers = new ConditionalWeakTable<T, LeakTracker>();
@@ -90,13 +90,13 @@ internal sealed class ObjectPool<T> where T : class
         ;
 
     internal ObjectPool(Factory factory, int size)
-        Debug.Assert(size >= 1)
-        _factory = factory
-        _items = new Element[size - 1]
+        Debug.Assert(size >= 1);
+        _factory = factory;
+        _items = new Element[size - 1];
 
     private T CreateInstance()
-        var inst = _factory()
-        return inst
+        var inst = _factory();
+        return inst;
 
     /// <summary>
     /// Produces an instance.
@@ -111,7 +111,7 @@ internal sealed class ObjectPool<T> where T : class
         // Note that the initial read is optimistically not synchronized. That is intentional.
         // We will interlock only when we have a candidate. in a worst case we may miss some
         // recently returned objects. Not a big deal.
-        var inst = _firstItem
+        var inst = _firstItem;
         if (inst == null || inst != Interlocked.CompareExchange(ref _firstItem, null, inst))
             inst = AllocateSlow();
 
@@ -124,21 +124,21 @@ internal sealed class ObjectPool<T> where T : class
         tracker.Trace = frame;
 #endif
 #endif
-        return inst
+        return inst;
 
     private T AllocateSlow()
-        var items = _items
+        var items = _items;
 
         for (var i = 0; i < items.Length; i++)
             // Note that the initial read is optimistically not synchronized. That is intentional.
             // We will interlock only when we have a candidate. in a worst case we may miss some
             // recently returned objects. Not a big deal.
-            var inst = items[i].Value
+            var inst = items[i].Value;
             if (inst != null)
                 if (inst == Interlocked.CompareExchange(ref items[i].Value, null, inst))
-                    return inst
+                    return inst;
 
-        return CreateInstance()
+        return CreateInstance();
 
     /// <summary>
     /// Returns objects to the pool.
@@ -153,19 +153,19 @@ internal sealed class ObjectPool<T> where T : class
             // Intentionally not using interlocked here.
             // In a worst case scenario two objects may be stored into same slot.
             // It is very unlikely to happen and will only mean that one of the objects will get collected.
-            _firstItem = obj
+            _firstItem = obj;
         else
-            FreeSlow(obj)
+            FreeSlow(obj);
 
     private void FreeSlow(T obj)
-        var items = _items
+        var items = _items;
         for (var i = 0; i < items.Length; i++)
             if (items[i].Value == null)
                 // Intentionally not using interlocked here.
                 // In a worst case scenario two objects may be stored into same slot.
                 // It is very unlikely to happen and will only mean that one of the objects will get collected.
-                items[i].Value = obj
-                break
+                items[i].Value = obj;
+                break;
 
 /// <summary>
 /// The usage is:
@@ -176,37 +176,37 @@ internal sealed class ObjectPool<T> where T : class
 ///        inst.Free();.
 /// </summary>
 public sealed class StringBuilderPool : IDisposable
-    private const int DefaultCapacity = 1 * 1024
+    private const int DefaultCapacity = 1 * 1024;
 
     // Global pool.
-    private static readonly ObjectPool<StringBuilderPool> _poolInstance = CreatePool()
+    private static readonly ObjectPool<StringBuilderPool> _poolInstance = CreatePool();
 
-    public readonly StringBuilder Builder = new(DefaultCapacity)
-    private readonly ObjectPool<StringBuilderPool> _pool
+    public readonly StringBuilder Builder = new(DefaultCapacity);
+    private readonly ObjectPool<StringBuilderPool> _pool;
 
     private StringBuilderPool(ObjectPool<StringBuilderPool> pool)
-        Debug.Assert(pool != null)
-        _pool = pool
+        Debug.Assert(pool != null);
+        _pool = pool;
 
-    public int Length => Builder.Length
+    public int Length => Builder.Length;
 
     internal static ObjectPool<StringBuilderPool> CreatePool(int size = 1000)
-        ObjectPool<StringBuilderPool> pool = null
-        pool = new ObjectPool<StringBuilderPool>(() => new StringBuilderPool(pool), size)
-        return pool
+        ObjectPool<StringBuilderPool> pool = null;
+        pool = new ObjectPool<StringBuilderPool>(() => new StringBuilderPool(pool), size);
+        return pool;
 
     public static StringBuilderPool GetInstance()
-        var builder = _poolInstance.Allocate()
-        Debug.Assert(builder.Builder.Length == 0)
-        return builder
+        var builder = _poolInstance.Allocate();
+        Debug.Assert(builder.Builder.Length == 0);
+        return builder;
 
     public override string ToString()
-        return Builder.ToString()
+        return Builder.ToString();
 
     public void Dispose()
-        var builder = Builder
+        var builder = Builder;
 
         // Do not store builders that are too large.
         if (builder.Capacity == DefaultCapacity)
-            builder.Clear()
-            _pool.Free(this)
+            builder.Clear();
+            _pool.Free(this);

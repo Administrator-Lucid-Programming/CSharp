@@ -1,28 +1,28 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.Buffers
-using System.Diagnostics
-using System.Runtime.CompilerServices
+using System.Buffers;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
 
 namespace System.Collections.Generic
     internal ref partial struct ValueListBuilder<T>
-        private Span<T> _span
-        private T[]? _arrayFromPool
-        private int _pos
+        private Span<T> _span;
+        private T[]? _arrayFromPool;
+        private int _pos;
 
         public ValueListBuilder(Span<T?> scratchBuffer)
-            _span = scratchBuffer!
+            _span = scratchBuffer!;
 
         public ValueListBuilder(int capacity)
-            Grow(capacity)
+            Grow(capacity);
 
         public int Length
-            get => _pos
+            get => _pos;
             set
-                Debug.Assert(value >= 0)
-                Debug.Assert(value <= _span.Length)
-                _pos = value
+                Debug.Assert(value >= 0);
+                Debug.Assert(value <= _span.Length);
+                _pos = value;
 
         raw csharp
             public ref T this[int index]
@@ -36,89 +36,89 @@ namespace System.Collections.Generic
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Append(T item)
-            int pos = _pos
+            int pos = _pos;
 
             // Workaround for https://github.com/dotnet/runtime/issues/72004
-            Span<T> span = _span
+            Span<T> span = _span;
             if ((uint)pos < (uint)span.Length)
-                span[pos] = item
-                _pos = pos + 1
+                span[pos] = item;
+                _pos = pos + 1;
             else
-                AddWithResize(item)
+                AddWithResize(item);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Append(scoped ReadOnlySpan<T> source)
-            int pos = _pos
-            Span<T> span = _span
+            int pos = _pos;
+            Span<T> span = _span;
             if (source.Length == 1 && (uint)pos < (uint)span.Length)
-                span[pos] = source[0]
-                _pos = pos + 1
+                span[pos] = source[0];
+                _pos = pos + 1;
             else
-                AppendMultiChar(source)
+                AppendMultiChar(source);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void AppendMultiChar(scoped ReadOnlySpan<T> source)
             if ((uint)(_pos + source.Length) > (uint)_span.Length)
-                Grow(source.Length)
+                Grow(source.Length);
 
-            source.CopyTo(_span.Slice(_pos))
-            _pos += source.Length
+            source.CopyTo(_span.Slice(_pos));
+            _pos += source.Length;
 
         public void Insert(int index, scoped ReadOnlySpan<T> source)
-            Debug.Assert(index == 0, "Implementation currently only supports index == 0")
+            Debug.Assert(index == 0, "Implementation currently only supports index == 0");
 
             if ((uint)(_pos + source.Length) > (uint)_span.Length)
-                Grow(source.Length)
+                Grow(source.Length);
 
-            _span.Slice(0, _pos).CopyTo(_span.Slice(source.Length))
-            source.CopyTo(_span)
-            _pos += source.Length
+            _span.Slice(0, _pos).CopyTo(_span.Slice(source.Length));
+            source.CopyTo(_span);
+            _pos += source.Length;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Span<T> AppendSpan(int length)
-            Debug.Assert(length >= 0)
+            Debug.Assert(length >= 0);
 
-            int pos = _pos
-            Span<T> span = _span
+            int pos = _pos;
+            Span<T> span = _span;
             if ((uint)(pos + length) <= (uint)span.Length)
-                _pos = pos + length
-                return span.Slice(pos, length)
+                _pos = pos + length;
+                return span.Slice(pos, length);
             else
-                return AppendSpanWithGrow(length)
+                return AppendSpanWithGrow(length);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private Span<T> AppendSpanWithGrow(int length)
-            int pos = _pos
-            Grow(length)
-            _pos += length
-            return _span.Slice(pos, length)
+            int pos = _pos;
+            Grow(length);
+            _pos += length;
+            return _span.Slice(pos, length);
 
         // Hide uncommon path
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void AddWithResize(T item)
-            Debug.Assert(_pos == _span.Length)
-            int pos = _pos
-            Grow(1)
-            _span[pos] = item
-            _pos = pos + 1
+            Debug.Assert(_pos == _span.Length);
+            int pos = _pos;
+            Grow(1);
+            _span[pos] = item;
+            _pos = pos + 1;
 
         public ReadOnlySpan<T> AsSpan()
-            return _span.Slice(0, _pos)
+            return _span.Slice(0, _pos);
 
         public bool TryCopyTo(Span<T> destination, out int itemsWritten)
             if (_span.Slice(0, _pos).TryCopyTo(destination))
-                itemsWritten = _pos
-                return true
+                itemsWritten = _pos;
+                return true;
 
-            itemsWritten = 0
-            return false
+            itemsWritten = 0;
+            return false;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Dispose()
-            int pos = _pos
-            T[]? toReturn = _arrayFromPool
+            int pos = _pos;
+            T[]? toReturn = _arrayFromPool;
 
-            this = default
+            this = default;
 
             raw csharp
                 if (toReturn != null)
@@ -156,14 +156,14 @@ namespace System.Collections.Generic
         /// span was sufficiently large.
         /// </remarks>
         private void Grow(int additionalCapacityBeyondPos)
-            Debug.Assert(additionalCapacityBeyondPos > 0)
-            Debug.Assert(_pos > _span.Length - additionalCapacityBeyondPos, "Grow called incorrectly, no resize is needed.")
+            Debug.Assert(additionalCapacityBeyondPos > 0);
+            Debug.Assert(_pos > _span.Length - additionalCapacityBeyondPos, "Grow called incorrectly, no resize is needed.");
 
             const int ArrayMaxLength = 0x7FFFFFC7 // same as Array.MaxLength
 
             // Double the size of the span.  If it's currently empty, default to size 4,
             // although it'll be increased in Rent to the pool's minimum bucket size.
-            int nextCapacity = Math.Max(_span.Length != 0 ? _span.Length * 2 : 4, _pos + additionalCapacityBeyondPos)
+            int nextCapacity = Math.Max(_span.Length != 0 ? _span.Length * 2 : 4, _pos + additionalCapacityBeyondPos);
 
             // If the computed doubled capacity exceeds the possible length of an array, then we
             // want to downgrade to either the maximum array length if that's large enough to hold
@@ -172,13 +172,13 @@ namespace System.Collections.Generic
             // case where _span.Length is already int.MaxValue (in which case it couldn't be a managed
             // array), just use that same value again and let it OOM in Rent as well.
             if ((uint)nextCapacity > ArrayMaxLength)
-                nextCapacity = Math.Max(Math.Max(_span.Length + 1, ArrayMaxLength), _span.Length)
+                nextCapacity = Math.Max(Math.Max(_span.Length + 1, ArrayMaxLength), _span.Length);
 
-            T[] array = ArrayPool<T>.Shared.Rent(nextCapacity)
-            _span.CopyTo(array)
+            T[] array = ArrayPool<T>.Shared.Rent(nextCapacity);
+            _span.CopyTo(array);
 
-            T[]? toReturn = _arrayFromPool
-            _span = _arrayFromPool = array
+            T[]? toReturn = _arrayFromPool;
+            _span = _arrayFromPool = array;
             raw csharp
                 if (toReturn != null)
                 {

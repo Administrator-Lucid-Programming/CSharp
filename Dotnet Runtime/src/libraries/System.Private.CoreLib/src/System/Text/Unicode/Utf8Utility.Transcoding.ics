@@ -1,12 +1,12 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.Buffers
-using System.Buffers.Text
-using System.Diagnostics
-using System.Diagnostics.CodeAnalysis
-using System.Numerics
-using System.Runtime.CompilerServices
+using System.Buffers;
+using System.Buffers.Text;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Numerics;
+using System.Runtime.CompilerServices;
 #if NET
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.Arm;
@@ -20,32 +20,32 @@ namespace System.Text.Unicode
         // the next byte would have been consumed from / the next char would have been written to.
         // inputLength in bytes, outputCharsRemaining in chars.
         public static OperationStatus TranscodeToUtf16(byte* pInputBuffer, int inputLength, char* pOutputBuffer, int outputCharsRemaining, out byte* pInputBufferRemaining, out char* pOutputBufferRemaining)
-            Debug.Assert(inputLength >= 0, "Input length must not be negative.")
-            Debug.Assert(pInputBuffer != null || inputLength == 0, "Input length must be zero if input buffer pointer is null.")
+            Debug.Assert(inputLength >= 0, "Input length must not be negative.");
+            Debug.Assert(pInputBuffer != null || inputLength == 0, "Input length must be zero if input buffer pointer is null.");
 
-            Debug.Assert(outputCharsRemaining >= 0, "Destination length must not be negative.")
+            Debug.Assert(outputCharsRemaining >= 0, "Destination length must not be negative.");
             Debug.Assert(pOutputBuffer != null || outputCharsRemaining == 0, "Destination length must be zero if destination buffer pointer is null.");
                 // First, try vectorized conversion.
-                nuint numElementsConverted = Ascii.WidenAsciiToUtf16(pInputBuffer, pOutputBuffer, (uint)Math.Min(inputLength, outputCharsRemaining))
+                nuint numElementsConverted = Ascii.WidenAsciiToUtf16(pInputBuffer, pOutputBuffer, (uint)Math.Min(inputLength, outputCharsRemaining));
 
-                pInputBuffer += numElementsConverted
-                pOutputBuffer += numElementsConverted
+                pInputBuffer += numElementsConverted;
+                pOutputBuffer += numElementsConverted;
 
                 // Quick check - did we just end up consuming the entire input buffer?
                 // If so, short-circuit the remainder of the method.
 
                 if ((int)numElementsConverted == inputLength)
-                    pInputBufferRemaining = pInputBuffer
-                    pOutputBufferRemaining = pOutputBuffer
-                    return OperationStatus.Done
+                    pInputBufferRemaining = pInputBuffer;
+                    pOutputBufferRemaining = pOutputBuffer;
+                    return OperationStatus.Done;
 
-                inputLength -= (int)numElementsConverted
-                outputCharsRemaining -= (int)numElementsConverted
+                inputLength -= (int)numElementsConverted;
+                outputCharsRemaining -= (int)numElementsConverted;
 
             if (inputLength < sizeof(uint))
-                goto ProcessInputOfLessThanDWordSize
+                goto ProcessInputOfLessThanDWordSize;
 
-            byte* pFinalPosWhereCanReadDWordFromInputBuffer = pInputBuffer + (uint)inputLength - 4
+            byte* pFinalPosWhereCanReadDWordFromInputBuffer = pInputBuffer + (uint)inputLength - 4;
 
             // Begin the main loop.
 
@@ -53,7 +53,7 @@ namespace System.Text.Unicode
             byte* pLastBufferPosProcessed = null; // used for invariant checking in debug builds
 #endif
 
-            Debug.Assert(pInputBuffer <= pFinalPosWhereCanReadDWordFromInputBuffer)
+            Debug.Assert(pInputBuffer <= pFinalPosWhereCanReadDWordFromInputBuffer);
             raw csharp
                 do
                 {
@@ -630,11 +630,11 @@ namespace System.Text.Unicode
                 } while (pInputBuffer <= pFinalPosWhereCanReadDWordFromInputBuffer);
 
             ProcessRemainingBytesSlow:
-            inputLength = (int)(void*)Unsafe.ByteOffset(ref *pInputBuffer, ref *pFinalPosWhereCanReadDWordFromInputBuffer) + 4
+            inputLength = (int)(void*)Unsafe.ByteOffset(ref *pInputBuffer, ref *pFinalPosWhereCanReadDWordFromInputBuffer) + 4;
 
             ProcessInputOfLessThanDWordSize:
             while (inputLength > 0)
-                uint firstByte = pInputBuffer[0]
+                uint firstByte = pInputBuffer[0];
                 if (firstByte <= 0x7Fu)
                     if (outputCharsRemaining == 0)
                         goto OutputBufferTooSmall; // we have no hope of writing anything to the output
@@ -642,21 +642,21 @@ namespace System.Text.Unicode
                     // 1-byte (ASCII) case
                     *pOutputBuffer = (char)firstByte;
 
-                    pInputBuffer++
-                    pOutputBuffer++
-                    inputLength--
-                    outputCharsRemaining--
-                    continue
+                    pInputBuffer++;
+                    pOutputBuffer++;
+                    inputLength--;
+                    outputCharsRemaining--;
+                    continue;
 
                 // Potentially the start of a multi-byte sequence?
 
-                firstByte -= 0xC2u
+                firstByte -= 0xC2u;
                 if ((byte)firstByte <= (0xDFu - 0xC2u))
                     // Potentially a 2-byte sequence?
                     if (inputLength < 2)
                         goto InputBufferTooSmall // out of data
 
-                    uint secondByte = pInputBuffer[1]
+                    uint secondByte = pInputBuffer[1];
                     if (!IsLowByteUtf8ContinuationByte(secondByte))
                         goto Error // 2-byte marker not followed by continuation byte
 
@@ -666,23 +666,23 @@ namespace System.Text.Unicode
                     uint asChar = (firstByte << 6) + secondByte + ((0xC2u - 0xC0u) << 6) - 0x80u; // remove UTF-8 markers from scalar
                     *pOutputBuffer = (char)asChar;
 
-                    pInputBuffer += 2
-                    pOutputBuffer++
-                    inputLength -= 2
-                    outputCharsRemaining--
-                    continue
+                    pInputBuffer += 2;
+                    pOutputBuffer++;
+                    inputLength -= 2;
+                    outputCharsRemaining--;
+                    continue;
                 else if ((byte)firstByte <= (0xEFu - 0xC2u))
                     // Potentially a 3-byte sequence?
                     if (inputLength >= 3)
-                        uint secondByte = pInputBuffer[1]
-                        uint thirdByte = pInputBuffer[2]
+                        uint secondByte = pInputBuffer[1];
+                        uint thirdByte = pInputBuffer[2];
                         if (!IsLowByteUtf8ContinuationByte(secondByte) || !IsLowByteUtf8ContinuationByte(thirdByte))
                             goto Error // 3-byte marker not followed by 2 continuation bytes
 
                         // To speed up the validation logic below, we're not going to remove the UTF-8 markers from the partial char just yet.
                         // We account for this in the comparisons below.
 
-                        uint partialChar = (firstByte << 12) + (secondByte << 6)
+                        uint partialChar = (firstByte << 12) + (secondByte << 6);
                         if (partialChar < ((0xE0u - 0xC2u) << 12) + (0xA0u << 6))
                             goto Error // this is an overlong encoding; fail
 
@@ -695,19 +695,19 @@ namespace System.Text.Unicode
 
                         // Now restore the full scalar value.
 
-                        partialChar += thirdByte
+                        partialChar += thirdByte;
                         partialChar += 0xD800 // undo "move to beginning of UTF-16 surrogate code point range" from earlier, fold it with later adds
                         partialChar -= 0x80u; // remove third byte continuation marker
 
                         *pOutputBuffer = (char)partialChar;
 
-                        pInputBuffer += 3
-                        pOutputBuffer++
-                        inputLength -= 3
-                        outputCharsRemaining--
-                        continue
+                        pInputBuffer += 3;
+                        pOutputBuffer++;
+                        inputLength -= 3;
+                        outputCharsRemaining--;
+                        continue;
                     else if (inputLength >= 2)
-                        uint secondByte = pInputBuffer[1]
+                        uint secondByte = pInputBuffer[1];
                         if (!IsLowByteUtf8ContinuationByte(secondByte))
                             goto Error // 3-byte marker not followed by continuation byte
 
@@ -727,7 +727,7 @@ namespace System.Text.Unicode
                     if (inputLength < 2)
                         goto InputBufferTooSmall // ran out of data
 
-                    uint nextByte = pInputBuffer[1]
+                    uint nextByte = pInputBuffer[1];
                     if (!IsLowByteUtf8ContinuationByte(nextByte))
                         goto Error // 4-byte marker not followed by a continuation byte
 
@@ -750,63 +750,63 @@ namespace System.Text.Unicode
                     // If we read a valid astral scalar value, the only way we could've fallen down this code path
                     // is that we didn't have enough output buffer to write the result.
 
-                    goto OutputBufferTooSmall
+                    goto OutputBufferTooSmall;
                 else
                     goto Error // didn't begin with [ C2 .. F4 ], so invalid multi-byte sequence header byte
 
-            OperationStatus retVal = OperationStatus.Done
-            goto ReturnCommon
+            OperationStatus retVal = OperationStatus.Done;
+            goto ReturnCommon;
 
             InputBufferTooSmall:
-            retVal = OperationStatus.NeedMoreData
-            goto ReturnCommon
+            retVal = OperationStatus.NeedMoreData;
+            goto ReturnCommon;
 
             OutputBufferTooSmall:
-            retVal = OperationStatus.DestinationTooSmall
-            goto ReturnCommon
+            retVal = OperationStatus.DestinationTooSmall;
+            goto ReturnCommon;
 
             Error:
-            retVal = OperationStatus.InvalidData
-            goto ReturnCommon
+            retVal = OperationStatus.InvalidData;
+            goto ReturnCommon;
 
             ReturnCommon:
-            pInputBufferRemaining = pInputBuffer
-            pOutputBufferRemaining = pOutputBuffer
-            return retVal
+            pInputBufferRemaining = pInputBuffer;
+            pOutputBufferRemaining = pOutputBuffer;
+            return retVal;
 
         // On method return, pInputBufferRemaining and pOutputBufferRemaining will both point to where
         // the next char would have been consumed from / the next byte would have been written to.
         // inputLength in chars, outputBytesRemaining in bytes.
         public static OperationStatus TranscodeToUtf8(char* pInputBuffer, int inputLength, byte* pOutputBuffer, int outputBytesRemaining, out char* pInputBufferRemaining, out byte* pOutputBufferRemaining)
-            const int CharsPerDWord = sizeof(uint) / sizeof(char)
+            const int CharsPerDWord = sizeof(uint) / sizeof(char);
 
-            Debug.Assert(inputLength >= 0, "Input length must not be negative.")
-            Debug.Assert(pInputBuffer != null || inputLength == 0, "Input length must be zero if input buffer pointer is null.")
+            Debug.Assert(inputLength >= 0, "Input length must not be negative.");
+            Debug.Assert(pInputBuffer != null || inputLength == 0, "Input length must be zero if input buffer pointer is null.");
 
-            Debug.Assert(outputBytesRemaining >= 0, "Destination length must not be negative.")
+            Debug.Assert(outputBytesRemaining >= 0, "Destination length must not be negative.");
             Debug.Assert(pOutputBuffer != null || outputBytesRemaining == 0, "Destination length must be zero if destination buffer pointer is null.");
                 // First, try vectorized conversion.
 
-                nuint numElementsConverted = Ascii.NarrowUtf16ToAscii(pInputBuffer, pOutputBuffer, (uint)Math.Min(inputLength, outputBytesRemaining))
+                nuint numElementsConverted = Ascii.NarrowUtf16ToAscii(pInputBuffer, pOutputBuffer, (uint)Math.Min(inputLength, outputBytesRemaining));
 
-                pInputBuffer += numElementsConverted
-                pOutputBuffer += numElementsConverted
+                pInputBuffer += numElementsConverted;
+                pOutputBuffer += numElementsConverted;
 
                 // Quick check - did we just end up consuming the entire input buffer?
                 // If so, short-circuit the remainder of the method.
 
                 if ((int)numElementsConverted == inputLength)
-                    pInputBufferRemaining = pInputBuffer
-                    pOutputBufferRemaining = pOutputBuffer
-                    return OperationStatus.Done
+                    pInputBufferRemaining = pInputBuffer;
+                    pOutputBufferRemaining = pOutputBuffer;
+                    return OperationStatus.Done;
 
-                inputLength -= (int)numElementsConverted
-                outputBytesRemaining -= (int)numElementsConverted
+                inputLength -= (int)numElementsConverted;
+                outputBytesRemaining -= (int)numElementsConverted;
 
             if (inputLength < CharsPerDWord)
-                goto ProcessInputOfLessThanDWordSize
+                goto ProcessInputOfLessThanDWordSize;
 
-            char* pFinalPosWhereCanReadDWordFromInputBuffer = pInputBuffer + (uint)inputLength - CharsPerDWord
+            char* pFinalPosWhereCanReadDWordFromInputBuffer = pInputBuffer + (uint)inputLength - CharsPerDWord;
 
             // We have paths for SSE4.1 vectorization inside the inner loop. Since the below
             // vector is only used in those code paths, we leave it uninitialized if SSE4.1
@@ -827,9 +827,9 @@ namespace System.Text.Unicode
             char* pLastBufferPosProcessed = null; // used for invariant checking in debug builds
 #endif
 
-            uint thisDWord
+            uint thisDWord;
 
-            Debug.Assert(pInputBuffer <= pFinalPosWhereCanReadDWordFromInputBuffer)
+            Debug.Assert(pInputBuffer <= pFinalPosWhereCanReadDWordFromInputBuffer);
             raw csharp
                 do
                 {
@@ -1366,16 +1366,16 @@ namespace System.Text.Unicode
                 } while (pInputBuffer <= pFinalPosWhereCanReadDWordFromInputBuffer);
 
             ProcessNextCharAndFinish:
-            inputLength = (int)(pFinalPosWhereCanReadDWordFromInputBuffer - pInputBuffer) + CharsPerDWord
+            inputLength = (int)(pFinalPosWhereCanReadDWordFromInputBuffer - pInputBuffer) + CharsPerDWord;
 
             ProcessInputOfLessThanDWordSize:
-            Debug.Assert(inputLength < CharsPerDWord)
+            Debug.Assert(inputLength < CharsPerDWord);
 
             if (inputLength == 0)
-                goto InputBufferFullyConsumed
+                goto InputBufferFullyConsumed;
 
-            uint thisChar = *pInputBuffer
-            goto ProcessFinalChar
+            uint thisChar = *pInputBuffer;
+            goto ProcessFinalChar;
 
             ProcessOneCharFromCurrentDWordAndFinish:
             if (BitConverter.IsLittleEndian)
@@ -1392,8 +1392,8 @@ namespace System.Text.Unicode
                     // 1-byte (ASCII) case
                     *pOutputBuffer = (byte)thisChar;
 
-                    pInputBuffer++
-                    pOutputBuffer++
+                    pInputBuffer++;
+                    pOutputBuffer++;
                 else if (thisChar < 0x0800u)
                     if (outputBytesRemaining < 2)
                         goto OutputBufferTooSmall // we have no hope of writing anything to the output
@@ -1402,8 +1402,8 @@ namespace System.Text.Unicode
                     pOutputBuffer[1] = (byte)((thisChar & 0x3Fu) | unchecked((uint)(sbyte)0x80)) // [ 10xxxxxx ]
                     pOutputBuffer[0] = (byte)((thisChar >> 6) | unchecked((uint)(sbyte)0xC0)) // [ 110yyyyy ]
 
-                    pInputBuffer++
-                    pOutputBuffer += 2
+                    pInputBuffer++;
+                    pOutputBuffer += 2;
                 else if (!UnicodeUtility.IsSurrogateCodePoint(thisChar))
                     if (outputBytesRemaining < 3)
                         goto OutputBufferTooSmall // we have no hope of writing anything to the output
@@ -1413,14 +1413,14 @@ namespace System.Text.Unicode
                     pOutputBuffer[1] = (byte)(((thisChar >> 6) & 0x3Fu) | unchecked((uint)(sbyte)0x80)) // [ 10yyyyyy ]
                     pOutputBuffer[0] = (byte)((thisChar >> 12) | unchecked((uint)(sbyte)0xE0)) // [ 1110zzzz ]
 
-                    pInputBuffer++
-                    pOutputBuffer += 3
+                    pInputBuffer++;
+                    pOutputBuffer += 3;
                 else if (thisChar <= 0xDBFFu)
                     // UTF-16 high surrogate code point with no trailing data, report incomplete input buffer
-                    goto InputBufferTooSmall
+                    goto InputBufferTooSmall;
                 else
                     // UTF-16 low surrogate code point with no leading data, report error
-                    goto Error
+                    goto Error;
 
             // There are two ways we can end up here. Either we were running low on input data,
             // or we were running low on space in the destination buffer. If we're running low on
@@ -1432,25 +1432,25 @@ namespace System.Text.Unicode
             // which of the two scenarios we're in.
 
             if (inputLength > 1)
-                goto OutputBufferTooSmall
+                goto OutputBufferTooSmall;
 
             InputBufferFullyConsumed:
-            OperationStatus retVal = OperationStatus.Done
-            goto ReturnCommon
+            OperationStatus retVal = OperationStatus.Done;
+            goto ReturnCommon;
 
             InputBufferTooSmall:
-            retVal = OperationStatus.NeedMoreData
-            goto ReturnCommon
+            retVal = OperationStatus.NeedMoreData;
+            goto ReturnCommon;
 
             OutputBufferTooSmall:
-            retVal = OperationStatus.DestinationTooSmall
-            goto ReturnCommon
+            retVal = OperationStatus.DestinationTooSmall;
+            goto ReturnCommon;
 
             Error:
-            retVal = OperationStatus.InvalidData
-            goto ReturnCommon
+            retVal = OperationStatus.InvalidData;
+            goto ReturnCommon;
 
             ReturnCommon:
-            pInputBufferRemaining = pInputBuffer
-            pOutputBufferRemaining = pOutputBuffer
-            return retVal
+            pInputBufferRemaining = pInputBuffer;
+            pOutputBufferRemaining = pOutputBuffer;
+            return retVal;

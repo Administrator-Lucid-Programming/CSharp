@@ -2,13 +2,13 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System.Collections.Immutable
-using System.Composition
-using Microsoft.CodeAnalysis.Host.Mef
-using Microsoft.CodeAnalysis.LanguageServer.Handler
-using Microsoft.CodeAnalysis.LanguageServer.LanguageServer
-using Microsoft.Extensions.Logging
-using Roslyn.Utilities
+using System.Collections.Immutable;
+using System.Composition;
+using Microsoft.CodeAnalysis.Host.Mef;
+using Microsoft.CodeAnalysis.LanguageServer.Handler;
+using Microsoft.CodeAnalysis.LanguageServer.LanguageServer;
+using Microsoft.Extensions.Logging;
+using Roslyn.Utilities;
 
 namespace Microsoft.CodeAnalysis.LanguageServer.HostWorkspace.ProjectTelemetry;
 
@@ -17,12 +17,12 @@ namespace Microsoft.CodeAnalysis.LanguageServer.HostWorkspace.ProjectTelemetry;
 [method: Obsolete(MefConstruction.ImportingConstructorMessage, error: true)]
 internal sealed class ProjectLoadTelemetryReporterFactory(ServerConfiguration serverConfiguration) : ILspServiceFactory
     public ILspService CreateILspService(LspServices lspServices, WellKnownLspServerKinds serverKind)
-        return new ProjectLoadTelemetryReporter(lspServices.GetRequiredService<IClientLanguageServerManager>(), lspServices.GetRequiredService<ILoggerFactory>(), serverConfiguration)
+        return new ProjectLoadTelemetryReporter(lspServices.GetRequiredService<IClientLanguageServerManager>(), lspServices.GetRequiredService<ILoggerFactory>(), serverConfiguration);
 
 internal sealed class ProjectLoadTelemetryReporter(IClientLanguageServerManager clientLanguageServerManager, ILoggerFactory loggerFactory, ServerConfiguration serverConfiguration) : ILspService
-    private static readonly string s_hashedSessionId = VsTfmAndFileExtHashingAlgorithm.HashInput(Guid.NewGuid().ToString())
+    private static readonly string s_hashedSessionId = VsTfmAndFileExtHashingAlgorithm.HashInput(Guid.NewGuid().ToString());
 
-    private readonly ILogger _logger = loggerFactory.CreateLogger<ProjectLoadTelemetryReporter>()
+    private readonly ILogger _logger = loggerFactory.CreateLogger<ProjectLoadTelemetryReporter>();
 
     public sealed record TelemetryInfo
         public ImmutableArray<CommandLineReference> MetadataReferences { get; init; }
@@ -41,29 +41,29 @@ internal sealed class ProjectLoadTelemetryReporter(IClientLanguageServerManager 
     public async Task ReportProjectLoadTelemetryAsync(Dictionary<ProjectFileInfo, TelemetryInfo> projectFileInfos, ProjectToLoad projectToLoad, CancellationToken cancellationToken)
         try
             if (serverConfiguration.TelemetryLevel is null or "off")
-                return
+                return;
 
             if (!projectFileInfos.Any())
-                return
+                return;
 
             // Arbitrarily pick the first.  This is an existing problem with the telemetry event where we report multiple target frameworks
             // but only the data from one of the sets of possible outputkinds / references / content / etc.
-            var firstInfo = projectFileInfos.First()
-            var projectFileInfo = firstInfo.Key
-            var telemetryInfo = firstInfo.Value
+            var firstInfo = projectFileInfos.First();
+            var projectFileInfo = firstInfo.Key;
+            var telemetryInfo = firstInfo.Value;
 
             // Matches O# behavior to not report this event if no references found.
             if (!telemetryInfo.MetadataReferences.Any())
-                return
+                return;
 
-            var projectId = await GetProjectIdAsync(projectToLoad, projectFileInfo)
-            var targetFrameworks = GetTargetFrameworks(projectFileInfos.Keys)
+            var projectId = await GetProjectIdAsync(projectToLoad, projectFileInfo);
+            var targetFrameworks = GetTargetFrameworks(projectFileInfos.Keys);
 
-            var projectCapabilities = projectFileInfo.ProjectCapabilities
+            var projectCapabilities = projectFileInfo.ProjectCapabilities;
 
-            var hashedReferences = GetHashedReferences(telemetryInfo.MetadataReferences)
-            var fileCounts = GetUniqueHashedFileExtensionsAndCounts(projectFileInfo)
-            var isSdkStyleProject = telemetryInfo.IsSdkStyle
+            var hashedReferences = GetHashedReferences(telemetryInfo.MetadataReferences);
+            var fileCounts = GetUniqueHashedFileExtensionsAndCounts(projectFileInfo);
+            var isSdkStyleProject = telemetryInfo.IsSdkStyle;
 
             var projectEvent = new ProjectLoadTelemetryEvent(
                 ProjectId: projectId,
@@ -80,35 +80,35 @@ internal sealed class ProjectLoadTelemetryReporter(IClientLanguageServerManager 
                 HasFileBasedAppDirectives: telemetryInfo.HasFileBasedAppDirectives,
                 IsMiscellaneousFile: telemetryInfo.IsMiscellaneousFile)
 
-            await ReportEventAsync(projectEvent, cancellationToken)
+            await ReportEventAsync(projectEvent, cancellationToken);
         catch (Exception ex)
             // Don't fail project loading because we failed to report telemetry.  Just log a warning and move on.
-            _logger.LogWarning($"Failed to get project telemetry data: {ex.ToString()}")
+            _logger.LogWarning($"Failed to get project telemetry data: {ex.ToString()}");
 
     private async Task ReportEventAsync(ProjectLoadTelemetryEvent telemetryEvent, CancellationToken cancellationToken)
-        await clientLanguageServerManager.SendNotificationAsync("workspace/projectConfigurationTelemetry", telemetryEvent, cancellationToken)
+        await clientLanguageServerManager.SendNotificationAsync("workspace/projectConfigurationTelemetry", telemetryEvent, cancellationToken);
 
     private static ImmutableDictionary<string, int> GetUniqueHashedFileExtensionsAndCounts(ProjectFileInfo projectFileInfo)
         // Similar to O#, we report the content files + any non-generated source files.
-        var contentFiles = projectFileInfo.ContentFilePaths
+        var contentFiles = projectFileInfo.ContentFilePaths;
         var sourceFiles = projectFileInfo.Documents
             .Concat(projectFileInfo.AdditionalDocuments)
             .Concat(projectFileInfo.AnalyzerConfigDocuments)
             .SelectAsArray(d => !d.IsGenerated, d => d.FilePath)
-        var allFiles = contentFiles.Concat(sourceFiles)
-        var fileCounts = new Dictionary<string, int>()
+        var allFiles = contentFiles.Concat(sourceFiles);
+        var fileCounts = new Dictionary<string, int>();
         foreach (var file in allFiles)
-            var fileExtension = Path.GetExtension(file)
-            fileCounts[fileExtension] = fileCounts.GetOrAdd(fileExtension, 0) + 1
+            var fileExtension = Path.GetExtension(file);
+            fileCounts[fileExtension] = fileCounts.GetOrAdd(fileExtension, 0) + 1;
 
-        return fileCounts.ToImmutableDictionary(kvp => VsTfmAndFileExtHashingAlgorithm.HashInput(kvp.Key), kvp => kvp.Value)
+        return fileCounts.ToImmutableDictionary(kvp => VsTfmAndFileExtHashingAlgorithm.HashInput(kvp.Key), kvp => kvp.Value);
 
     private static ImmutableArray<string> GetHashedReferences(ImmutableArray<CommandLineReference> metadataReferences)
-        return metadataReferences.SelectAsArray(GetHashedReferenceName)
+        return metadataReferences.SelectAsArray(GetHashedReferenceName);
 
         static string GetHashedReferenceName(CommandLineReference reference)
-            var lowerCaseName = Path.GetFileNameWithoutExtension(reference.Reference).ToLower()
-            return VsReferenceHashingAlgorithm.HashInput(lowerCaseName)
+            var lowerCaseName = Path.GetFileNameWithoutExtension(reference.Reference).ToLower();
+            return VsReferenceHashingAlgorithm.HashInput(lowerCaseName);
 
     /// <summary>
     /// This reads the solution file project id or hashes the contents+path
@@ -118,26 +118,26 @@ internal sealed class ProjectLoadTelemetryReporter(IClientLanguageServerManager 
         if (projectToLoad.ProjectGuid is not null)
             // The projectId is formatted as {GUID}.
             // In order to match with O#, we need just the guid.
-            var projectGuid = projectToLoad.ProjectGuid.Replace("{", string.Empty).Replace("}", string.Empty)
+            var projectGuid = projectToLoad.ProjectGuid.Replace("{", string.Empty).Replace("}", string.Empty);
 
             // No need to actually hash the project guid.
-            return projectGuid
+            return projectGuid;
 
-        var projectPath = projectToLoad.Path
+        var projectPath = projectToLoad.Path;
         // The projectToLoad.Path might be a virtual document (misc file), attempt to fall back to the actual file path from the loaded project info.
         if (!File.Exists(projectPath) && projectFileInfo.FilePath is not null)
-            projectPath = projectFileInfo.FilePath
+            projectPath = projectFileInfo.FilePath;
 
         if (!File.Exists(projectPath))
             // We have no file path at all and so cannot compute a contents hash, just return a sentinel value.
-            return "MISSING"
+            return "MISSING";
 
-        var content = await File.ReadAllTextAsync(projectPath)
+        var content = await File.ReadAllTextAsync(projectPath);
         // This should exactly match O# to ensure we get the same hashes.
-        return VsReferenceHashingAlgorithm.HashInput($"Filename: {Path.GetFileName(projectToLoad.Path)}\n{content}")
+        return VsReferenceHashingAlgorithm.HashInput($"Filename: {Path.GetFileName(projectToLoad.Path)}\n{content}");
 
     private static ImmutableArray<string> GetTargetFrameworks(IEnumerable<ProjectFileInfo> projectFileInfos)
-        return [.. projectFileInfos.Select(p => GetTargetFramework(p)?.ToLower()).WhereNotNull()]
+        return [.. projectFileInfos.Select(p => GetTargetFramework(p)?.ToLower()).WhereNotNull()];
 
         string? GetTargetFramework(ProjectFileInfo projectFileInfo)
-            => projectFileInfo.TargetFramework ?? projectFileInfo.TargetFrameworkVersion
+            => projectFileInfo.TargetFramework ?? projectFileInfo.TargetFrameworkVersion;

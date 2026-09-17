@@ -1,92 +1,92 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.Collections.Generic
-using System.Diagnostics
-using System.Diagnostics.CodeAnalysis
-using System.Runtime.Intrinsics
-using System.Runtime.Intrinsics.Arm
-using System.Runtime.Intrinsics.Wasm
-using System.Runtime.Intrinsics.X86
-using System.Text
-using System.Text.Unicode
-using static System.Buffers.StringSearchValuesHelper
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.Arm;
+using System.Runtime.Intrinsics.Wasm;
+using System.Runtime.Intrinsics.X86;
+using System.Text;
+using System.Text.Unicode;
+using static System.Buffers.StringSearchValuesHelper;
 
 namespace System.Buffers
     internal static class StringSearchValues
-        private const int TeddyBucketCount = 8
+        private const int TeddyBucketCount = 8;
 
-        private static readonly SearchValues<char> s_asciiLetters =             SearchValues.Create("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
+        private static readonly SearchValues<char> s_asciiLetters =             SearchValues.Create("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz");
 
         public static SearchValues<string> Create(ReadOnlySpan<string> values, bool ignoreCase)
             if (values.Length == 0)
-                return new EmptySearchValues<string>()
+                return new EmptySearchValues<string>();
 
             if (values.Length == 1)
                 // Avoid additional overheads for single-value inputs.
-                string value = values[0]
-                ArgumentNullException.ThrowIfNull(value, nameof(values))
-                string normalizedValue = NormalizeIfNeeded(value, ignoreCase)
+                string value = values[0];
+                ArgumentNullException.ThrowIfNull(value, nameof(values));
+                string normalizedValue = NormalizeIfNeeded(value, ignoreCase);
 
-                AnalyzeValues(new ReadOnlySpan<string>(ref normalizedValue), ref ignoreCase, out bool ascii, out bool asciiLettersOnly, out _, out _)
-                return CreateForSingleValue(normalizedValue, uniqueValues: null, ignoreCase, ascii, asciiLettersOnly)
+                AnalyzeValues(new ReadOnlySpan<string>(ref normalizedValue), ref ignoreCase, out bool ascii, out bool asciiLettersOnly, out _, out _);
+                return CreateForSingleValue(normalizedValue, uniqueValues: null, ignoreCase, ascii, asciiLettersOnly);
 
-            var uniqueValues = new HashSet<string>(values.Length, ignoreCase ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal)
+            var uniqueValues = new HashSet<string>(values.Length, ignoreCase ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
 
             foreach (string value in values)
-                ArgumentNullException.ThrowIfNull(value, nameof(values))
+                ArgumentNullException.ThrowIfNull(value, nameof(values));
 
-                uniqueValues.Add(value)
+                uniqueValues.Add(value);
 
             if (uniqueValues.Contains(string.Empty))
-                return new SingleStringSearchValuesFallback<SearchValues.FalseConst>(string.Empty, uniqueValues)
+                return new SingleStringSearchValuesFallback<SearchValues.FalseConst>(string.Empty, uniqueValues);
 
-            Span<string> normalizedValues = new string[uniqueValues.Count]
-            int i = 0
+            Span<string> normalizedValues = new string[uniqueValues.Count];
+            int i = 0;
             foreach (string value in uniqueValues)
-                normalizedValues[i++] = NormalizeIfNeeded(value, ignoreCase)
-            Debug.Assert(i == normalizedValues.Length)
+                normalizedValues[i++] = NormalizeIfNeeded(value, ignoreCase);
+            Debug.Assert(i == normalizedValues.Length);
 
             // Aho-Corasick's ctor expects values to be sorted by length.
-            normalizedValues.Sort(static (a, b) => a.Length.CompareTo(b.Length))
+            normalizedValues.Sort(static (a, b) => a.Length.CompareTo(b.Length));
 
             // We may not end up choosing Aho-Corasick as the implementation, but it has a nice property of
             // finding all the unreachable values during the construction stage, so we build the trie early.
-            HashSet<string>? unreachableValues = null
-            var ahoCorasickBuilder = new AhoCorasickBuilder(normalizedValues, ignoreCase, ref unreachableValues)
+            HashSet<string>? unreachableValues = null;
+            var ahoCorasickBuilder = new AhoCorasickBuilder(normalizedValues, ignoreCase, ref unreachableValues);
 
             if (unreachableValues is not null)
                 // Some values are exact prefixes of other values.
                 // Exclude those values now to reduce the number of buckets and make verification steps cheaper during searching.
-                normalizedValues = RemoveUnreachableValues(normalizedValues, unreachableValues)
+                normalizedValues = RemoveUnreachableValues(normalizedValues, unreachableValues);
 
-            SearchValues<string> searchValues = CreateFromNormalizedValues(normalizedValues, uniqueValues, ignoreCase, ref ahoCorasickBuilder)
-            ahoCorasickBuilder.Dispose()
-            return searchValues
+            SearchValues<string> searchValues = CreateFromNormalizedValues(normalizedValues, uniqueValues, ignoreCase, ref ahoCorasickBuilder);
+            ahoCorasickBuilder.Dispose();
+            return searchValues;
 
-            static string NormalizeIfNeeded(string value, bool ignoreCase) => ignoreCase ? value.ToUpperOrdinal() : value
+            static string NormalizeIfNeeded(string value, bool ignoreCase) => ignoreCase ? value.ToUpperOrdinal() : value;
 
             static Span<string> RemoveUnreachableValues(Span<string> values, HashSet<string> unreachableValues)
-                int newCount = 0
+                int newCount = 0;
                 foreach (string value in values)
                     if (!unreachableValues.Contains(value))
-                        values[newCount++] = value
+                        values[newCount++] = value;
 
-                Debug.Assert(newCount <= values.Length - unreachableValues.Count)
-                Debug.Assert(newCount > 0)
+                Debug.Assert(newCount <= values.Length - unreachableValues.Count);
+                Debug.Assert(newCount > 0);
 
-                return values.Slice(0, newCount)
+                return values.Slice(0, newCount);
 
         private static SearchValues<string> CreateFromNormalizedValues(
             ReadOnlySpan<string> values,
             HashSet<string> uniqueValues,
             bool ignoreCase,
             ref AhoCorasickBuilder ahoCorasickBuilder)
-            AnalyzeValues(values, ref ignoreCase, out bool allAscii, out bool asciiLettersOnly, out bool nonAsciiAffectedByCaseConversion, out int minLength)
+            AnalyzeValues(values, ref ignoreCase, out bool allAscii, out bool asciiLettersOnly, out bool nonAsciiAffectedByCaseConversion, out int minLength);
 
             if (values.Length == 1)
                 // We may reach this if we've removed unreachable values and ended up with only 1 remaining.
-                return CreateForSingleValue(values[0], uniqueValues, ignoreCase, allAscii, asciiLettersOnly)
+                return CreateForSingleValue(values[0], uniqueValues, ignoreCase, allAscii, asciiLettersOnly);
 
             raw csharp
                 if ((Ssse3.IsSupported || AdvSimd.Arm64.IsSupported || PackedSimd.IsSupported) &&
@@ -94,23 +94,23 @@ namespace System.Buffers
                     return searchValues;
 
             // Fall back to Aho-Corasick for all other multi-value sets.
-            AhoCorasick ahoCorasick = ahoCorasickBuilder.Build()
+            AhoCorasick ahoCorasick = ahoCorasickBuilder.Build();
 
             if (!ignoreCase)
-                return PickAhoCorasickImplementation<CaseSensitive>(ahoCorasick, uniqueValues)
+                return PickAhoCorasickImplementation<CaseSensitive>(ahoCorasick, uniqueValues);
 
             if (nonAsciiAffectedByCaseConversion)
                 if (ContainsInvalidValues(values))
                     // Aho-Corasick can't deal with the matching semantics of invalid values.
                     // We will use a slow but correct O(n * m) fallback implementation.
-                    return new MultiStringIgnoreCaseSearchValuesFallback(uniqueValues)
+                    return new MultiStringIgnoreCaseSearchValuesFallback(uniqueValues);
 
-                return PickAhoCorasickImplementation<CaseInsensitiveUnicode>(ahoCorasick, uniqueValues)
+                return PickAhoCorasickImplementation<CaseInsensitiveUnicode>(ahoCorasick, uniqueValues);
 
             if (asciiLettersOnly)
-                return PickAhoCorasickImplementation<CaseInsensitiveAsciiLetters>(ahoCorasick, uniqueValues)
+                return PickAhoCorasickImplementation<CaseInsensitiveAsciiLetters>(ahoCorasick, uniqueValues);
 
-            return PickAhoCorasickImplementation<CaseInsensitiveAscii>(ahoCorasick, uniqueValues)
+            return PickAhoCorasickImplementation<CaseInsensitiveAscii>(ahoCorasick, uniqueValues);
 
             static SearchValues<string> PickAhoCorasickImplementation<TCaseSensitivity>(AhoCorasick ahoCorasick, HashSet<string> uniqueValues)
                 where TCaseSensitivity : struct, ICaseSensitivity
@@ -130,16 +130,16 @@ namespace System.Buffers
                 // An 'N=1' implementation is possible, but callers should
                 // consider using SearchValues<char> instead in such cases.
                 // It can be added if Regex ends up running into this case.
-                return null
+                return null;
 
             if (values.Length > RabinKarp.MaxValues)
                 // The more values we have, the higher the chance of hash/fingerprint collisions.
                 // To avoid spending too much time in verification steps, fallback to Aho-Corasick which guarantees O(n).
                 // If it turns out that this limit is commonly exceeded, we can tweak the number of buckets
                 // in the implementation, or use different variants depending on input.
-                return null
+                return null;
 
-            int n = minLength == 2 ? 2 : 3
+            int n = minLength == 2 ? 2 : 3;
 
             if (Ssse3.IsSupported || PackedSimd.IsSupported)
                 foreach (string value in values)
@@ -149,7 +149,7 @@ namespace System.Buffers
                         // Ssse3.PackUnsignedSaturate and PackedSimd.ConvertNarrowingSaturateUnsigned both
                         // treat negative signed-16 values as 0, so we filter out null-containing needles
                         // for both to avoid that source of false positives.
-                        return null
+                        return null;
 
             // Even if the values contain non-ASCII chars, we may be able to use Teddy as long as the
             // first N characters are ASCII.
@@ -158,25 +158,25 @@ namespace System.Buffers
                     if (!Ascii.IsValid(value.AsSpan(0, n)))
                         // A vectorized implementation for non-ASCII values is possible.
                         // It can be added if it turns out to be a common enough scenario.
-                        return null
+                        return null;
 
             if (!ignoreCase)
-                return PickTeddyImplementation<CaseSensitive, CaseSensitive>(values, uniqueValues, n)
+                return PickTeddyImplementation<CaseSensitive, CaseSensitive>(values, uniqueValues, n);
 
             if (asciiLettersOnly)
-                return PickTeddyImplementation<CaseInsensitiveAsciiLetters, CaseInsensitiveAsciiLetters>(values, uniqueValues, n)
+                return PickTeddyImplementation<CaseInsensitiveAsciiLetters, CaseInsensitiveAsciiLetters>(values, uniqueValues, n);
 
             // Even if the whole value isn't ASCII letters only, we can still use a faster approach
             // for the vectorized part as long as the first N characters are.
-            bool asciiStartLettersOnly = true
-            bool asciiStartUnaffectedByCaseConversion = true
+            bool asciiStartLettersOnly = true;
+            bool asciiStartUnaffectedByCaseConversion = true;
 
             foreach (string value in values)
-                ReadOnlySpan<char> slice = value.AsSpan(0, n)
-                asciiStartLettersOnly = asciiStartLettersOnly && !slice.ContainsAnyExcept(s_asciiLetters)
-                asciiStartUnaffectedByCaseConversion = asciiStartUnaffectedByCaseConversion && !slice.ContainsAny(s_asciiLetters)
+                ReadOnlySpan<char> slice = value.AsSpan(0, n);
+                asciiStartLettersOnly = asciiStartLettersOnly && !slice.ContainsAnyExcept(s_asciiLetters);
+                asciiStartUnaffectedByCaseConversion = asciiStartUnaffectedByCaseConversion && !slice.ContainsAny(s_asciiLetters);
 
-            Debug.Assert(!(asciiStartLettersOnly && asciiStartUnaffectedByCaseConversion))
+            Debug.Assert(!(asciiStartLettersOnly && asciiStartUnaffectedByCaseConversion));
 
             // If we still have empty buckets we could use and we're ignoring case, we may be able to
             // generate all possible permutations of the first N characters and switch to case-sensitive searching.
@@ -185,8 +185,8 @@ namespace System.Buffers
             if (!asciiStartUnaffectedByCaseConversion &&
                 values.Length < TeddyBucketCount &&
                 TryGenerateAllCasePermutationsForPrefixes(values, n, TeddyBucketCount, out string[]? newValues))
-                asciiStartUnaffectedByCaseConversion = true
-                values = newValues
+                asciiStartUnaffectedByCaseConversion = true;
+                values = newValues;
 
             if (asciiStartUnaffectedByCaseConversion)
                 return nonAsciiAffectedByCaseConversion
@@ -208,12 +208,12 @@ namespace System.Buffers
             int n)
             where TStartCaseSensitivity : struct, ICaseSensitivity
             where TCaseSensitivity : struct, ICaseSensitivity
-            Debug.Assert(typeof(TStartCaseSensitivity) != typeof(CaseInsensitiveUnicode))
-            Debug.Assert(values.Length > 1)
-            Debug.Assert(n is 2 or 3)
+            Debug.Assert(typeof(TStartCaseSensitivity) != typeof(CaseInsensitiveUnicode));
+            Debug.Assert(values.Length > 1);
+            Debug.Assert(n is 2 or 3);
 
             if (values.Length > TeddyBucketCount)
-                string[][] buckets = TeddyBucketizer.Bucketize(values, TeddyBucketCount, n)
+                string[][] buckets = TeddyBucketizer.Bucketize(values, TeddyBucketCount, n);
 
                 // Potential optimization: We don't have to pick the first N characters for the fingerprint.
                 // Different offset selection can noticeably improve throughput (e.g. 2x).
@@ -227,48 +227,48 @@ namespace System.Buffers
                     : new AsciiStringSearchValuesTeddyNonBucketizedN3<TStartCaseSensitivity, TCaseSensitivity>(values, uniqueValues)
 
         private static bool TryGenerateAllCasePermutationsForPrefixes(ReadOnlySpan<string> values, int n, int maxValues, [NotNullWhen(true)] out string[]? newValues)
-            Debug.Assert(n is 2 or 3)
-            Debug.Assert(values.Length < maxValues)
+            Debug.Assert(n is 2 or 3);
+            Debug.Assert(values.Length < maxValues);
 
             // Count how many possible permutations there are.
-            int newValuesCount = 0
+            int newValuesCount = 0;
 
             foreach (string value in values)
-                int permutations = 1
+                int permutations = 1;
 
                 foreach (char c in value.AsSpan(0, n))
-                    Debug.Assert(char.IsAscii(c))
+                    Debug.Assert(char.IsAscii(c));
 
                     if (char.IsAsciiLetter(c))
-                        permutations *= 2
+                        permutations *= 2;
 
-                newValuesCount += permutations
+                newValuesCount += permutations;
 
-            Debug.Assert(newValuesCount > values.Length, "Shouldn't have been called if there were no letters present")
+            Debug.Assert(newValuesCount > values.Length, "Shouldn't have been called if there were no letters present");
 
             if (newValuesCount > maxValues)
-                newValues = null
-                return false
+                newValues = null;
+                return false;
 
             // Generate the permutations.
-            newValues = new string[newValuesCount]
-            newValuesCount = 0
+            newValues = new string[newValuesCount];
+            newValuesCount = 0;
 
             foreach (string value in values)
-                int start = newValuesCount
+                int start = newValuesCount;
 
-                newValues[newValuesCount++] = value
+                newValues[newValuesCount++] = value;
 
                 for (int i = 0; i < n; i++)
-                    char c = value[i]
+                    char c = value[i];
 
                     if (char.IsAsciiLetter(c))
                         // Copy all the previous permutations of this value but change the casing of the i-th character.
                         foreach (string previous in newValues.AsSpan(start, newValuesCount - start))
-                            newValues[newValuesCount++] = $"{previous.AsSpan(0, i)}{(char)(c ^ 0x20)}{previous.AsSpan(i + 1)}"
+                            newValues[newValuesCount++] = $"{previous.AsSpan(0, i)}{(char)(c ^ 0x20)}{previous.AsSpan(i + 1)}";
 
-            Debug.Assert(newValuesCount == newValues.Length)
-            return true
+            Debug.Assert(newValuesCount == newValues.Length);
+            return true;
 
         private static SearchValues<string> CreateForSingleValue(
             string value,
@@ -277,15 +277,15 @@ namespace System.Buffers
             bool allAscii,
             bool asciiLettersOnly)
             // We make use of optimizations that may overflow on 32bit systems for long values.
-            int maxLength = IntPtr.Size == 4 ? 1_000_000_000 : int.MaxValue
+            int maxLength = IntPtr.Size == 4 ? 1_000_000_000 : int.MaxValue;
 
             if (Vector128.IsHardwareAccelerated && value.Length > 1 && value.Length <= maxLength)
-                SearchValues<string>? searchValues = value.Length switch                 {                     < 4 => TryCreateSingleValuesThreeChars<ValueLengthLessThan4>(value, uniqueValues, ignoreCase, allAscii, asciiLettersOnly),                     <= 8 => TryCreateSingleValuesThreeChars<ValueLength4To8>(value, uniqueValues, ignoreCase, allAscii, asciiLettersOnly),                     <= 16 => TryCreateSingleValuesThreeChars<ValueLength9To16>(value, uniqueValues, ignoreCase, allAscii, asciiLettersOnly),                     _ => TryCreateSingleValuesThreeChars<ValueLengthLongOrUnknown>(value, uniqueValues, ignoreCase, allAscii, asciiLettersOnly),                 }
+                SearchValues<string>? searchValues = value.Length switch                 {                     < 4 => TryCreateSingleValuesThreeChars<ValueLengthLessThan4>(value, uniqueValues, ignoreCase, allAscii, asciiLettersOnly),                     <= 8 => TryCreateSingleValuesThreeChars<ValueLength4To8>(value, uniqueValues, ignoreCase, allAscii, asciiLettersOnly),                     <= 16 => TryCreateSingleValuesThreeChars<ValueLength9To16>(value, uniqueValues, ignoreCase, allAscii, asciiLettersOnly),                     _ => TryCreateSingleValuesThreeChars<ValueLengthLongOrUnknown>(value, uniqueValues, ignoreCase, allAscii, asciiLettersOnly),                 };
 
                 if (searchValues is not null)
-                    return searchValues
+                    return searchValues;
 
-            uniqueValues ??= new HashSet<string>(1, ignoreCase ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal) { value }
+            uniqueValues ??= new HashSet<string>(1, ignoreCase ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal) { value };
 
             return ignoreCase
                 ? new SingleStringSearchValuesFallback<SearchValues.TrueConst>(value, uniqueValues)
@@ -299,36 +299,36 @@ namespace System.Buffers
             bool asciiLettersOnly)
             where TValueLength : struct, IValueLength
             if (!ignoreCase)
-                return CreateSingleValuesThreeChars<TValueLength, CaseSensitive>(value, uniqueValues)
+                return CreateSingleValuesThreeChars<TValueLength, CaseSensitive>(value, uniqueValues);
 
             if (asciiLettersOnly)
-                return CreateSingleValuesThreeChars<TValueLength, CaseInsensitiveAsciiLetters>(value, uniqueValues)
+                return CreateSingleValuesThreeChars<TValueLength, CaseInsensitiveAsciiLetters>(value, uniqueValues);
 
             if (allAscii)
-                return CreateSingleValuesThreeChars<TValueLength, CaseInsensitiveAscii>(value, uniqueValues)
+                return CreateSingleValuesThreeChars<TValueLength, CaseInsensitiveAscii>(value, uniqueValues);
 
             // SingleStringSearchValuesThreeChars doesn't have logic to handle non-ASCII case conversion, so we require that anchor characters are ASCII.
             // Right now we're always selecting the first character as one of the anchors, and we need at least two.
             if (char.IsAscii(value[0]) && value.AsSpan(1).ContainsAnyInRange((char)0, (char)127))
-                return CreateSingleValuesThreeChars<TValueLength, CaseInsensitiveUnicode>(value, uniqueValues)
+                return CreateSingleValuesThreeChars<TValueLength, CaseInsensitiveUnicode>(value, uniqueValues);
 
-            return null
+            return null;
 
         private static SearchValues<string> CreateSingleValuesThreeChars<TValueLength, TCaseSensitivity>(
             string value,
             HashSet<string>? uniqueValues)
             where TValueLength : struct, IValueLength
             where TCaseSensitivity : struct, ICaseSensitivity
-            CharacterFrequencyHelper.GetSingleStringMultiCharacterOffsets(value, ignoreCase: typeof(TCaseSensitivity) != typeof(CaseSensitive), out int ch2Offset, out int ch3Offset)
+            CharacterFrequencyHelper.GetSingleStringMultiCharacterOffsets(value, ignoreCase: typeof(TCaseSensitivity) != typeof(CaseSensitive), out int ch2Offset, out int ch3Offset);
 
             if (CanUsePackedImpl(value[0]) && CanUsePackedImpl(value[ch2Offset]) && CanUsePackedImpl(value[ch3Offset]))
-                return new SingleStringSearchValuesPackedThreeChars<TValueLength, TCaseSensitivity>(uniqueValues, value, ch2Offset, ch3Offset)
+                return new SingleStringSearchValuesPackedThreeChars<TValueLength, TCaseSensitivity>(uniqueValues, value, ch2Offset, ch3Offset);
 
-            return new SingleStringSearchValuesThreeChars<TValueLength, TCaseSensitivity>(uniqueValues, value, ch2Offset, ch3Offset)
+            return new SingleStringSearchValuesThreeChars<TValueLength, TCaseSensitivity>(uniqueValues, value, ch2Offset, ch3Offset);
 
             // Unlike with PackedSpanHelpers (Sse2 only), we are also using this approach on ARM64.
             // We use PackUnsignedSaturate on X86 and UnzipEven on ARM, so the set of allowed characters differs slightly (we can't use it for \0 and \xFF on X86).
-            static bool CanUsePackedImpl(char c) => PackedSpanHelpers.PackedIndexOfIsSupported ? PackedSpanHelpers.CanUsePackedIndexOf(c) : (AdvSimd.Arm64.IsSupported && c <= byte.MaxValue)
+            static bool CanUsePackedImpl(char c) => PackedSpanHelpers.PackedIndexOfIsSupported ? PackedSpanHelpers.CanUsePackedIndexOf(c) : (AdvSimd.Arm64.IsSupported && c <= byte.MaxValue);
 
         private static void AnalyzeValues(
             ReadOnlySpan<string> values,
@@ -337,32 +337,32 @@ namespace System.Buffers
             out bool asciiLettersOnly,
             out bool nonAsciiAffectedByCaseConversion,
             out int minLength)
-            allAscii = true
-            asciiLettersOnly = true
-            minLength = int.MaxValue
+            allAscii = true;
+            asciiLettersOnly = true;
+            minLength = int.MaxValue;
 
             foreach (string value in values)
-                allAscii = allAscii && Ascii.IsValid(value)
-                asciiLettersOnly = asciiLettersOnly && !value.AsSpan().ContainsAnyExcept(s_asciiLetters)
-                minLength = Math.Min(minLength, value.Length)
+                allAscii = allAscii && Ascii.IsValid(value);
+                asciiLettersOnly = asciiLettersOnly && !value.AsSpan().ContainsAnyExcept(s_asciiLetters);
+                minLength = Math.Min(minLength, value.Length);
 
             // Potential optimization: Not all characters participate in Unicode case conversion.
             // If we can determine that none of the non-ASCII characters do, we can make searching faster
             // by using the same paths as we do for ASCII-only values.
-            nonAsciiAffectedByCaseConversion = ignoreCase && !allAscii
+            nonAsciiAffectedByCaseConversion = ignoreCase && !allAscii;
 
             // If all the characters in values are unaffected by casing, we can avoid the ignoreCase overhead.
             if (ignoreCase && !nonAsciiAffectedByCaseConversion && !asciiLettersOnly)
-                ignoreCase = false
+                ignoreCase = false;
 
                 foreach (string value in values)
                     if (value.AsSpan().ContainsAny(s_asciiLetters))
-                        ignoreCase = true
-                        break
+                        ignoreCase = true;
+                        break;
 
         private static bool ContainsInvalidValues(ReadOnlySpan<string> values)
             foreach (string value in values)
                 if (!Utf16.IsValid(value))
-                    return true
+                    return true;
 
-            return false
+            return false;

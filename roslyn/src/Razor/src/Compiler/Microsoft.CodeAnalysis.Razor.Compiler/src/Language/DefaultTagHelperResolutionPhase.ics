@@ -3,15 +3,15 @@
 
 #nullable disable
 
-using System
-using System.Collections.Generic
-using System.Collections.Immutable
-using System.Diagnostics
-using System.Linq
-using System.Threading
-using Microsoft.AspNetCore.Razor.Language.Components
-using Microsoft.AspNetCore.Razor.Language.Intermediate
-using Microsoft.AspNetCore.Razor.PooledObjects
+using System;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Diagnostics;
+using System.Linq;
+using System.Threading;
+using Microsoft.AspNetCore.Razor.Language.Components;
+using Microsoft.AspNetCore.Razor.Language.Intermediate;
+using Microsoft.AspNetCore.Razor.PooledObjects;
 
 namespace Microsoft.AspNetCore.Razor.Language;
 
@@ -23,7 +23,7 @@ namespace Microsoft.AspNetCore.Razor.Language;
 /// Works with IR nodes only -- no syntax tree access.
 /// </summary>
 internal partial class DefaultTagHelperResolutionPhase : RazorEnginePhaseBase
-    private TagHelperResolver _resolver
+    private TagHelperResolver _resolver;
 
     /// <summary>
     /// Entry point: resolves all unresolved <see cref="UnresolvedElementIntermediateNode"/> nodes
@@ -32,16 +32,16 @@ internal partial class DefaultTagHelperResolutionPhase : RazorEnginePhaseBase
     /// <see cref="UnwrapAllElements"/> pass handles any remaining unresolved nodes.
     /// </summary>
     protected override RazorCodeDocument ExecuteCore(RazorCodeDocument codeDocument, CancellationToken cancellationToken)
-        var documentNode = codeDocument.GetDocumentNode()
+        var documentNode = codeDocument.GetDocumentNode();
         if (documentNode == null)
-            return codeDocument
+            return codeDocument;
 
-        var tagHelperContext = codeDocument.GetTagHelperContext()
+        var tagHelperContext = codeDocument.GetTagHelperContext();
 
         // This phase works with IR nodes only -- no syntax tree access needed.
         // RazorCodeDocument.ParserOptions is a non-nullable property initialized by Create(),
         // so it is always available here.
-        var parserOptions = codeDocument.ParserOptions
+        var parserOptions = codeDocument.ParserOptions;
 
         // Choose resolver based on file kind and language version. Component features
         // (MarkupElementIntermediateNode, RZ10012 diagnostics) require Version_3_0+ because
@@ -53,45 +53,45 @@ internal partial class DefaultTagHelperResolutionPhase : RazorEnginePhaseBase
 
         if (tagHelperContext == null || tagHelperContext.TagHelpers is[])
             // No tag helpers discovered - unwrap all UnresolvedElement nodes to their fallback.
-            UnwrapAllElements(documentNode, documentNode)
+            UnwrapAllElements(documentNode, documentNode);
 
             // Still need to set referenced tag helpers for downstream phases.
-            return codeDocument.WithReferencedTagHelpers([])
+            return codeDocument.WithReferencedTagHelpers([]);
 
-        var binder = tagHelperContext.GetBinder()
-        var prefix = tagHelperContext.Prefix
+        var binder = tagHelperContext.GetBinder();
+        var prefix = tagHelperContext.Prefix;
 
-        using var usedHelpers = new TagHelperCollection.Builder()
-        var sourceDocument = codeDocument.Source
-        var context = new ResolutionContext(sourceDocument, documentNode)
-        ResolveElements(documentNode, binder, prefix, usedHelpers, in context)
+        using var usedHelpers = new TagHelperCollection.Builder();
+        var sourceDocument = codeDocument.Source;
+        var context = new ResolutionContext(sourceDocument, documentNode);
+        ResolveElements(documentNode, binder, prefix, usedHelpers, in context);
 
         // Add tag helper descriptor validation diagnostics (e.g. RZ3003).
-        using var descriptorDiagnostics = new PooledArrayBuilder<RazorDiagnostic>()
+        using var descriptorDiagnostics = new PooledArrayBuilder<RazorDiagnostic>();
         foreach (var descriptor in tagHelperContext.TagHelpers)
-            descriptor.AppendAllDiagnostics(ref descriptorDiagnostics.AsRef())
+            descriptor.AppendAllDiagnostics(ref descriptorDiagnostics.AsRef());
 
         foreach (var diagnostic in descriptorDiagnostics)
-            documentNode.AddDiagnostic(diagnostic)
+            documentNode.AddDiagnostic(diagnostic);
 
-        return codeDocument.WithReferencedTagHelpers(usedHelpers.ToCollection())
+        return codeDocument.WithReferencedTagHelpers(usedHelpers.ToCollection());
 
     /// <summary>
     /// Holds ambient state needed during element resolution. Passed by ref to avoid
     /// threading many parameters through the call chain.
     /// </summary>
     private readonly struct ResolutionContext
-        public readonly RazorSourceDocument SourceDocument
-        public readonly DocumentIntermediateNode DocumentNode
+        public readonly RazorSourceDocument SourceDocument;
+        public readonly DocumentIntermediateNode DocumentNode;
 
         public ResolutionContext(RazorSourceDocument sourceDocument, DocumentIntermediateNode documentNode)
-            SourceDocument = sourceDocument
-            DocumentNode = documentNode
+            SourceDocument = sourceDocument;
+            DocumentNode = documentNode;
 
     private void ResolveElements(IntermediateNode node, TagHelperBinder binder, string prefix, TagHelperCollection.Builder usedHelpers, in ResolutionContext context)
         // Process children in reverse order since we may be replacing nodes.
         for (var i = node.Children.Count - 1; i >= 0; i--)
-            var child = node.Children[i]
+            var child = node.Children[i];
 
             if (child is UnresolvedElementIntermediateNode elementNode)
                 // Resolve THIS element first. If it becomes a component tag helper,
@@ -99,10 +99,10 @@ internal partial class DefaultTagHelperResolutionPhase : RazorEnginePhaseBase
                 // and the post-build re-resolution pass handles them with parent context.
                 // This is important for child content elements like <ChildContent> that
                 // need to know their parent tag helper to bind correctly.
-                ResolveElement(node, i, elementNode, binder, prefix, usedHelpers, in context)
+                ResolveElement(node, i, elementNode, binder, prefix, usedHelpers, in context);
             else
                 // For non-element nodes, recurse into children normally.
-                ResolveElements(child, binder, prefix, usedHelpers, in context)
+                ResolveElements(child, binder, prefix, usedHelpers, in context);
 
     /// <summary>
     /// Resolves a single <see cref="UnresolvedElementIntermediateNode"/> by checking its tag
@@ -121,48 +121,48 @@ internal partial class DefaultTagHelperResolutionPhase : RazorEnginePhaseBase
         TagHelperIntermediateNode tagHelperParent = null)
         // Check for escaped tag helpers (<!tagname>) - these should NOT be matched.
         if (elementNode.IsEscaped)
-            ConvertToPlainElementAndResolve(parent, index, elementNode, binder, prefix, usedHelpers, in context, emitDiagnostics: false)
-            return
+            ConvertToPlainElementAndResolve(parent, index, elementNode, binder, prefix, usedHelpers, in context, emitDiagnostics: false);
+            return;
 
         // Use pre-extracted attribute data for binding.
-        var tagName = elementNode.TagName
-        var attributes = elementNode.AttributeData
+        var tagName = elementNode.TagName;
+        var attributes = elementNode.AttributeData;
 
         // End-tag-only elements (e.g. </body> without matching <body>) should not match tag helpers.
         if (elementNode.StartTagNameSpan == null && !elementNode.IsSelfClosing && attributes.IsEmpty)
-            TryAddMalformedEndTagDiagnostic(elementNode, tagName, binder, attributes, parent, tagHelperParent)
+            TryAddMalformedEndTagDiagnostic(elementNode, tagName, binder, attributes, parent, tagHelperParent);
 
-            _resolver.ConvertToPlainElement(parent, index, elementNode)
-            return
+            _resolver.ConvertToPlainElement(parent, index, elementNode);
+            return;
 
-        var (parentTagName, parentIsTagHelper) = GetParentTagInfo(parent, tagHelperParent)
-        var binding = binder.GetBinding(tagName, attributes, parentTagName, parentIsTagHelper)
+        var (parentTagName, parentIsTagHelper) = GetParentTagInfo(parent, tagHelperParent);
+        var binding = binder.GetBinding(tagName, attributes, parentTagName, parentIsTagHelper);
         if (binding == null)
-            ConvertToPlainElementAndResolve(parent, index, elementNode, binder, prefix, usedHelpers, in context)
-            return
+            ConvertToPlainElementAndResolve(parent, index, elementNode, binder, prefix, usedHelpers, in context);
+            return;
 
         // Build the tag helper node (binding validation + node creation + diagnostics + body).
-        var (tagHelperNode, bodyNode) = BuildTagHelperNode(elementNode, binding, tagName, prefix, usedHelpers, in context)
+        var (tagHelperNode, bodyNode) = BuildTagHelperNode(elementNode, binding, tagName, prefix, usedHelpers, in context);
 
         // Resolve any body children that are still UnresolvedElementIntermediateNode.
-        ResolveBodyChildren(bodyNode, binder, prefix, usedHelpers, in context, tagHelperNode)
+        ResolveBodyChildren(bodyNode, binder, prefix, usedHelpers, in context, tagHelperNode);
 
         // Check AllowedChildren constraints (RZ2009, RZ2010).
-        ValidateAllowedChildren(tagHelperNode, bodyNode, binding, prefix)
+        ValidateAllowedChildren(tagHelperNode, bodyNode, binding, prefix);
 
         // Replace the UnresolvedElement with the TagHelperIntermediateNode.
-        parent.Children[index] = tagHelperNode
+        parent.Children[index] = tagHelperNode;
 
         // For StartTagOnly elements, body content from the original element
         // belongs to the parent, not the tag helper. Promote it.
         if (tagHelperNode.TagMode == TagMode.StartTagOnly)
-            var startTagEndIdx = elementNode.StartTagEndIndex
-            var bodyEndIdx = elementNode.BodyEndIndex
+            var startTagEndIdx = elementNode.StartTagEndIndex;
+            var bodyEndIdx = elementNode.BodyEndIndex;
 
             if (startTagEndIdx >= 0 && bodyEndIdx >= 0)
-                var insertIdx = index + 1
+                var insertIdx = index + 1;
                 for (var i = startTagEndIdx; i < bodyEndIdx; i++)
-                    parent.Children.Insert(insertIdx++, elementNode.Children[i])
+                    parent.Children.Insert(insertIdx++, elementNode.Children[i]);
 
     /// <summary>
     /// Creates a <see cref="TagHelperIntermediateNode"/> from a confirmed tag helper binding,
@@ -177,15 +177,15 @@ internal partial class DefaultTagHelperResolutionPhase : RazorEnginePhaseBase
         TagHelperCollection.Builder usedHelpers,
         in ResolutionContext context)
         // It IS a tag helper. Track the used helpers.
-        usedHelpers.AddRange(binding.TagHelpers)
+        usedHelpers.AddRange(binding.TagHelpers);
 
         // Determine tag name (strip prefix if present).
-        var resolvedTagName = tagName
+        var resolvedTagName = tagName;
         if (prefix != null && resolvedTagName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-            resolvedTagName = resolvedTagName.Substring(prefix.Length)
+            resolvedTagName = resolvedTagName.Substring(prefix.Length);
 
         // Determine TagMode from IR properties.
-        var tagMode = GetTagMode(elementNode, binding)
+        var tagMode = GetTagMode(elementNode, binding);
 
         // Create the TagHelperIntermediateNode.
         var tagHelperNode = new TagHelperIntermediateNode() {
@@ -198,24 +198,24 @@ internal partial class DefaultTagHelperResolutionPhase : RazorEnginePhaseBase
 
         // Add resolver-specific diagnostics (e.g. RZ10012 for component-like elements,
         // case mismatch between start/end tags).
-        _resolver.AddMatchedElementDiagnostics(tagHelperNode, elementNode, binding, in context)
+        _resolver.AddMatchedElementDiagnostics(tagHelperNode, elementNode, binding, in context);
 
         // Check if resolved tag name is a void element (handles prefixed elements like th:input).
-        var isResolvedVoidElement = elementNode.IsVoidElement || Legacy.ParserHelpers.VoidElements.Contains(resolvedTagName)
+        var isResolvedVoidElement = elementNode.IsVoidElement || Legacy.ParserHelpers.VoidElements.Contains(resolvedTagName);
 
         // Directive-attribute-only matches (e.g. only @bind, @onclick) don't produce
         // structural diagnostics -- the rewriter doesn't emit them for such matches.
         if (!IsDirectiveAttributeOnly(binding))
-            AddStructuralDiagnostics(tagHelperNode, elementNode, tagName, tagMode, isResolvedVoidElement)
+            AddStructuralDiagnostics(tagHelperNode, elementNode, tagName, tagMode, isResolvedVoidElement);
 
         // Check for inconsistent TagStructure across bound rules (RZ2011).
-        ValidateConsistentTagStructure(tagHelperNode, binding, elementNode, tagName)
+        ValidateConsistentTagStructure(tagHelperNode, binding, elementNode, tagName);
 
         // Build body and attributes.
-        var bodyNode = new TagHelperBodyIntermediateNode()
-        _resolver.BuildTagHelper(tagHelperNode, bodyNode, elementNode, binding, context.SourceDocument, in context)
+        var bodyNode = new TagHelperBodyIntermediateNode();
+        _resolver.BuildTagHelper(tagHelperNode, bodyNode, elementNode, binding, context.SourceDocument, in context);
 
-        return (tagHelperNode, bodyNode)
+        return (tagHelperNode, bodyNode);
 
     /// <summary>
     /// Resolves body children of a newly built tag helper node.
@@ -239,7 +239,7 @@ internal partial class DefaultTagHelperResolutionPhase : RazorEnginePhaseBase
         in ResolutionContext context,
         TagHelperIntermediateNode tagHelperParent)
         for (var i = bodyNode.Children.Count - 1; i >= 0; i--)
-            var bodyChild = bodyNode.Children[i]
+            var bodyChild = bodyNode.Children[i];
 
             if (bodyChild is UnresolvedElementIntermediateNode bodyElementNode)
                 // Resolve the element first with parent context. This is critical because
@@ -249,9 +249,9 @@ internal partial class DefaultTagHelperResolutionPhase : RazorEnginePhaseBase
                 // would descend into the element's children and prematurely resolve them
                 // without knowing the parent tag helper (e.g., Found/NotFound inside Router
                 // need to know Router is their parent to be matched as child content).
-                ResolveElement(bodyNode, i, bodyElementNode, binder, prefix, usedHelpers, in context, tagHelperParent)
+                ResolveElement(bodyNode, i, bodyElementNode, binder, prefix, usedHelpers, in context, tagHelperParent);
             else
-                ResolveElements(bodyChild, binder, prefix, usedHelpers, in context)
+                ResolveElements(bodyChild, binder, prefix, usedHelpers, in context);
 
         // Note: RZ1033 (tag helper must not have an end tag when TagStructure is WithoutEndTag)
         // is NOT emitted here. The UnresolvedElementIntermediateNode represents a matched
@@ -273,7 +273,7 @@ internal partial class DefaultTagHelperResolutionPhase : RazorEnginePhaseBase
         bool isResolvedVoidElement)
         // Missing close angle diagnostics (RZ1035) -- emitted before RZ1034 to match rewriter ordering.
         if (elementNode.HasMissingCloseAngle)
-            var diagSource = elementNode.StartTagNameSpan ?? elementNode.Source
+            var diagSource = elementNode.StartTagNameSpan ?? elementNode.Source;
             if (diagSource is SourceSpan ds)
                 tagHelperNode.AddDiagnostic(
                     RazorDiagnosticFactory.CreateParsing_TagHelperMissingCloseAngle(ds, tagName))
@@ -287,7 +287,7 @@ internal partial class DefaultTagHelperResolutionPhase : RazorEnginePhaseBase
         // and only when TagMode expects an end tag (StartTagAndEndTag).
         if (!elementNode.HasEndTag && !elementNode.IsSelfClosing && !isResolvedVoidElement
             && tagMode == TagMode.StartTagAndEndTag)
-            var diagSource = elementNode.StartTagNameSpan ?? elementNode.Source
+            var diagSource = elementNode.StartTagNameSpan ?? elementNode.Source;
             if (diagSource is SourceSpan ds)
                 tagHelperNode.AddDiagnostic(
                     RazorDiagnosticFactory.CreateParsing_TagHelperFoundMalformedTagHelper(ds, tagName))
@@ -300,7 +300,7 @@ internal partial class DefaultTagHelperResolutionPhase : RazorEnginePhaseBase
         // diagnostics since the tag structure explicitly permits no end tag.
         if (isResolvedVoidElement && !elementNode.HasEndTag
             && tagMode == TagMode.StartTagAndEndTag)
-            var diagSource = elementNode.StartTagNameSpan ?? elementNode.Source
+            var diagSource = elementNode.StartTagNameSpan ?? elementNode.Source;
             if (diagSource is SourceSpan ds)
                 tagHelperNode.AddDiagnostic(
                     RazorDiagnosticFactory.CreateParsing_VoidElement(ds, tagName))
@@ -316,21 +316,21 @@ internal partial class DefaultTagHelperResolutionPhase : RazorEnginePhaseBase
         TagHelperCollection.Builder usedHelpers,
         in ResolutionContext context,
         bool emitDiagnostics = true)
-        var childCountBefore = parent.Children.Count
-        _resolver.ConvertToPlainElement(parent, index, elementNode)
+        var childCountBefore = parent.Children.Count;
+        _resolver.ConvertToPlainElement(parent, index, elementNode);
         var resultCount = parent.Children.Count - childCountBefore + 1 // +1 because the original was removed
 
         if (emitDiagnostics && resultCount > 0)
-            _resolver.AddUnmatchedElementDiagnostic(parent.Children[index], elementNode, context.DocumentNode)
+            _resolver.AddUnmatchedElementDiagnostic(parent.Children[index], elementNode, context.DocumentNode);
 
         for (var j = index + resultCount - 1; j >= index; j--)
             // Guard: ResolveElement can modify parent.Children (e.g., StartTagOnly promotion
             // inserts siblings), so j may exceed the updated count.
             if (j < parent.Children.Count)
                 if (parent.Children[j] is UnresolvedElementIntermediateNode promotedElement)
-                    ResolveElement(parent, j, promotedElement, binder, prefix, usedHelpers, in context)
+                    ResolveElement(parent, j, promotedElement, binder, prefix, usedHelpers, in context);
                 else
-                    ResolveElements(parent.Children[j], binder, prefix, usedHelpers, in context)
+                    ResolveElements(parent.Children[j], binder, prefix, usedHelpers, in context);
 
     /// <summary>
     /// Post-pass that consolidates adjacent <see cref="HtmlContentIntermediateNode"/> children.
@@ -341,34 +341,34 @@ internal partial class DefaultTagHelperResolutionPhase : RazorEnginePhaseBase
         for (var i = 0; i < parent.Children.Count - 1; i++)
             if (parent.Children[i] is HtmlContentIntermediateNode current &&
                 parent.Children[i + 1] is HtmlContentIntermediateNode next)
-                current.Children.AddRange(next.Children)
+                current.Children.AddRange(next.Children);
 
                 // Preserve diagnostics from the removed sibling so they aren't silently dropped.
-                current.AddDiagnosticsFromNode(next)
+                current.AddDiagnosticsFromNode(next);
                 if (current.Source is SourceSpan cs && next.Source is SourceSpan ns)
                     // Adjacent nodes are sequential, so next always ends after current.
-                    current.Source = MergeSourceSpans(cs, ns)
+                    current.Source = MergeSourceSpans(cs, ns);
                 else if (current.Source == null)
-                    current.Source = next.Source
-                parent.Children.RemoveAt(i + 1)
-                i--
+                    current.Source = next.Source;
+                parent.Children.RemoveAt(i + 1);
+                i--;
 
     private static TagMode GetTagMode(UnresolvedElementIntermediateNode elementNode, TagHelperBinding binding)
         if (elementNode.IsSelfClosing)
-            return TagMode.SelfClosing
+            return TagMode.SelfClosing;
 
-        var hasDirectiveAttribute = false
+        var hasDirectiveAttribute = false;
         foreach (var boundRulesInfo in binding.AllBoundRules)
             if (boundRulesInfo.Rules.Any(static rule => rule.TagStructure == TagStructure.WithoutEndTag))
-                return TagMode.StartTagOnly
+                return TagMode.StartTagOnly;
 
-            var descriptor = boundRulesInfo.Descriptor
-            hasDirectiveAttribute |= descriptor.IsAnyComponentDocumentTagHelper() && !descriptor.IsComponentOrChildContentTagHelper()
+            var descriptor = boundRulesInfo.Descriptor;
+            hasDirectiveAttribute |= descriptor.IsAnyComponentDocumentTagHelper() && !descriptor.IsComponentOrChildContentTagHelper();
 
         if (hasDirectiveAttribute && elementNode.IsVoidElement && !elementNode.HasEndTag)
-            return TagMode.StartTagOnly
+            return TagMode.StartTagOnly;
 
-        return TagMode.StartTagAndEndTag
+        return TagMode.StartTagAndEndTag;
 
     private static void ValidateAllowedChildren(
         TagHelperIntermediateNode tagHelperNode,
@@ -376,18 +376,18 @@ internal partial class DefaultTagHelperResolutionPhase : RazorEnginePhaseBase
         TagHelperBinding binding,
         string prefix)
         // Collect allowed child tag names from all descriptors.
-        using var allowedNames = new PooledArrayBuilder<string>()
+        using var allowedNames = new PooledArrayBuilder<string>();
         foreach (var th in binding.TagHelpers)
             foreach (var childTag in th.AllowedChildTags)
-                allowedNames.Add(childTag.Name)
+                allowedNames.Add(childTag.Name);
 
         if (allowedNames.Count == 0)
             return // No AllowedChildTags constraints
 
-        var allowedChildrenString = string.Join(", ", allowedNames.ToArray())
-        var parentTagName = tagHelperNode.TagName
+        var allowedChildrenString = string.Join(", ", allowedNames.ToArray());
+        var parentTagName = tagHelperNode.TagName;
 
-        ValidateAllowedChildren(parentTagName, bodyNode.Children, in allowedNames, allowedChildrenString, prefix)
+        ValidateAllowedChildren(parentTagName, bodyNode.Children, in allowedNames, allowedChildrenString, prefix);
 
     private static void ValidateAllowedChildren(
         string parentTagName,
@@ -397,16 +397,16 @@ internal partial class DefaultTagHelperResolutionPhase : RazorEnginePhaseBase
         string prefix)
         foreach (var child in children)
             if (child is TagHelperIntermediateNode childTagHelper)
-                var childTagName = childTagHelper.TagName
+                var childTagName = childTagHelper.TagName;
                 if (!IsAllowedChild(childTagName, in allowedNames))
                     childTagHelper.AddDiagnostic(
                         RazorDiagnosticFactory.CreateTagHelper_InvalidNestedTag(
                             child.Source ?? SourceSpan.Undefined, childTagName, parentTagName, allowedChildrenString))
             else if (child is MarkupElementIntermediateNode markupElement)
-                var childTagName = markupElement.TagName
+                var childTagName = markupElement.TagName;
                 // Strip prefix if present
                 if (prefix != null && childTagName != null && childTagName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                    childTagName = childTagName.Substring(prefix.Length)
+                    childTagName = childTagName.Substring(prefix.Length);
                 if (childTagName != null && !IsAllowedChild(childTagName, in allowedNames))
                     markupElement.AddDiagnostic(
                         RazorDiagnosticFactory.CreateTagHelper_InvalidNestedTag(
@@ -418,43 +418,43 @@ internal partial class DefaultTagHelperResolutionPhase : RazorEnginePhaseBase
                         htmlContent.AddDiagnostic(
                             RazorDiagnosticFactory.CreateTagHelper_CannotHaveNonTagContent(
                                 child.Source ?? SourceSpan.Undefined, parentTagName, allowedChildrenString))
-                        break
+                        break;
             else if (child is CSharpExpressionIntermediateNode)
                 child.AddDiagnostic(
                     RazorDiagnosticFactory.CreateTagHelper_CannotHaveNonTagContent(
                         child.Source ?? SourceSpan.Undefined, parentTagName, allowedChildrenString))
             else if (child is CSharpCodeIntermediateNode)
                 // Razor code blocks can contain markup children, so validate their children instead of the block itself.
-                ValidateAllowedChildren(parentTagName, child.Children, in allowedNames, allowedChildrenString, prefix)
+                ValidateAllowedChildren(parentTagName, child.Children, in allowedNames, allowedChildrenString, prefix);
 
     private static bool IsAllowedChild(string tagName, in PooledArrayBuilder<string> allowedNames)
         foreach (var name in allowedNames)
             if (string.Equals(tagName, name, StringComparison.OrdinalIgnoreCase))
-                return true
-        return false
+                return true;
+        return false;
 
     private static void ConvertUnresolvedValuesToBasicForm(HtmlAttributeIntermediateNode source, IntermediateNode target)
         // Check if all children are unresolved literal values -- merge into single HtmlContent
         // to enable preallocated attribute optimization.
         if (AreAllChildrenOfType<UnresolvedAttributeValueIntermediateNode>(source.Children) && source.Children.Count > 0)
-            var htmlContent = new HtmlContentIntermediateNode()
+            var htmlContent = new HtmlContentIntermediateNode();
             foreach (var child in source.Children)
-                var unresolvedLiteral = (UnresolvedAttributeValueIntermediateNode)child
+                var unresolvedLiteral = (UnresolvedAttributeValueIntermediateNode)child;
                 foreach (var valueChild in unresolvedLiteral.Children)
-                    htmlContent.Children.Add(valueChild)
-                    htmlContent.Source ??= valueChild.Source
+                    htmlContent.Children.Add(valueChild);
+                    htmlContent.Source ??= valueChild.Source;
 
             // Compute merged source span when there are multiple children.
             // For a single child, the source was already set above.
             if (htmlContent.Children.Count > 1)
-                var firstSrc = htmlContent.Children[0].Source
-                var lastSrc = htmlContent.Children[^1].Source
+                var firstSrc = htmlContent.Children[0].Source;
+                var lastSrc = htmlContent.Children[^1].Source;
                 raw csharp
                     if (firstSrc is { } fs && lastSrc is { } ls)
                         htmlContent.Source = MergeSourceSpans(fs, ls);
 
-            target.Children.Add(htmlContent)
-            return
+            target.Children.Add(htmlContent);
+            return;
 
         foreach (var child in source.Children)
             if (child is UnresolvedAttributeValueIntermediateNode unresolvedLiteral)
@@ -463,9 +463,9 @@ internal partial class DefaultTagHelperResolutionPhase : RazorEnginePhaseBase
                     Source = unresolvedLiteral.Source,
                 }
 
-                htmlAttrValue.Children.AddRange(unresolvedLiteral.Children)
+                htmlAttrValue.Children.AddRange(unresolvedLiteral.Children);
 
-                target.Children.Add(htmlAttrValue)
+                target.Children.Add(htmlAttrValue);
             else if (child is UnresolvedExpressionAttributeValueIntermediateNode unresolvedExpr)
                 raw csharp
                     IntermediateNode exprNode = unresolvedExpr.ContainsExpression
@@ -482,18 +482,18 @@ internal partial class DefaultTagHelperResolutionPhase : RazorEnginePhaseBase
 
                 // For expression attribute values: unwrap both CSharpExpression and CSharpCode.
                 // For code attribute values: only unwrap CSharpCode, keep CSharpExpression.
-                var unwrapExpressions = unresolvedExpr.ContainsExpression
+                var unwrapExpressions = unresolvedExpr.ContainsExpression;
                 foreach (var valueChild in unresolvedExpr.Children)
                     if (unwrapExpressions && valueChild is CSharpExpressionIntermediateNode csharpExpr)
-                        exprNode.Children.AddRange(csharpExpr.Children)
+                        exprNode.Children.AddRange(csharpExpr.Children);
                     else if (valueChild is CSharpCodeIntermediateNode csharpCode)
-                        exprNode.Children.AddRange(csharpCode.Children)
+                        exprNode.Children.AddRange(csharpCode.Children);
                     else
-                        exprNode.Children.Add(valueChild)
+                        exprNode.Children.Add(valueChild);
 
-                target.Children.Add(exprNode)
+                target.Children.Add(exprNode);
             else
-                target.Children.Add(child)
+                target.Children.Add(child);
 
     private static void ConvertHtmlTokensToCSharp(
         IntermediateNodeCollection tokens,
@@ -501,20 +501,20 @@ internal partial class DefaultTagHelperResolutionPhase : RazorEnginePhaseBase
         SourceSpan? source,
         bool wrapInCSharpExpression)
         if (wrapInCSharpExpression)
-            var expr = new CSharpExpressionIntermediateNode() { Source = source }
+            var expr = new CSharpExpressionIntermediateNode() { Source = source };
             foreach (var token in tokens)
                 if (token is HtmlIntermediateToken htmlToken)
-                    expr.Children.Add(ToCSharpToken(htmlToken))
+                    expr.Children.Add(ToCSharpToken(htmlToken));
                 else
-                    expr.Children.Add(token)
+                    expr.Children.Add(token);
 
-            output.Add(expr)
+            output.Add(expr);
         else
             foreach (var token in tokens)
                 if (token is HtmlIntermediateToken htmlToken)
-                    output.Add(ToCSharpToken(htmlToken))
+                    output.Add(ToCSharpToken(htmlToken));
                 else
-                    output.Add(token)
+                    output.Add(token);
 
     /// <summary>
     /// Recursively flattens a node to direct CSharpIntermediateToken children on the target,
@@ -522,15 +522,15 @@ internal partial class DefaultTagHelperResolutionPhase : RazorEnginePhaseBase
     /// </summary>
     private static void FlattenToDirectCSharpTokens(IntermediateNode source, IntermediateNode target)
         if (source is CSharpIntermediateToken csharpToken)
-            target.Children.Add(csharpToken)
+            target.Children.Add(csharpToken);
         else if (source is HtmlIntermediateToken htmlToken)
-            target.Children.Add(ToCSharpToken(htmlToken))
+            target.Children.Add(ToCSharpToken(htmlToken));
         else if (source is IntermediateToken token)
-            target.Children.Add(new CSharpIntermediateToken(token.Content, token.Source))
+            target.Children.Add(new CSharpIntermediateToken(token.Content, token.Source));
         else
             // Unwrap container nodes (HtmlContentIntermediateNode, CSharpExpressionIntermediateNode, etc.)
             foreach (var child in source.Children)
-                FlattenToDirectCSharpTokens(child, target)
+                FlattenToDirectCSharpTokens(child, target);
 
     /// <summary>
     /// Final pass that finds remaining <see cref="UnresolvedElementIntermediateNode"/> nodes not
@@ -539,57 +539,57 @@ internal partial class DefaultTagHelperResolutionPhase : RazorEnginePhaseBase
     /// </summary>
     private void UnwrapAllElements(IntermediateNode node, DocumentIntermediateNode documentNode = null)
         if (node is DocumentIntermediateNode doc)
-            documentNode = doc
+            documentNode = doc;
 
         for (var i = node.Children.Count - 1; i >= 0; i--)
-            var child = node.Children[i]
-            UnwrapAllElements(child, documentNode)
+            var child = node.Children[i];
+            UnwrapAllElements(child, documentNode);
 
             if (child is UnresolvedElementIntermediateNode elementNode)
-                var countBefore = node.Children.Count
-                _resolver.ConvertToPlainElement(node, i, elementNode)
-                var resultCount = node.Children.Count - countBefore + 1
+                var countBefore = node.Children.Count;
+                _resolver.ConvertToPlainElement(node, i, elementNode);
+                var resultCount = node.Children.Count - countBefore + 1;
 
                 if (resultCount > 0)
-                    _resolver.AddUnmatchedElementDiagnostic(node.Children[i], elementNode, documentNode)
+                    _resolver.AddUnmatchedElementDiagnostic(node.Children[i], elementNode, documentNode);
 
     private static AttributeStructure InferAttributeStructure(HtmlAttributeIntermediateNode htmlAttr)
         if (htmlAttr.Prefix != null)
             if (htmlAttr.Prefix.Contains('\''))
-                return AttributeStructure.SingleQuotes
+                return AttributeStructure.SingleQuotes;
             if (htmlAttr.Prefix.Contains('"'))
-                return AttributeStructure.DoubleQuotes
+                return AttributeStructure.DoubleQuotes;
             // Has '=' but no quotes (e.g., type= or checked=) - not minimized, treat as DoubleQuotes.
             if (htmlAttr.Prefix.Contains('='))
-                return AttributeStructure.DoubleQuotes
+                return AttributeStructure.DoubleQuotes;
 
         if (htmlAttr.Children.Count == 0)
-            return AttributeStructure.Minimized
+            return AttributeStructure.Minimized;
 
-        return AttributeStructure.DoubleQuotes
+        return AttributeStructure.DoubleQuotes;
 
     /// <summary>
     /// Computes the source span of the attribute value by merging the source spans of all value children.
     /// </summary>
     private static SourceSpan? ComputeValueSource(HtmlAttributeIntermediateNode htmlAttr)
-        SourceSpan? result = null
+        SourceSpan? result = null;
         foreach (var child in htmlAttr.Children)
             // For HtmlAttributeValueIntermediateNode and CSharpExpressionAttributeValueIntermediateNode,
             // use the inner token sources (not the wrapper).
             if (child is HtmlAttributeValueIntermediateNode or CSharpExpressionAttributeValueIntermediateNode)
                 foreach (var token in child.Children)
                     if (token.Source is SourceSpan tokenSource)
-                        result = result == null ? tokenSource : MergeSpans(result.Value, tokenSource)
+                        result = result == null ? tokenSource : MergeSpans(result.Value, tokenSource);
             else if (child.Source is SourceSpan childSource)
-                result = result == null ? childSource : MergeSpans(result.Value, childSource)
-        return result
+                result = result == null ? childSource : MergeSpans(result.Value, childSource);
+        return result;
 
     private static SourceSpan MergeSpans(SourceSpan a, SourceSpan b)
-        var start = Math.Min(a.AbsoluteIndex, b.AbsoluteIndex)
-        var end = Math.Max(a.AbsoluteIndex + a.Length, b.AbsoluteIndex + b.Length)
-        var first = a.AbsoluteIndex <= b.AbsoluteIndex ? a : b
-        var last = a.AbsoluteIndex + a.Length >= b.AbsoluteIndex + b.Length ? a : b
-        var lineCount = (last.LineIndex + last.LineCount) - first.LineIndex
+        var start = Math.Min(a.AbsoluteIndex, b.AbsoluteIndex);
+        var end = Math.Max(a.AbsoluteIndex + a.Length, b.AbsoluteIndex + b.Length);
+        var first = a.AbsoluteIndex <= b.AbsoluteIndex ? a : b;
+        var last = a.AbsoluteIndex + a.Length >= b.AbsoluteIndex + b.Length ? a : b;
+        var lineCount = (last.LineIndex + last.LineCount) - first.LineIndex;
         return first.WithAbsoluteIndex(start)
             .WithLength(end - start)
             .WithLineCount(lineCount)
@@ -623,20 +623,20 @@ internal partial class DefaultTagHelperResolutionPhase : RazorEnginePhaseBase
         RazorSourceDocument sourceDocument)
         var exprText = sourceDocument.Text.ToString(
             new Microsoft.CodeAnalysis.Text.TextSpan(exprStart, exprLength))
-        var filePath = sourceDocument.FilePath
+        var filePath = sourceDocument.FilePath;
 
         if (exprText.Length >= 3 && exprText[0] == '@' && exprText[1] == '(')
             // @
-            var atLoc = sourceDocument.Text.Lines.GetLinePosition(exprStart)
+            var atLoc = sourceDocument.Text.Lines.GetLinePosition(exprStart);
             target.Children.Add(IntermediateNodeFactory.CSharpToken(
                 "@",
                 new SourceSpan(filePath, exprStart, atLoc.Line, atLoc.Character, 1, 0, atLoc.Character + 1)))
 
             // (, inner content, )
-            EmitParenthesizedExpressionTokens(target, exprStart + 1, exprLength - 1, sourceDocument)
+            EmitParenthesizedExpressionTokens(target, exprStart + 1, exprLength - 1, sourceDocument);
         else
             // Not @() -- emit as single token.
-            var loc = sourceDocument.Text.Lines.GetLinePosition(exprStart)
+            var loc = sourceDocument.Text.Lines.GetLinePosition(exprStart);
             target.Children.Add(IntermediateNodeFactory.CSharpToken(
                 exprText,
                 new SourceSpan(filePath, exprStart, loc.Line, loc.Character, exprLength, 0, loc.Character + exprLength)))
@@ -651,28 +651,28 @@ internal partial class DefaultTagHelperResolutionPhase : RazorEnginePhaseBase
         int parenStart,
         int parenLength,
         RazorSourceDocument sourceDocument)
-        var filePath = sourceDocument.FilePath
+        var filePath = sourceDocument.FilePath;
 
         // (
-        var openLoc = sourceDocument.Text.Lines.GetLinePosition(parenStart)
+        var openLoc = sourceDocument.Text.Lines.GetLinePosition(parenStart);
         target.Children.Add(IntermediateNodeFactory.CSharpToken(
             "(",
             new SourceSpan(filePath, parenStart, openLoc.Line, openLoc.Character, 1, 0, openLoc.Character + 1)))
 
         // inner content
-        var innerStart = parenStart + 1
+        var innerStart = parenStart + 1;
         var innerLen = parenLength - 2 // skip ( and )
         if (innerLen > 0)
             var innerText = sourceDocument.Text.ToString(
                 new Microsoft.CodeAnalysis.Text.TextSpan(innerStart, innerLen))
-            var innerLoc = sourceDocument.Text.Lines.GetLinePosition(innerStart)
+            var innerLoc = sourceDocument.Text.Lines.GetLinePosition(innerStart);
             target.Children.Add(IntermediateNodeFactory.CSharpToken(
                 innerText,
                 new SourceSpan(filePath, innerStart, innerLoc.Line, innerLoc.Character, innerLen, 0, innerLoc.Character + innerLen)))
 
         // )
-        var closePos = parenStart + parenLength - 1
-        var closeLoc = sourceDocument.Text.Lines.GetLinePosition(closePos)
+        var closePos = parenStart + parenLength - 1;
+        var closeLoc = sourceDocument.Text.Lines.GetLinePosition(closePos);
         target.Children.Add(IntermediateNodeFactory.CSharpToken(
             ")",
             new SourceSpan(filePath, closePos, closeLoc.Line, closeLoc.Character, 1, 0, closeLoc.Character + 1)))
@@ -686,28 +686,28 @@ internal partial class DefaultTagHelperResolutionPhase : RazorEnginePhaseBase
         IntermediateNode target,
         SourceSpan expressionSource,
         RazorSourceDocument sourceDocument)
-        var expr = new CSharpExpressionIntermediateNode()
-        EmitExplicitExpressionTokens(expr, expressionSource.AbsoluteIndex, expressionSource.Length, sourceDocument)
+        var expr = new CSharpExpressionIntermediateNode();
+        EmitExplicitExpressionTokens(expr, expressionSource.AbsoluteIndex, expressionSource.Length, sourceDocument);
 
-        var exprLoc = sourceDocument.Text.Lines.GetLinePosition(expressionSource.AbsoluteIndex)
+        var exprLoc = sourceDocument.Text.Lines.GetLinePosition(expressionSource.AbsoluteIndex);
         expr.Source = expressionSource.WithLineIndex(exprLoc.Line)
             .WithCharacterIndex(exprLoc.Character)
             .WithLineCount(0)
             .WithEndCharacterIndex(exprLoc.Character + expressionSource.Length)
-        target.Children.Add(expr)
+        target.Children.Add(expr);
 
     /// <summary>
     /// Collects the text content and first child source from an <see cref="HtmlAttributeValueIntermediateNode"/>,
     /// concatenating the prefix with all token content.
     /// </summary>
     private static (string Content, SourceSpan? Source) CollectAttributeValueContent(HtmlAttributeValueIntermediateNode attrValue)
-        var content = attrValue.Prefix ?? string.Empty
+        var content = attrValue.Prefix ?? string.Empty;
         foreach (var token in attrValue.Children)
             if (token is IntermediateToken intermediateToken)
-                content += intermediateToken.Content
+                content += intermediateToken.Content;
 
-        var source = attrValue.Children.Count > 0 ? attrValue.Children[0].Source : attrValue.Source
-        return (content, source)
+        var source = attrValue.Children.Count > 0 ? attrValue.Children[0].Source : attrValue.Source;
+        return (content, source);
 
     /// <summary>
     /// Converts an <see cref="HtmlIntermediateToken"/> to a <see cref="CSharpIntermediateToken"/>,
@@ -733,7 +733,7 @@ internal partial class DefaultTagHelperResolutionPhase : RazorEnginePhaseBase
     /// Creates an empty <see cref="CSharpIntermediateToken"/> with an empty string.
     /// </summary>
     private static CSharpIntermediateToken CreateEmptyCSharpToken(SourceSpan? source)
-        return IntermediateNodeFactory.CSharpToken("", source)
+        return IntermediateNodeFactory.CSharpToken("", source);
 
     /// <summary>
     /// Checks whether all children of a node collection are of the specified type.
@@ -741,9 +741,9 @@ internal partial class DefaultTagHelperResolutionPhase : RazorEnginePhaseBase
     private static bool AreAllChildrenOfType<T>(IntermediateNodeCollection children) where T : IntermediateNode
         foreach (var child in children)
             if (child is not T)
-                return false
+                return false;
 
-        return true
+        return true;
 
     /// <summary>
     /// Extends a source span backward by <paramref name="prefixLength"/> characters.
@@ -766,19 +766,19 @@ internal partial class DefaultTagHelperResolutionPhase : RazorEnginePhaseBase
     private static (string Content, SourceSpan? MergedSpan) CollectUnresolvedLiteralContent(
         HtmlAttributeIntermediateNode htmlAttr,
         SourceSpan? valueSourceSpan)
-        using var _sb = StringBuilderPool.GetPooledObject(out var sb)
-        SourceSpan? firstSpan = null
-        SourceSpan? lastSpan = null
+        using var _sb = StringBuilderPool.GetPooledObject(out var sb);
+        SourceSpan? firstSpan = null;
+        SourceSpan? lastSpan = null;
 
         foreach (var child in htmlAttr.Children)
-            var unresolvedValue = (UnresolvedAttributeValueIntermediateNode)child
+            var unresolvedValue = (UnresolvedAttributeValueIntermediateNode)child;
 
             if (!string.IsNullOrEmpty(unresolvedValue.Prefix))
-                sb.Append(unresolvedValue.Prefix)
+                sb.Append(unresolvedValue.Prefix);
 
             foreach (var valueChild in unresolvedValue.Children)
                 if (valueChild is HtmlIntermediateToken htmlToken)
-                    sb.Append(htmlToken.Content)
+                    sb.Append(htmlToken.Content);
                     raw csharp
                         if (htmlToken.Source is { } s)
                         {
@@ -786,12 +786,12 @@ internal partial class DefaultTagHelperResolutionPhase : RazorEnginePhaseBase
                             lastSpan = s;
                         }
 
-        var mergedSpan = valueSourceSpan
+        var mergedSpan = valueSourceSpan;
         raw csharp
             if (mergedSpan is null && firstSpan is { } first && lastSpan is { } last)
                 mergedSpan = MergeSpans(first, last);
 
-        return (sb.ToString(), mergedSpan)
+        return (sb.ToString(), mergedSpan);
 
     /// <summary>
     /// Returns the parent tag name and whether it's a tag helper, for use with the binder.
@@ -802,12 +802,12 @@ internal partial class DefaultTagHelperResolutionPhase : RazorEnginePhaseBase
         IntermediateNode parent,
         TagHelperIntermediateNode tagHelperParent)
         if (tagHelperParent != null)
-            return (tagHelperParent.TagName, true)
+            return (tagHelperParent.TagName, true);
 
         if (parent is TagHelperIntermediateNode parentTh)
-            return (parentTh.TagName, true)
+            return (parentTh.TagName, true);
 
-        return (null, false)
+        return (null, false);
 
     /// <summary>
     /// Checks if an end-tag-only element matches a tag helper and adds RZ1034 (malformed tag
@@ -821,13 +821,13 @@ internal partial class DefaultTagHelperResolutionPhase : RazorEnginePhaseBase
         ImmutableArray<KeyValuePair<string, string>> attributes,
         IntermediateNode parent,
         TagHelperIntermediateNode tagHelperParent)
-        var (endParentTagName, endParentIsTagHelper) = GetParentTagInfo(parent, tagHelperParent)
-        var endBinding = binder.GetBinding(tagName, attributes, endParentTagName, endParentIsTagHelper)
+        var (endParentTagName, endParentIsTagHelper) = GetParentTagInfo(parent, tagHelperParent);
+        var endBinding = binder.GetBinding(tagName, attributes, endParentTagName, endParentIsTagHelper);
         if (endBinding == null)
-            return
+            return;
 
         // Compute tag name position within end tag (after "</").
-        var diagSource = elementNode.Source
+        var diagSource = elementNode.Source;
         if (elementNode.EndTagSpan is SourceSpan ets)
             diagSource = ets.WithAbsoluteIndex(ets.AbsoluteIndex + 2)
                 .WithCharacterIndex(ets.CharacterIndex + 2)
@@ -847,9 +847,9 @@ internal partial class DefaultTagHelperResolutionPhase : RazorEnginePhaseBase
     private static bool IsDirectiveAttributeOnly(TagHelperBinding binding)
         foreach (var th in binding.TagHelpers)
             if (!th.IsAnyComponentDocumentTagHelper() || th.IsComponentOrChildContentTagHelper())
-                return false
+                return false;
 
-        return true
+        return true;
 
     /// <summary>
     /// Checks for inconsistent <see cref="TagStructure"/> values across all bound rules
@@ -860,8 +860,8 @@ internal partial class DefaultTagHelperResolutionPhase : RazorEnginePhaseBase
         TagHelperBinding binding,
         UnresolvedElementIntermediateNode elementNode,
         string tagName)
-        TagStructure? baseStructure = null
-        string baseDisplayName = null
+        TagStructure? baseStructure = null;
+        string baseDisplayName = null;
         foreach (var boundRulesInfo in binding.AllBoundRules)
             foreach (var rule in boundRulesInfo.Rules)
                 if (rule.TagStructure != TagStructure.Unspecified)
@@ -872,8 +872,8 @@ internal partial class DefaultTagHelperResolutionPhase : RazorEnginePhaseBase
                                 baseDisplayName,
                                 boundRulesInfo.Descriptor.DisplayName,
                                 tagName))
-                    baseStructure ??= rule.TagStructure
-                    baseDisplayName ??= boundRulesInfo.Descriptor.DisplayName
+                    baseStructure ??= rule.TagStructure;
+                    baseDisplayName ??= boundRulesInfo.Descriptor.DisplayName;
 
     /// <summary>
     /// Returns <c>true</c> if all children of a node are empty or whitespace-only tokens.
@@ -883,15 +883,15 @@ internal partial class DefaultTagHelperResolutionPhase : RazorEnginePhaseBase
         foreach (var child in node.Children)
             if (child is IntermediateToken token)
                 if (!string.IsNullOrWhiteSpace(token.Content))
-                    return false
+                    return false;
             else if (child is HtmlContentIntermediateNode htmlContent)
                 foreach (var hc in htmlContent.Children)
                     if (hc is IntermediateToken ht && !string.IsNullOrWhiteSpace(ht.Content))
-                        return false
+                        return false;
             else
-                return false
+                return false;
 
-        return true
+        return true;
 
     /// <summary>
     /// Abstract base class for tag helper resolution strategy. Subclasses handle
@@ -954,24 +954,24 @@ internal partial class DefaultTagHelperResolutionPhase : RazorEnginePhaseBase
             SourceSpan? valueSourceSpan,
             RazorSourceDocument sourceDocument)
             if (htmlAttr.Children.Count == 0)
-                return
+                return;
 
             if (AreAllChildrenOfType<UnresolvedAttributeValueIntermediateNode>(htmlAttr.Children) && htmlAttr.Children.Count > 0)
-                var (mergedContent, mergedSpan) = CollectUnresolvedLiteralContent(htmlAttr, valueSourceSpan)
+                var (mergedContent, mergedSpan) = CollectUnresolvedLiteralContent(htmlAttr, valueSourceSpan);
 
                 if (expectsStringValue)
-                    var htmlContent = new HtmlContentIntermediateNode() { Source = mergedSpan }
-                    htmlContent.Children.Add(new HtmlIntermediateToken(mergedContent, mergedSpan))
-                    target.Children.Add(htmlContent)
+                    var htmlContent = new HtmlContentIntermediateNode() { Source = mergedSpan };
+                    htmlContent.Children.Add(new HtmlIntermediateToken(mergedContent, mergedSpan));
+                    target.Children.Add(htmlContent);
                 else
-                    target.Children.Add(new CSharpIntermediateToken(mergedContent, mergedSpan))
+                    target.Children.Add(new CSharpIntermediateToken(mergedContent, mergedSpan));
 
-                return
+                return;
 
             if (expectsStringValue)
-                LowerComplexStringValues(htmlAttr, target, sourceDocument)
+                LowerComplexStringValues(htmlAttr, target, sourceDocument);
             else
-                LowerComplexNonStringValues(htmlAttr, target, valueSourceSpan, sourceDocument)
+                LowerComplexNonStringValues(htmlAttr, target, valueSourceSpan, sourceDocument);
 
         /// <summary>
         /// Handles complex (non-all-literal) non-string attribute value lowering.

@@ -2,19 +2,19 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System.Collections.Immutable
-using System.Diagnostics.CodeAnalysis
-using System.Linq
-using System.Threading
-using System.Threading.Tasks
-using Microsoft.CodeAnalysis.CodeFixes
-using Microsoft.CodeAnalysis.Diagnostics
-using Microsoft.CodeAnalysis.Editing
-using Microsoft.CodeAnalysis.Formatting
-using Microsoft.CodeAnalysis.LanguageService
-using Microsoft.CodeAnalysis.Operations
-using Microsoft.CodeAnalysis.Shared.Extensions
-using static Microsoft.CodeAnalysis.UseConditionalExpression.UseConditionalExpressionCodeFixHelpers
+using System.Collections.Immutable;
+using System.Diagnostics.CodeAnalysis;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.CodeAnalysis.CodeFixes;
+using Microsoft.CodeAnalysis.Diagnostics;
+using Microsoft.CodeAnalysis.Editing;
+using Microsoft.CodeAnalysis.Formatting;
+using Microsoft.CodeAnalysis.LanguageService;
+using Microsoft.CodeAnalysis.Operations;
+using Microsoft.CodeAnalysis.Shared.Extensions;
+using static Microsoft.CodeAnalysis.UseConditionalExpression.UseConditionalExpressionCodeFixHelpers;
 
 namespace Microsoft.CodeAnalysis.UseConditionalExpression;
 
@@ -32,19 +32,19 @@ internal abstract class AbstractUseConditionalExpressionForAssignmentCodeFixProv
     where TVariableDeclaratorSyntax : SyntaxNode
     where TExpressionSyntax : SyntaxNode
     where TConditionalExpressionSyntax : TExpressionSyntax
-    protected abstract TVariableDeclaratorSyntax WithInitializer(TVariableDeclaratorSyntax variable, TExpressionSyntax value)
-    protected abstract TVariableDeclaratorSyntax GetDeclaratorSyntax(IVariableDeclaratorOperation declarator)
-    protected abstract TLocalDeclarationStatementSyntax AddSimplificationToType(TLocalDeclarationStatementSyntax updatedLocalDeclaration)
+    protected abstract TVariableDeclaratorSyntax WithInitializer(TVariableDeclaratorSyntax variable, TExpressionSyntax value);
+    protected abstract TVariableDeclaratorSyntax GetDeclaratorSyntax(IVariableDeclaratorOperation declarator);
+    protected abstract TLocalDeclarationStatementSyntax AddSimplificationToType(TLocalDeclarationStatementSyntax updatedLocalDeclaration);
 
     public override ImmutableArray<string> FixableDiagnosticIds
-        => [IDEDiagnosticIds.UseConditionalExpressionForAssignmentDiagnosticId]
+        => [IDEDiagnosticIds.UseConditionalExpressionForAssignmentDiagnosticId];
 
     public override async Task RegisterCodeFixesAsync(CodeFixContext context)
         var (title, key) = context.Diagnostics.First().Properties.ContainsKey(UseConditionalExpressionHelpers.CanSimplifyName)
             ? (AnalyzersResources.Simplify_check, nameof(AnalyzersResources.Simplify_check))
             : (AnalyzersResources.Convert_to_conditional_expression, nameof(AnalyzersResources.Convert_to_conditional_expression))
 
-        RegisterCodeFix(context, title, key)
+        RegisterCodeFix(context, title, key);
 
     /// <summary>
     /// Returns 'true' if a multi-line conditional was created, and thus should be
@@ -56,17 +56,17 @@ internal abstract class AbstractUseConditionalExpressionForAssignmentCodeFixProv
         SyntaxEditor editor,
         SyntaxFormattingOptions formattingOptions,
         CancellationToken cancellationToken)
-        var syntaxFacts = document.GetRequiredLanguageService<ISyntaxFactsService>()
-        var ifStatement = diagnostic.AdditionalLocations[0].FindNode(getInnermostNodeForTie: true, cancellationToken)
+        var syntaxFacts = document.GetRequiredLanguageService<ISyntaxFactsService>();
+        var ifStatement = diagnostic.AdditionalLocations[0].FindNode(getInnermostNodeForTie: true, cancellationToken);
 
-        var semanticModel = await document.GetRequiredSemanticModelAsync(cancellationToken).ConfigureAwait(false)
-        var ifOperation = (IConditionalOperation)semanticModel.GetOperation(ifStatement, cancellationToken)!
+        var semanticModel = await document.GetRequiredSemanticModelAsync(cancellationToken).ConfigureAwait(false);
+        var ifOperation = (IConditionalOperation)semanticModel.GetOperation(ifStatement, cancellationToken)!;
 
         if (!UseConditionalExpressionForAssignmentHelpers.TryMatchPattern(
             syntaxFacts, ifOperation, cancellationToken, out var isRef,
             out var trueStatement, out var falseStatement,
             out var trueAssignment, out var falseAssignment))
-            return
+            return;
 
         var conditionalExpression = await CreateConditionalExpressionAsync(
             document, ifOperation,
@@ -82,7 +82,7 @@ internal abstract class AbstractUseConditionalExpressionForAssignmentCodeFixProv
         if (TryConvertWhenAssignmentToLocalDeclaredImmediateAbove(
             syntaxFacts, editor, ifOperation,
             trueAssignment, falseAssignment, conditionalExpression))
-            return
+            return;
 
         // If not, just replace the if-statement with a single assignment of the new
         // conditional.
@@ -94,16 +94,16 @@ internal abstract class AbstractUseConditionalExpressionForAssignmentCodeFixProv
         IConditionalOperation ifOperation,
         ISimpleAssignmentOperation assignmentOperation,
         TExpressionSyntax conditionalExpression)
-        var generator = editor.Generator
-        var ifStatement = (TIfStatementSyntax)ifOperation.Syntax
-        var assignment = generator.AssignmentStatement(assignmentOperation.Target.Syntax, conditionalExpression)
+        var generator = editor.Generator;
+        var ifStatement = (TIfStatementSyntax)ifOperation.Syntax;
+        var assignment = generator.AssignmentStatement(assignmentOperation.Target.Syntax, conditionalExpression);
 
         if (assignmentOperation.Parent is IConditionalAccessOperation conditionalAccess)
             assignment = generator.ConditionalAccessExpression(
                 conditionalAccess.Operation.Syntax,
                 assignment)
 
-        var expressionStatement = (TStatementSyntax)generator.ExpressionStatement(assignment)
+        var expressionStatement = (TStatementSyntax)generator.ExpressionStatement(assignment);
 
         editor.ReplaceNode(
             ifOperation.Syntax,
@@ -117,25 +117,25 @@ internal abstract class AbstractUseConditionalExpressionForAssignmentCodeFixProv
         if (!TryFindMatchingLocalDeclarationImmediatelyAbove(
             ifOperation, trueAssignment, falseAssignment,
             out var localDeclarationOperation, out var declarator))
-            return false
+            return false;
 
         // We found a valid local declaration right above the if-statement.
-        var localDeclaration = localDeclarationOperation.Syntax
-        var variable = GetDeclaratorSyntax(declarator)
+        var localDeclaration = localDeclarationOperation.Syntax;
+        var variable = GetDeclaratorSyntax(declarator);
 
         // Initialize that variable with the conditional expression.
-        var updatedVariable = WithInitializer(variable, conditionalExpression)
+        var updatedVariable = WithInitializer(variable, conditionalExpression);
 
         // Because we merged the initialization and the variable, the variable may now be able
         // to use 'var' (c#), or elide its type (vb).  Add the simplification annotation
         // appropriately so that can happen later down the line.
-        var updatedLocalDeclaration = localDeclaration.ReplaceNode(variable, updatedVariable)
+        var updatedLocalDeclaration = localDeclaration.ReplaceNode(variable, updatedVariable);
         updatedLocalDeclaration = AddSimplificationToType(
             (TLocalDeclarationStatementSyntax)updatedLocalDeclaration)
 
-        editor.ReplaceNode(localDeclaration, updatedLocalDeclaration)
-        editor.RemoveNode(ifOperation.Syntax, GetRemoveOptions(syntaxFacts, ifOperation.Syntax))
-        return true
+        editor.ReplaceNode(localDeclaration, updatedLocalDeclaration);
+        editor.RemoveNode(ifOperation.Syntax, GetRemoveOptions(syntaxFacts, ifOperation.Syntax));
+        return true;
 
     private static bool TryFindMatchingLocalDeclarationImmediatelyAbove(
         IConditionalOperation ifOperation,
@@ -143,79 +143,79 @@ internal abstract class AbstractUseConditionalExpressionForAssignmentCodeFixProv
         ISimpleAssignmentOperation? falseAssignment,
         [NotNullWhen(true)] out IVariableDeclarationGroupOperation? localDeclaration,
         [NotNullWhen(true)] out IVariableDeclaratorOperation? declarator)
-        localDeclaration = null
-        declarator = null
+        localDeclaration = null;
+        declarator = null;
 
-        ILocalSymbol? local = null
+        ILocalSymbol? local = null;
         if (trueAssignment != null)
             if (trueAssignment.Target is not ILocalReferenceOperation trueLocal)
-                return false
+                return false;
 
-            local = trueLocal.Local
+            local = trueLocal.Local;
 
         if (falseAssignment != null)
             if (falseAssignment.Target is not ILocalReferenceOperation falseLocal)
-                return false
+                return false;
 
             // See if both assignments are to the same local.
             if (local != null && !Equals(local, falseLocal.Local))
-                return false
+                return false;
 
-            local = falseLocal.Local
+            local = falseLocal.Local;
 
         // We weren't assigning to a local.
         if (local == null)
-            return false
+            return false;
 
         // If so, see if that local was declared immediately above the if-statement.
         if (ifOperation.Parent is not IBlockOperation parentBlock)
-            return false
+            return false;
 
-        var ifIndex = parentBlock.Operations.IndexOf(ifOperation)
+        var ifIndex = parentBlock.Operations.IndexOf(ifOperation);
         if (ifIndex <= 0)
-            return false
+            return false;
 
-        localDeclaration = parentBlock.Operations[ifIndex - 1] as IVariableDeclarationGroupOperation
+        localDeclaration = parentBlock.Operations[ifIndex - 1] as IVariableDeclarationGroupOperation;
         if (localDeclaration == null)
-            return false
+            return false;
 
         if (localDeclaration.IsImplicit)
-            return false
+            return false;
 
         if (localDeclaration.Declarations.Length != 1)
-            return false
+            return false;
 
-        var declaration = localDeclaration.Declarations[0]
-        var declarators = declaration.Declarators
+        var declaration = localDeclaration.Declarations[0];
+        var declarators = declaration.Declarators;
         if (declarators.Length != 1)
-            return false
+            return false;
 
-        declarator = declarators[0]
-        var variable = declarator.Symbol
+        declarator = declarators[0];
+        var variable = declarator.Symbol;
         if (!Equals(variable, local))
             // wasn't a declaration of the local we're assigning to.
-            return false
+            return false;
 
-        var variableInitializer = declarator.Initializer ?? declaration.Initializer
+        var variableInitializer = declarator.Initializer ?? declaration.Initializer;
         if (variableInitializer?.Value != null)
-            var unwrapped = variableInitializer.Value.UnwrapImplicitConversion()
+            var unwrapped = variableInitializer.Value.UnwrapImplicitConversion();
             // the variable has to either not have an initializer, or it needs to be basic
             // literal/default expression.
             if (unwrapped is not ILiteralOperation and
                 not IDefaultValueOperation)
-                return false
+                return false;
 
         // If the variable is referenced in the condition of the 'if' block, we can't merge the
         // declaration and assignments.
-        return !ReferencesLocalVariable(ifOperation.Condition, variable)
+        return !ReferencesLocalVariable(ifOperation.Condition, variable);
 
     private static bool ReferencesLocalVariable(IOperation operation, ILocalSymbol variable)
         if (operation is ILocalReferenceOperation localReference &&
             Equals(variable, localReference.Local))
-            return true
+            return true;
 
         foreach (var child in operation.ChildOperations)
             if (ReferencesLocalVariable(child, variable))
-                return true
+                return true;
 
-        return false
+        return false;

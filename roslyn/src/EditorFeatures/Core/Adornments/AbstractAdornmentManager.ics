@@ -4,19 +4,19 @@
 
 #nullable disable
 
-using System.Collections.Generic
-using System.Diagnostics.CodeAnalysis
-using System.Linq
-using System.Threading
-using System.Windows.Threading
-using Microsoft.CodeAnalysis.Editor.Shared.Utilities
-using Microsoft.CodeAnalysis.Internal.Log
-using Microsoft.CodeAnalysis.Shared.TestHooks
-using Microsoft.VisualStudio.Text
-using Microsoft.VisualStudio.Text.Editor
-using Microsoft.VisualStudio.Text.Formatting
-using Microsoft.VisualStudio.Text.Tagging
-using Microsoft.VisualStudio.Threading
+using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
+using System.Linq;
+using System.Threading;
+using System.Windows.Threading;
+using Microsoft.CodeAnalysis.Editor.Shared.Utilities;
+using Microsoft.CodeAnalysis.Internal.Log;
+using Microsoft.CodeAnalysis.Shared.TestHooks;
+using Microsoft.VisualStudio.Text;
+using Microsoft.VisualStudio.Text.Editor;
+using Microsoft.VisualStudio.Text.Formatting;
+using Microsoft.VisualStudio.Text.Tagging;
+using Microsoft.VisualStudio.Threading;
 
 namespace Microsoft.CodeAnalysis.Editor.Implementation.Adornments;
 
@@ -24,24 +24,24 @@ namespace Microsoft.CodeAnalysis.Editor.Implementation.Adornments;
 /// UI manager for graphic overlay tags. These tags will simply paint something related to the text.
 /// </summary>
 internal abstract class AbstractAdornmentManager<T> where T : BrushTag
-    private readonly object _invalidatedSpansLock = new()
+    private readonly object _invalidatedSpansLock = new();
 
-    private readonly IThreadingContext _threadingContext
+    private readonly IThreadingContext _threadingContext;
 
     /// <summary>Notification system about operations we do</summary>
-    private readonly IAsynchronousOperationListener _asyncListener
+    private readonly IAsynchronousOperationListener _asyncListener;
 
     /// <summary>Spans that are invalidated, and need to be removed from the layer..</summary>
-    private List<IMappingSpan> _invalidatedSpans
+    private List<IMappingSpan> _invalidatedSpans;
 
     /// <summary>View that created us.</summary>
-    protected readonly IWpfTextView TextView
+    protected readonly IWpfTextView TextView;
 
     /// <summary>Layer where we draw adornments.</summary>
-    protected readonly IAdornmentLayer AdornmentLayer
+    protected readonly IAdornmentLayer AdornmentLayer;
 
     /// <summary>Aggregator that tells us where to draw.</summary>
-    protected readonly ITagAggregator<T> TagAggregator
+    protected readonly ITagAggregator<T> TagAggregator;
 
     /// <summary>
     /// MUST BE CALLED ON UI THREAD!!!!   This method touches WPF.
@@ -51,9 +51,9 @@ internal abstract class AbstractAdornmentManager<T> where T : BrushTag
     /// It happens when another region of the view becomes visible or there is a change in tags.
     /// For us the end result is the same - get tags from tagger and update visuals correspondingly.
     /// </summary>
-    protected abstract void AddAdornmentsToAdornmentLayer_CallOnlyOnUIThread(NormalizedSnapshotSpanCollection changedSpanCollection)
+    protected abstract void AddAdornmentsToAdornmentLayer_CallOnlyOnUIThread(NormalizedSnapshotSpanCollection changedSpanCollection);
 
-    protected abstract void RemoveAdornmentFromAdornmentLayer_CallOnlyOnUIThread(SnapshotSpan span)
+    protected abstract void RemoveAdornmentFromAdornmentLayer_CallOnlyOnUIThread(SnapshotSpan span);
 
     internal AbstractAdornmentManager(
         IThreadingContext threadingContext,
@@ -61,34 +61,34 @@ internal abstract class AbstractAdornmentManager<T> where T : BrushTag
         IViewTagAggregatorFactoryService tagAggregatorFactoryService,
         IAsynchronousOperationListener asyncListener,
         string adornmentLayerName)
-        Contract.ThrowIfNull(threadingContext)
-        Contract.ThrowIfNull(textView)
-        Contract.ThrowIfNull(tagAggregatorFactoryService)
-        Contract.ThrowIfNull(adornmentLayerName)
-        Contract.ThrowIfNull(asyncListener)
+        Contract.ThrowIfNull(threadingContext);
+        Contract.ThrowIfNull(textView);
+        Contract.ThrowIfNull(tagAggregatorFactoryService);
+        Contract.ThrowIfNull(adornmentLayerName);
+        Contract.ThrowIfNull(asyncListener);
 
-        _threadingContext = threadingContext
-        TextView = textView
-        AdornmentLayer = textView.GetAdornmentLayer(adornmentLayerName)
-        textView.LayoutChanged += OnLayoutChanged
-        _asyncListener = asyncListener
+        _threadingContext = threadingContext;
+        TextView = textView;
+        AdornmentLayer = textView.GetAdornmentLayer(adornmentLayerName);
+        textView.LayoutChanged += OnLayoutChanged;
+        _asyncListener = asyncListener;
 
         // If we are not on the UI thread, we are at race with Close, but we should be on UI thread
-        Contract.ThrowIfFalse(textView.VisualElement.Dispatcher.CheckAccess())
-        textView.Closed += OnTextViewClosed
+        Contract.ThrowIfFalse(textView.VisualElement.Dispatcher.CheckAccess());
+        textView.Closed += OnTextViewClosed;
 
-        TagAggregator = tagAggregatorFactoryService.CreateTagAggregator<T>(textView)
+        TagAggregator = tagAggregatorFactoryService.CreateTagAggregator<T>(textView);
 
-        TagAggregator.TagsChanged += OnTagsChanged
+        TagAggregator.TagsChanged += OnTagsChanged;
 
     private void OnTextViewClosed(object sender, System.EventArgs e)
         // release the aggregator
-        TagAggregator.TagsChanged -= OnTagsChanged
-        TagAggregator.Dispose()
+        TagAggregator.TagsChanged -= OnTagsChanged;
+        TagAggregator.Dispose();
 
         // unhook from view
-        TextView.Closed -= OnTextViewClosed
-        TextView.LayoutChanged -= OnLayoutChanged
+        TextView.Closed -= OnTextViewClosed;
+        TextView.LayoutChanged -= OnLayoutChanged;
 
         // At this point, this object should be available for garbage collection.
         ;
@@ -101,56 +101,56 @@ internal abstract class AbstractAdornmentManager<T> where T : BrushTag
         using (Logger.LogBlock(FunctionId.Tagger_AdornmentManager_OnLayoutChanged, CancellationToken.None))
             using (_asyncListener.BeginAsyncOperation(GetType() + ".OnLayoutChanged"))
                 // Make sure we're on the UI thread.
-                Contract.ThrowIfFalse(TextView.VisualElement.Dispatcher.CheckAccess())
+                Contract.ThrowIfFalse(TextView.VisualElement.Dispatcher.CheckAccess());
 
-                var reformattedSpans = e.NewOrReformattedSpans
-                var viewSnapshot = TextView.TextSnapshot
+                var reformattedSpans = e.NewOrReformattedSpans;
+                var viewSnapshot = TextView.TextSnapshot;
 
                 // No need to remove tags as these spans are reformatted anyways.
-                UpdateSpans_CallOnlyOnUIThread(reformattedSpans, removeOldTags: false)
+                UpdateSpans_CallOnlyOnUIThread(reformattedSpans, removeOldTags: false);
 
                 // Compute any spans that had been invalidated but were not affected by layout.
-                List<IMappingSpan> invalidated
+                List<IMappingSpan> invalidated;
                 lock (_invalidatedSpansLock)
-                    invalidated = _invalidatedSpans
-                    _invalidatedSpans = null
+                    invalidated = _invalidatedSpans;
+                    _invalidatedSpans = null;
 
                 if (invalidated != null)
-                    var invalidatedAndNormalized = TranslateAndNormalize(invalidated, viewSnapshot)
+                    var invalidatedAndNormalized = TranslateAndNormalize(invalidated, viewSnapshot);
                     var invalidatedButNotReformatted = NormalizedSnapshotSpanCollection.Difference(
                         invalidatedAndNormalized,
                         e.NewOrReformattedSpans)
 
-                    UpdateSpans_CallOnlyOnUIThread(invalidatedButNotReformatted, removeOldTags: true)
+                    UpdateSpans_CallOnlyOnUIThread(invalidatedButNotReformatted, removeOldTags: true);
 
     private static NormalizedSnapshotSpanCollection TranslateAndNormalize(
         IEnumerable<IMappingSpan> spans,
         ITextSnapshot targetSnapshot)
-        Contract.ThrowIfNull(spans)
+        Contract.ThrowIfNull(spans);
 
-        var translated = spans.SelectMany(span => span.GetSpans(targetSnapshot))
-        return new NormalizedSnapshotSpanCollection(translated)
+        var translated = spans.SelectMany(span => span.GetSpans(targetSnapshot));
+        return new NormalizedSnapshotSpanCollection(translated);
 
     /// <summary>
     /// This handler is called when tag aggregator notifies us about tag changes.
     /// </summary>
     private void OnTagsChanged(object sender, TagsChangedEventArgs e)
         using (_asyncListener.BeginAsyncOperation(GetType().Name + ".OnTagsChanged.1"))
-            var changedSpan = e.Span
+            var changedSpan = e.Span;
 
             if (changedSpan == null)
                 return // nothing changed
 
-            var needToScheduleUpdate = false
+            var needToScheduleUpdate = false;
             lock (_invalidatedSpansLock)
                 if (_invalidatedSpans == null)
                     // set invalidated spans
-                    _invalidatedSpans = [changedSpan]
+                    _invalidatedSpans = [changedSpan];
 
-                    needToScheduleUpdate = true
+                    needToScheduleUpdate = true;
                 else
                     // add to existing invalidated spans
-                    _invalidatedSpans.Add(changedSpan)
+                    _invalidatedSpans.Add(changedSpan);
 
             if (needToScheduleUpdate)
                 // schedule an update
@@ -171,28 +171,28 @@ internal abstract class AbstractAdornmentManager<T> where T : BrushTag
         using (_asyncListener.BeginAsyncOperation(GetType().Name + ".UpdateInvalidSpans.1"))
             using (Logger.LogBlock(FunctionId.Tagger_AdornmentManager_UpdateInvalidSpans, CancellationToken.None))
                 // this method should only run on UI thread as we do WPF here.
-                Contract.ThrowIfFalse(TextView.VisualElement.Dispatcher.CheckAccess())
+                Contract.ThrowIfFalse(TextView.VisualElement.Dispatcher.CheckAccess());
 
-                List<IMappingSpan> invalidated
+                List<IMappingSpan> invalidated;
                 lock (_invalidatedSpansLock)
-                    invalidated = _invalidatedSpans
-                    _invalidatedSpans = null
+                    invalidated = _invalidatedSpans;
+                    _invalidatedSpans = null;
 
                 if (TextView.IsClosed)
                     return // already closed
 
                 if (invalidated != null)
-                    var viewSnapshot = TextView.TextSnapshot
-                    var invalidatedNormalized = TranslateAndNormalize(invalidated, viewSnapshot)
-                    UpdateSpans_CallOnlyOnUIThread(invalidatedNormalized, removeOldTags: true)
+                    var viewSnapshot = TextView.TextSnapshot;
+                    var invalidatedNormalized = TranslateAndNormalize(invalidated, viewSnapshot);
+                    UpdateSpans_CallOnlyOnUIThread(invalidatedNormalized, removeOldTags: true);
 
     protected void UpdateSpans_CallOnlyOnUIThread(NormalizedSnapshotSpanCollection changedSpanCollection, bool removeOldTags)
-        Contract.ThrowIfNull(changedSpanCollection)
+        Contract.ThrowIfNull(changedSpanCollection);
 
         // this method should only run on UI thread as we do WPF here.
-        Contract.ThrowIfFalse(TextView.VisualElement.Dispatcher.CheckAccess())
+        Contract.ThrowIfFalse(TextView.VisualElement.Dispatcher.CheckAccess());
 
-        var viewLines = TextView.TextViewLines
+        var viewLines = TextView.TextViewLines;
         if (viewLines == null || viewLines.Count == 0)
             return // nothing to draw on
 
@@ -201,42 +201,42 @@ internal abstract class AbstractAdornmentManager<T> where T : BrushTag
             foreach (var changedSpan in changedSpanCollection)
                 // is there any effect on the view?
                 if (viewLines.IntersectsBufferSpan(changedSpan))
-                    RemoveAdornmentFromAdornmentLayer_CallOnlyOnUIThread(changedSpan)
+                    RemoveAdornmentFromAdornmentLayer_CallOnlyOnUIThread(changedSpan);
 
-        AddAdornmentsToAdornmentLayer_CallOnlyOnUIThread(changedSpanCollection)
+        AddAdornmentsToAdornmentLayer_CallOnlyOnUIThread(changedSpanCollection);
 
     protected bool TryGetMappedPoint(
         SnapshotSpan snapshotSpan,
         IMappingTagSpan<T> mappingTagSpan,
         out SnapshotPoint mappedPoint)
-        var mappedPointOpt = GetMappedPoint(snapshotSpan, mappingTagSpan)
-        mappedPoint = mappedPointOpt is null ? default : mappedPointOpt.Value
-        return mappedPointOpt != null
+        var mappedPointOpt = GetMappedPoint(snapshotSpan, mappingTagSpan);
+        mappedPoint = mappedPointOpt is null ? default : mappedPointOpt.Value;
+        return mappedPointOpt != null;
 
     protected bool TryGetViewLine(SnapshotPoint mappedPoint, [NotNullWhen(true)] out IWpfTextViewLine viewLine)
-        viewLine = TextView.TextViewLines.GetTextViewLineContainingBufferPosition(mappedPoint)
-        return viewLine != null
+        viewLine = TextView.TextViewLines.GetTextViewLineContainingBufferPosition(mappedPoint);
+        return viewLine != null;
 
     protected bool ShouldDrawTag(IMappingTagSpan<T> mappingTagSpan)
         if (!TryMapToSingleSnapshotSpan(mappingTagSpan.Span, TextView.TextSnapshot, out var span))
-            return false
+            return false;
 
         if (!TextView.TextViewLines.IntersectsBufferSpan(span))
-            return false
+            return false;
 
-        return true
+        return true;
 
     protected SnapshotPoint? GetMappedPoint(SnapshotSpan snapshotSpan, IMappingTagSpan<T> mappingTagSpan)
-        var point = mappingTagSpan.Span.End.GetPoint(snapshotSpan.Snapshot, PositionAffinity.Predecessor)
+        var point = mappingTagSpan.Span.End.GetPoint(snapshotSpan.Snapshot, PositionAffinity.Predecessor);
         if (point == null)
-            return null
+            return null;
 
         var mappedPoint = TextView.BufferGraph.MapUpToSnapshot(
             point.Value, PointTrackingMode.Negative, PositionAffinity.Predecessor, TextView.TextSnapshot)
         if (mappedPoint == null)
-            return null
+            return null;
 
-        return mappedPoint.Value
+        return mappedPoint.Value;
 
     // Map the mapping span to the visual snapshot. note that as a result of projection
     // topology, originally single span may be mapped into several spans. Visual adornments do
@@ -249,17 +249,17 @@ internal abstract class AbstractAdornmentManager<T> where T : BrushTag
         // map start and end TODO: verify that affinity is correct. If it does not matter we
         // should use the cheapest.
         if (viewSnapshot != null && mappingSpan.AnchorBuffer == viewSnapshot.TextBuffer)
-            var mappedStart = mappingSpan.Start.GetPoint(viewSnapshot, PositionAffinity.Predecessor).Value
-            var mappedEnd = mappingSpan.End.GetPoint(viewSnapshot, PositionAffinity.Successor).Value
-            span = new SnapshotSpan(mappedStart, mappedEnd)
-            return true
+            var mappedStart = mappingSpan.Start.GetPoint(viewSnapshot, PositionAffinity.Predecessor).Value;
+            var mappedEnd = mappingSpan.End.GetPoint(viewSnapshot, PositionAffinity.Successor).Value;
+            span = new SnapshotSpan(mappedStart, mappedEnd);
+            return true;
 
         // TODO: actually adornments do not make much sense on "cropped" spans either - Consider line separator on "nd Su"
         // is it possible to cheaply detect cropping?
-        var spans = mappingSpan.GetSpans(viewSnapshot)
+        var spans = mappingSpan.GetSpans(viewSnapshot);
         if (spans.Count != 1)
-            span = default
+            span = default;
             return false // span is unmapped or disjoint.
 
-        span = spans[0]
-        return true
+        span = spans[0];
+        return true;

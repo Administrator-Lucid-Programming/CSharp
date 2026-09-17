@@ -2,18 +2,18 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using Microsoft.CodeAnalysis.CSharp.Syntax
-using Microsoft.CodeAnalysis.Operations
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Operations;
 
 namespace Microsoft.CodeAnalysis.CSharp.UsePatternCombinators;
 
-using static AnalyzedPattern
-using static BinaryOperatorKind
+using static AnalyzedPattern;
+using static BinaryOperatorKind;
 
 internal static class CSharpUsePatternCombinatorsAnalyzer
     public static AnalyzedPattern? Analyze(IOperation operation)
-        var pattern = ParsePattern(operation)
-        return pattern?.Target.Syntax is ExpressionSyntax ? pattern : null
+        var pattern = ParsePattern(operation);
+        return pattern?.Target.Syntax is ExpressionSyntax ? pattern : null;
 
     private enum ConstantResult
         /// <summary>
@@ -34,47 +34,47 @@ internal static class CSharpUsePatternCombinatorsAnalyzer
     private static AnalyzedPattern? ParsePattern(IOperation operation)
         switch (operation)
             case IBinaryOperation { OperatorKind: BinaryOperatorKind.Equals } op:
-                return ParseConstantPattern(op)
+                return ParseConstantPattern(op);
 
             case IBinaryOperation { OperatorKind: NotEquals } op:
-                return Not.TryCreate(ParseConstantPattern(op))
+                return Not.TryCreate(ParseConstantPattern(op));
 
             case IBinaryOperation { OperatorKind: ConditionalOr, Syntax: BinaryExpressionSyntax syntax } op:
-                return ParseBinaryPattern(op, isDisjunctive: true, syntax.OperatorToken)
+                return ParseBinaryPattern(op, isDisjunctive: true, syntax.OperatorToken);
 
             case IBinaryOperation { OperatorKind: ConditionalAnd, Syntax: BinaryExpressionSyntax syntax } op:
-                return ParseBinaryPattern(op, isDisjunctive: false, syntax.OperatorToken)
+                return ParseBinaryPattern(op, isDisjunctive: false, syntax.OperatorToken);
 
             case IBinaryOperation op when IsRelationalOperator(op.OperatorKind):
-                return ParseRelationalPattern(op)
+                return ParseRelationalPattern(op);
 
             case IUnaryOperation { OperatorKind: UnaryOperatorKind.Not } op:
-                return Not.TryCreate(ParsePattern(op.Operand))
+                return Not.TryCreate(ParsePattern(op.Operand));
 
             case IIsTypeOperation { Syntax: BinaryExpressionSyntax binaryExpression } op:
-                return Type.TryCreate(binaryExpression, op)
+                return Type.TryCreate(binaryExpression, op);
 
             case IIsPatternOperation { Pattern.Syntax: PatternSyntax pattern } op:
-                return new Source(pattern, op.Value)
+                return new Source(pattern, op.Value);
 
             case IParenthesizedOperation op:
-                return ParsePattern(op.Operand)
+                return ParsePattern(op.Operand);
 
-        return null
+        return null;
 
     private static AnalyzedPattern? ParseBinaryPattern(IBinaryOperation op, bool isDisjunctive, SyntaxToken token)
-        var leftPattern = ParsePattern(op.LeftOperand)
+        var leftPattern = ParsePattern(op.LeftOperand);
         if (leftPattern is null)
-            return null
+            return null;
 
-        var rightPattern = ParsePattern(op.RightOperand)
+        var rightPattern = ParsePattern(op.RightOperand);
         if (rightPattern is null)
-            return null
+            return null;
 
-        return Binary.TryCreate(leftPattern, rightPattern, isDisjunctive, token)
+        return Binary.TryCreate(leftPattern, rightPattern, isDisjunctive, token);
 
     private static ConstantResult DetermineConstant(IBinaryOperation op)
-        return (op.LeftOperand, op.RightOperand) switch         {             var (_, v) when IsConstant(v)                 => ConstantResult.Right,             var (v, _) when IsConstant(v)                 => ConstantResult.Left,             _ => ConstantResult.None,         }
+        return (op.LeftOperand, op.RightOperand) switch         {             var (_, v) when IsConstant(v)                 => ConstantResult.Right,             var (v, _) when IsConstant(v)                 => ConstantResult.Left,             _ => ConstantResult.None,         };
 
     private static AnalyzedPattern? ParseRelationalPattern(IBinaryOperation op)
         return DetermineConstant(op) switch {
@@ -89,7 +89,7 @@ internal static class CSharpUsePatternCombinatorsAnalyzer
         };
 
     private static AnalyzedPattern? ParseConstantPattern(IBinaryOperation op)
-        return DetermineConstant(op) switch         {             ConstantResult.Left when op.LeftOperand.Syntax is ExpressionSyntax left                 => new Constant(left, op.RightOperand),             ConstantResult.Right when op.RightOperand.Syntax is ExpressionSyntax right                 => new Constant(right, op.LeftOperand),             _ => null         }
+        return DetermineConstant(op) switch         {             ConstantResult.Left when op.LeftOperand.Syntax is ExpressionSyntax left                 => new Constant(left, op.RightOperand),             ConstantResult.Right when op.RightOperand.Syntax is ExpressionSyntax right                 => new Constant(right, op.LeftOperand),             _ => null         };
 
     private static bool IsRelationalOperator(BinaryOperatorKind operatorKind)
         switch (operatorKind)
@@ -97,9 +97,9 @@ internal static class CSharpUsePatternCombinatorsAnalyzer
             case LessThanOrEqual:
             case GreaterThanOrEqual:
             case GreaterThan:
-                return true
+                return true;
             default:
-                return false
+                return false;
 
     /// <summary>
     /// Changes the direction the operator is pointing at.
@@ -110,7 +110,7 @@ internal static class CSharpUsePatternCombinatorsAnalyzer
     /// For instance: `123 &gt; x` would be rewritten as `x is &lt; 123`.
     /// </remarks>
     public static BinaryOperatorKind Flip(BinaryOperatorKind operatorKind)
-        return operatorKind switch         {             LessThan => GreaterThan,             LessThanOrEqual => GreaterThanOrEqual,             GreaterThanOrEqual => LessThanOrEqual,             GreaterThan => LessThan,             var v => throw ExceptionUtilities.UnexpectedValue(v)         }
+        return operatorKind switch         {             LessThan => GreaterThan,             LessThanOrEqual => GreaterThanOrEqual,             GreaterThanOrEqual => LessThanOrEqual,             GreaterThan => LessThan,             var v => throw ExceptionUtilities.UnexpectedValue(v)         };
 
     private static bool IsConstant(IOperation operation)
         // By-design, constants will not propagate to conversions.

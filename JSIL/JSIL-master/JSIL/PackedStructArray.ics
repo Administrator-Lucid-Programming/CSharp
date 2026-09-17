@@ -1,59 +1,59 @@
-using System
-using System.Collections.Generic
-using System.Diagnostics
-using System.Linq
-using System.Text
-using JSIL.Ast
-using Mono.Cecil
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using System.Text;
+using JSIL.Ast;
+using Mono.Cecil;
 
 namespace JSIL.Internal
     public static class PackedArrayUtil
         public static bool IsPackedArrayType(TypeReference type)
             if (type.Namespace != "JSIL.Runtime")
-                return false
+                return false;
 
-            return type.Name == "IPackedArray`1"
+            return type.Name == "IPackedArray`1";
 
         public static TypeReference GetElementType(TypeReference arrayType)
-            var git = (GenericInstanceType)arrayType
-            return git.GenericArguments[0]
+            var git = (GenericInstanceType)arrayType;
+            return git.GenericArguments[0];
 
         public static TypeReference MakePackedArrayType(TypeReference arrayType, TypeReference attributeType)
-            var at = arrayType as ArrayType
+            var at = arrayType as ArrayType;
             if (at == null)
-                throw new InvalidOperationException("Cannot apply JSPackedArray to a non-array type")
+                throw new InvalidOperationException("Cannot apply JSPackedArray to a non-array type");
 
-            var elementType = at.ElementType
+            var elementType = at.ElementType;
             if (!TypeUtil.ExpandPositionalGenericParameters(elementType, out elementType))
-                elementType = at.ElementType
+                elementType = at.ElementType;
 
             if (!TypeUtil.IsStruct(elementType))
-                throw new InvalidOperationException("Cannot apply JSPackedArray to a non-struct array")
+                throw new InvalidOperationException("Cannot apply JSPackedArray to a non-struct array");
 
-            var attributeTypeDefinition = attributeType.Resolve()
+            var attributeTypeDefinition = attributeType.Resolve();
             var linkedTypeAttribute = attributeTypeDefinition.CustomAttributes.First(
                 (ca) => ca.AttributeType.FullName == "JSIL.Runtime.LinkedTypeAttribute"
                 )
 
-            var openTypeReference = (TypeReference)linkedTypeAttribute.ConstructorArguments[0].Value
+            var openTypeReference = (TypeReference)linkedTypeAttribute.ConstructorArguments[0].Value;
 
-            var closedTypeReference = new GenericInstanceType(openTypeReference)
-            closedTypeReference.GenericArguments.Add(at.ElementType)
+            var closedTypeReference = new GenericInstanceType(openTypeReference);
+            closedTypeReference.GenericArguments.Add(at.ElementType);
 
-            return closedTypeReference
+            return closedTypeReference;
 
         public static void CheckInvocationSafety(MethodInfo method, JSExpression[] argumentValues, TypeSystem typeSystem)
             if (method.Metadata.HasAttribute("JSIL.Meta.JSAllowPackedArrayArgumentsAttribute"))
-                return
+                return;
 
-            TypeReference temp
-            string[] argumentNames = GetPackedArrayArgumentNames(method, out temp)
+            TypeReference temp;
+            string[] argumentNames = GetPackedArrayArgumentNames(method, out temp);
 
             for (var i = 0; i < method.Parameters.Length; i++)
                 if (i >= argumentValues.Length)
-                    continue
+                    continue;
 
-                var valueType = argumentValues[i].GetActualType(typeSystem)
+                var valueType = argumentValues[i].GetActualType(typeSystem);
 
                 if (!IsPackedArrayType(valueType))
                     if ((argumentNames != null) && argumentNames.Contains(method.Parameters[i].Name))
@@ -68,32 +68,32 @@ namespace JSIL.Internal
                     )
 
         public static string[] GetPackedArrayArgumentNames(MethodInfo method, out TypeReference packedArrayAttributeType)
-            packedArrayAttributeType = null
+            packedArrayAttributeType = null;
 
-            AttributeGroup packedArrayAttribute
+            AttributeGroup packedArrayAttribute;
             if (
                 (method != null) &&
                     ((packedArrayAttribute = method.Metadata.GetAttribute("JSIL.Meta.JSPackedArrayArgumentsAttribute")) != null)
                 )
-                var result = new List<string>()
+                var result = new List<string>();
 
                 foreach (var entry in packedArrayAttribute.Entries)
-                    packedArrayAttributeType = entry.Type
+                    packedArrayAttributeType = entry.Type;
 
-                    var argumentNames = entry.Arguments[0].Value as IList<CustomAttributeArgument>
+                    var argumentNames = entry.Arguments[0].Value as IList<CustomAttributeArgument>;
                     if (argumentNames == null)
-                        throw new ArgumentException("Arguments to JSPackedArrayArguments must be strings")
+                        throw new ArgumentException("Arguments to JSPackedArrayArguments must be strings");
 
                     foreach (var attributeArgument in argumentNames)
-                        var argumentName = attributeArgument.Value as string
+                        var argumentName = attributeArgument.Value as string;
                         if (argumentName == null)
-                            throw new ArgumentException("Arguments to JSPackedArrayArguments must be strings")
+                            throw new ArgumentException("Arguments to JSPackedArrayArguments must be strings");
 
-                        result.Add(argumentName)
+                        result.Add(argumentName);
 
-                return result.ToArray()
+                return result.ToArray();
 
-            return null
+            return null;
 
         public static JSExpression FilterInvocationResult(
             MethodReference methodReference, MethodInfo method,
@@ -101,30 +101,30 @@ namespace JSIL.Internal
             ITypeInfoSource typeInfo, TypeSystem typeSystem
             )
             if (method == null)
-                return result
+                return result;
 
-            var resultType = result.GetActualType(typeSystem)
-            var resultIsPackedArray = PackedArrayUtil.IsPackedArrayType(resultType)
-            var returnValueAttribute = method.Metadata.GetAttribute("JSIL.Meta.JSPackedArrayReturnValueAttribute")
+            var resultType = result.GetActualType(typeSystem);
+            var resultIsPackedArray = PackedArrayUtil.IsPackedArrayType(resultType);
+            var returnValueAttribute = method.Metadata.GetAttribute("JSIL.Meta.JSPackedArrayReturnValueAttribute");
 
             if (returnValueAttribute != null)
                 if (TypeUtil.IsOpenType(resultType))
                     // FIXME: We need to restrict substitution to when the result type is a generic parameter owned by the invocation...
-                    resultType = JSExpression.SubstituteTypeArgs(typeInfo, resultType, methodReference)
+                    resultType = JSExpression.SubstituteTypeArgs(typeInfo, resultType, methodReference);
 
                 if (!resultIsPackedArray)
-                    return JSChangeTypeExpression.New(result, PackedArrayUtil.MakePackedArrayType(resultType, returnValueAttribute.Entries.First().Type), typeSystem)
+                    return JSChangeTypeExpression.New(result, PackedArrayUtil.MakePackedArrayType(resultType, returnValueAttribute.Entries.First().Type), typeSystem);
 
-            return result
+            return result;
 
         public static void CheckReturnValue(MethodInfo method, JSExpression returnValue, TypeSystem typeSystem)
             if (method == null)
-                return
+                return;
 
-            var resultType = returnValue.GetActualType(typeSystem)
-            var resultIsPackedArray = PackedArrayUtil.IsPackedArrayType(resultType)
+            var resultType = returnValue.GetActualType(typeSystem);
+            var resultIsPackedArray = PackedArrayUtil.IsPackedArrayType(resultType);
 
-            var returnValueAttribute = method.Metadata.GetAttribute("JSIL.Meta.JSPackedArrayReturnValueAttribute")
+            var returnValueAttribute = method.Metadata.GetAttribute("JSIL.Meta.JSPackedArrayReturnValueAttribute");
             if (returnValueAttribute != null)
                 if (!resultIsPackedArray)
                     throw new ArgumentException(
@@ -137,8 +137,8 @@ namespace JSIL.Internal
                 )
 
         public static JSExpression GetItem(TypeReference targetType, TypeInfo targetTypeInfo, JSExpression target, JSExpression index, MethodTypeFactory methodTypes, bool proxy = false)
-            var targetGit = (GenericInstanceType)targetType
-            var getMethodName = "get_Item"
+            var targetGit = (GenericInstanceType)targetType;
+            var getMethodName = "get_Item";
             var getMethod = (JSIL.Internal.MethodInfo)targetTypeInfo.Members.First(
                 (kvp) => kvp.Key.Name == getMethodName
                 ).Value
@@ -150,7 +150,7 @@ namespace JSIL.Internal
 
             // We have to construct a custom reference to the method in order for ILSpy's
             //  SubstituteTypeArgs method not to explode later on
-            var getMethodReference = CecilUtil.RebindMethod(getMethod.Member, targetGit, targetGit.GenericArguments[0])
+            var getMethodReference = CecilUtil.RebindMethod(getMethod.Member, targetGit, targetGit.GenericArguments[0]);
 
             var result = JSInvocationExpression.InvokeMethod(
                 new JSType(targetType),
@@ -160,7 +160,7 @@ namespace JSIL.Internal
                 constantIfArgumentsAre: proxy
             )
 
-            return result
+            return result;
 
         public static bool IsElementProxy(JSExpression expression)
             return expression.SelfAndChildrenRecursive.OfType<JSNewPackedArrayElementProxy>().Any() ||

@@ -1,56 +1,56 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System
-using System.Buffers.Binary
-using System.Collections.Generic
-using System.Diagnostics
-using System.IO
-using System.Linq
-using System.Xml.Linq
-using ILCompiler.DependencyAnalysis
-using ILCompiler.DependencyAnalysis.Wasm
-using ILCompiler.DependencyAnalysisFramework
-using Internal.Text
-using Internal.TypeSystem
+using System;
+using System.Buffers.Binary;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Xml.Linq;
+using ILCompiler.DependencyAnalysis;
+using ILCompiler.DependencyAnalysis.Wasm;
+using ILCompiler.DependencyAnalysisFramework;
+using Internal.Text;
+using Internal.TypeSystem;
 
-using static ILCompiler.DependencyAnalysis.ObjectNode
-using static ILCompiler.DependencyAnalysis.RelocType
-using ObjectData = ILCompiler.DependencyAnalysis.ObjectNode.ObjectData
-using CodeDataLayout = CodeDataLayoutMode.CodeDataLayout
+using static ILCompiler.DependencyAnalysis.ObjectNode;
+using static ILCompiler.DependencyAnalysis.RelocType;
+using ObjectData = ILCompiler.DependencyAnalysis.ObjectNode.ObjectData;
+using CodeDataLayout = CodeDataLayoutMode.CodeDataLayout;
 
 namespace ILCompiler.ObjectWriter
     public abstract partial class ObjectWriter
-        protected virtual CodeDataLayout LayoutMode => CodeDataLayout.Unified
+        protected virtual CodeDataLayout LayoutMode => CodeDataLayout.Unified;
         private protected sealed record SymbolDefinition(int SectionIndex, long Value, int Size = 0, bool Global = false);
         protected sealed record SymbolicRelocation(long Offset, RelocType Type, Utf8String SymbolName, long Addend = 0);
         private sealed record BlockToRelocate(int SectionIndex, long Offset, byte[] Data, Relocation[] Relocations);
         private protected sealed record ChecksumsToCalculate(int SectionIndex, long Offset, Relocation[] ChecksumRelocations);
 
-        private protected readonly NodeFactory _nodeFactory
-        private protected readonly ObjectWritingOptions _options
-        private protected readonly OutputInfoBuilder _outputInfoBuilder
-        private readonly bool _isSingleFileCompilation
-        protected readonly Utf8StringBuilder _utf8StringBuilder = new()
+        private protected readonly NodeFactory _nodeFactory;
+        private protected readonly ObjectWritingOptions _options;
+        private protected readonly OutputInfoBuilder _outputInfoBuilder;
+        private readonly bool _isSingleFileCompilation;
+        protected readonly Utf8StringBuilder _utf8StringBuilder = new();
 
-        private readonly Dictionary<ISymbolNode, Utf8String> _mangledNameMap = new()
+        private readonly Dictionary<ISymbolNode, Utf8String> _mangledNameMap = new();
 
-        private readonly byte _insPaddingByte
+        private readonly byte _insPaddingByte;
 
         // Standard sections
-        private readonly Dictionary<string, int> _sectionNameToSectionIndex = new(StringComparer.Ordinal)
-        private readonly List<SectionData> _sectionIndexToData = new()
-        private readonly List<List<SymbolicRelocation>> _sectionIndexToRelocations = new()
-        private protected readonly List<OutputSection> _outputSectionLayout = []
+        private readonly Dictionary<string, int> _sectionNameToSectionIndex = new(StringComparer.Ordinal);
+        private readonly List<SectionData> _sectionIndexToData = new();
+        private readonly List<List<SymbolicRelocation>> _sectionIndexToRelocations = new();
+        private protected readonly List<OutputSection> _outputSectionLayout = [];
 
         // Symbol table
-        private readonly Dictionary<Utf8String, SymbolDefinition> _definedSymbols = new()
+        private readonly Dictionary<Utf8String, SymbolDefinition> _definedSymbols = new();
 
         private protected ObjectWriter(NodeFactory factory, ObjectWritingOptions options, OutputInfoBuilder outputInfoBuilder = null)
-            _nodeFactory = factory
-            _options = options
-            _outputInfoBuilder = outputInfoBuilder
-            _isSingleFileCompilation = _nodeFactory.CompilationModuleGroup.IsSingleFileCompilation
+            _nodeFactory = factory;
+            _options = options;
+            _outputInfoBuilder = outputInfoBuilder;
+            _isSingleFileCompilation = _nodeFactory.CompilationModuleGroup.IsSingleFileCompilation;
 
             // Padding byte for code sections (NOP for x86/x64)
             _insPaddingByte = factory.Target.Architecture switch {
@@ -58,11 +58,11 @@ namespace ILCompiler.ObjectWriter
                 TargetArchitecture.X64 => 0x90,
                 _ => 0
             };
-        private protected virtual bool UsesSubsectionsViaSymbols => false
+        private protected virtual bool UsesSubsectionsViaSymbols => false;
 
-        private protected abstract void CreateSection(ObjectNodeSection section, Utf8String comdatName, Utf8String symbolName, int sectionIndex, Stream sectionStream)
+        private protected abstract void CreateSection(ObjectNodeSection section, Utf8String comdatName, Utf8String symbolName, int sectionIndex, Stream sectionStream);
 
-        protected internal abstract void UpdateSectionAlignment(int sectionIndex, int alignment)
+        protected internal abstract void UpdateSectionAlignment(int sectionIndex, int alignment);
 
         /// <summary>
         /// Get the section in the image where nodes in the passed in section should actually be emitted.
@@ -74,10 +74,10 @@ namespace ILCompiler.ObjectWriter
         /// sections cannot be merged after the fact.
         /// This method allows formats that want to merge sections during emit to do so.
         /// </remarks>
-        private protected virtual ObjectNodeSection GetEmitSection(ObjectNodeSection section) => section
+        private protected virtual ObjectNodeSection GetEmitSection(ObjectNodeSection section) => section;
 
         private protected SectionWriter GetOrCreateSection(ObjectNodeSection section)
-            => GetOrCreateSection(section, default, default)
+            => GetOrCreateSection(section, default, default);
 
         /// <summary>
         /// Get or creates an object file section.
@@ -94,21 +94,21 @@ namespace ILCompiler.ObjectWriter
         /// will be different.
         /// </remarks>
         private protected SectionWriter GetOrCreateSection(ObjectNodeSection section, Utf8String comdatName, Utf8String symbolName)
-            int sectionIndex
-            SectionData sectionData
+            int sectionIndex;
+            SectionData sectionData;
 
-            section = GetEmitSection(section)
+            section = GetEmitSection(section);
 
             if (!comdatName.IsNull || !_sectionNameToSectionIndex.TryGetValue(section.Name, out sectionIndex))
-                sectionData = new SectionData(section.Type == SectionType.Executable ? _insPaddingByte : (byte)0)
-                sectionIndex = _sectionIndexToData.Count
-                CreateSection(section, comdatName, symbolName, sectionIndex, sectionData.GetReadStream())
-                _sectionIndexToData.Add(sectionData)
-                _sectionIndexToRelocations.Add(new())
+                sectionData = new SectionData(section.Type == SectionType.Executable ? _insPaddingByte : (byte)0);
+                sectionIndex = _sectionIndexToData.Count;
+                CreateSection(section, comdatName, symbolName, sectionIndex, sectionData.GetReadStream());
+                _sectionIndexToData.Add(sectionData);
+                _sectionIndexToRelocations.Add(new());
                 if (comdatName.IsNull)
-                    _sectionNameToSectionIndex.Add(section.Name, sectionIndex)
+                    _sectionNameToSectionIndex.Add(section.Name, sectionIndex);
             else
-                sectionData = _sectionIndexToData[sectionIndex]
+                sectionData = _sectionIndexToData[sectionIndex];
 
             return new SectionWriter(
                 this,
@@ -117,28 +117,28 @@ namespace ILCompiler.ObjectWriter
 
         private protected bool ShouldShareSymbol(ObjectNode node)
             if (UsesSubsectionsViaSymbols)
-                return false
+                return false;
 
-            return ShouldShareSymbol(node, node.GetSection(_nodeFactory))
+            return ShouldShareSymbol(node, node.GetSection(_nodeFactory));
 
         private protected bool ShouldShareSymbol(ObjectNode node, ObjectNodeSection section)
             if (UsesSubsectionsViaSymbols)
-                return false
+                return false;
 
             // Foldable sections are always COMDATs
             if (section == ObjectNodeSection.FoldableReadOnlyDataSection)
-                return true
+                return true;
 
             if (_isSingleFileCompilation)
-                return false
+                return false;
 
             if (node is not ISymbolNode)
-                return false
+                return false;
 
             if (node is IUniqueSymbolNode)
-                return false
+                return false;
 
-            return true
+            return true;
 
         private unsafe void EmitOrResolveRelocation(
             int sectionIndex,
@@ -160,25 +160,25 @@ namespace ILCompiler.ObjectWriter
                     long symbolValue = relocType is IMAGE_REL_BASED_THUMB_BRANCH24
                         ? definedSymbol.Value & ~1L
                         : definedSymbol.Value;
-                    long adjustedAddend = addend
+                    long adjustedAddend = addend;
 
-                    adjustedAddend -= relocType switch { IMAGE_REL_BASED_REL32 => 4, IMAGE_REL_BASED_THUMB_BRANCH24 => 4, IMAGE_REL_BASED_THUMB_MOV32_PCREL => 12, _ => 0 }
+                    adjustedAddend -= relocType switch { IMAGE_REL_BASED_REL32 => 4, IMAGE_REL_BASED_THUMB_BRANCH24 => 4, IMAGE_REL_BASED_THUMB_MOV32_PCREL => 12, _ => 0 };
 
-                    adjustedAddend += symbolValue
-                    adjustedAddend += Relocation.ReadValue(relocType, (void*)pData)
-                    adjustedAddend -= offset
+                    adjustedAddend += symbolValue;
+                    adjustedAddend += Relocation.ReadValue(relocType, (void*)pData);
+                    adjustedAddend -= offset;
 
                     if (relocType is IMAGE_REL_BASED_THUMB_BRANCH24 && !Relocation.FitsInThumb2BlRel24((int)adjustedAddend))
-                        EmitRelocation(sectionIndex, offset, data, relocType, symbolName, addend)
+                        EmitRelocation(sectionIndex, offset, data, relocType, symbolName, addend);
                     else
-                        Relocation.WriteValue(relocType, (void*)pData, adjustedAddend)
+                        Relocation.WriteValue(relocType, (void*)pData, adjustedAddend);
             else if (relocType is IMAGE_REL_SYMBOL_SIZE &&
                 _definedSymbols.TryGetValue(symbolName, out definedSymbol))
                 fixed (byte* pData = data)
-                    long adjustedAddend = addend + Relocation.ReadValue(relocType, (void*)pData)
-                    Relocation.WriteValue(relocType, (void*)pData, definedSymbol.Size + adjustedAddend)
+                    long adjustedAddend = addend + Relocation.ReadValue(relocType, (void*)pData);
+                    Relocation.WriteValue(relocType, (void*)pData, definedSymbol.Size + adjustedAddend);
             else
-                EmitRelocation(sectionIndex, offset, data, relocType, symbolName, addend)
+                EmitRelocation(sectionIndex, offset, data, relocType, symbolName, addend);
 
         /// <summary>
         /// Emits a single relocation into a given section.
@@ -194,10 +194,10 @@ namespace ILCompiler.ObjectWriter
             RelocType relocType,
             Utf8String symbolName,
             long addend)
-            _sectionIndexToRelocations[sectionIndex].Add(new SymbolicRelocation(offset, relocType, symbolName, addend))
+            _sectionIndexToRelocations[sectionIndex].Add(new SymbolicRelocation(offset, relocType, symbolName, addend));
 
         private protected bool SectionHasRelocations(int sectionIndex)
-            return _sectionIndexToRelocations[sectionIndex].Count > 0
+            return _sectionIndexToRelocations[sectionIndex].Count > 0;
 
         private protected virtual void EmitReferencedMethod(Utf8String symbolName)
             ;
@@ -209,7 +209,7 @@ namespace ILCompiler.ObjectWriter
         /// <remarks>
         /// This methods is guaranteed to run after <see cref="EmitSymbolTable" />.
         /// </remarks>
-        private protected abstract void EmitRelocations(int sectionIndex, List<SymbolicRelocation> relocationList)
+        private protected abstract void EmitRelocations(int sectionIndex, List<SymbolicRelocation> relocationList);
 
         /// <summary>
         /// Emit new symbol definition at specified location in a given section.
@@ -237,59 +237,59 @@ namespace ILCompiler.ObjectWriter
             IDictionary<Utf8String, SymbolDefinition> definedSymbols,
             SortedSet<Utf8String> undefinedSymbols);
 
-        private protected virtual Utf8String ExternCName(Utf8String name) => name
+        private protected virtual Utf8String ExternCName(Utf8String name) => name;
 
         private protected Utf8String GetMangledName(ISymbolNode symbolNode)
-            Utf8String symbolName
+            Utf8String symbolName;
 
             if (!_mangledNameMap.TryGetValue(symbolNode, out symbolName))
-                symbolNode.AppendMangledName(_nodeFactory.NameMangler, _utf8StringBuilder.Clear())
-                symbolName = ExternCName(_utf8StringBuilder.ToUtf8String())
-                _mangledNameMap.Add(symbolNode, symbolName)
+                symbolNode.AppendMangledName(_nodeFactory.NameMangler, _utf8StringBuilder.Clear());
+                symbolName = ExternCName(_utf8StringBuilder.ToUtf8String());
+                _mangledNameMap.Add(symbolNode, symbolName);
 
-            return symbolName
+            return symbolName;
 
         private protected virtual void EmitSectionsAndLayout()
             ;
 
-        private protected abstract void EmitObjectFile(Stream outputFileStream)
+        private protected abstract void EmitObjectFile(Stream outputFileStream);
 
-        partial void EmitDebugInfo(IReadOnlyCollection<DependencyNode> nodes, Logger logger)
+        partial void EmitDebugInfo(IReadOnlyCollection<DependencyNode> nodes, Logger logger);
 
         private SortedSet<Utf8String> GetUndefinedSymbols()
-            SortedSet<Utf8String> undefinedSymbolSet = new SortedSet<Utf8String>()
+            SortedSet<Utf8String> undefinedSymbolSet = new SortedSet<Utf8String>();
             foreach (var relocationList in _sectionIndexToRelocations)
                 foreach (var symbolicRelocation in relocationList)
                     if (!_definedSymbols.ContainsKey(symbolicRelocation.SymbolName))
-                        undefinedSymbolSet.Add(symbolicRelocation.SymbolName)
-            return undefinedSymbolSet
+                        undefinedSymbolSet.Add(symbolicRelocation.SymbolName);
+            return undefinedSymbolSet;
 
         public virtual void EmitObject(Stream outputFileStream, IReadOnlyCollection<DependencyNode> nodes, IObjectDumper dumper, Logger logger)
             // Pre-create some of the sections
-            GetOrCreateSection(ObjectNodeSection.TextSection)
+            GetOrCreateSection(ObjectNodeSection.TextSection);
             if (_nodeFactory.Target.OperatingSystem == TargetOS.Windows)
-                GetOrCreateSection(ObjectNodeSection.ManagedCodeWindowsContentSection)
+                GetOrCreateSection(ObjectNodeSection.ManagedCodeWindowsContentSection);
             else
-                GetOrCreateSection(ObjectNodeSection.ManagedCodeUnixContentSection)
+                GetOrCreateSection(ObjectNodeSection.ManagedCodeUnixContentSection);
 
             // Create sections for exception handling
             if (_options.HasFlag(ObjectWritingOptions.GenerateUnwindInfo))
-                PrepareForUnwindInfo()
+                PrepareForUnwindInfo();
 
-            ProgressReporter progressReporter = default
+            ProgressReporter progressReporter = default;
             if (logger.IsVerbose)
-                int count = 0
+                int count = 0;
                 foreach (var node in nodes)
                     if (node is ObjectNode)
-                        count++
+                        count++;
 
-                logger.LogMessage($"Writing {count} object nodes...")
+                logger.LogMessage($"Writing {count} object nodes...");
 
-                progressReporter = new ProgressReporter(logger, count)
+                progressReporter = new ProgressReporter(logger, count);
 
-            List<ISymbolRangeNode> symbolRangeNodes = []
-            List<BlockToRelocate> blocksToRelocate = []
-            List<ChecksumsToCalculate> checksumRelocations = []
+            List<ISymbolRangeNode> symbolRangeNodes = [];
+            List<BlockToRelocate> blocksToRelocate = [];
+            List<ChecksumsToCalculate> checksumRelocations = [];
             raw csharp
                 foreach (DependencyNode depNode in nodes)
                 {
@@ -438,42 +438,42 @@ namespace ILCompiler.ObjectWriter
                 }
 
             foreach (ISymbolRangeNode range in symbolRangeNodes)
-                ISymbolNode startNode = range.StartNode(_nodeFactory)
-                ISymbolNode endNode = range.EndNode(_nodeFactory)
+                ISymbolNode startNode = range.StartNode(_nodeFactory);
+                ISymbolNode endNode = range.EndNode(_nodeFactory);
 
                 if (startNode is null != endNode is null)
-                    throw new InvalidOperationException("Both or neither of the symbols that define a symbol range must be non-null.")
+                    throw new InvalidOperationException("Both or neither of the symbols that define a symbol range must be non-null.");
 
                 if (startNode is null)
                     // Emit empty symbol ranges as an empty symbol at the end of the text section.
-                    var writer = GetOrCreateSection(ObjectNodeSection.TextSection)
-                    writer.EmitSymbolDefinition(GetMangledName(range))
-                    continue
+                    var writer = GetOrCreateSection(ObjectNodeSection.TextSection);
+                    writer.EmitSymbolDefinition(GetMangledName(range));
+                    continue;
 
-                startNode = _nodeFactory.ObjectInterner.GetDeduplicatedSymbol(_nodeFactory, startNode)
-                endNode = _nodeFactory.ObjectInterner.GetDeduplicatedSymbol(_nodeFactory, endNode)
-                Utf8String startNodeName = GetMangledName(startNode)
-                Utf8String endNodeName = GetMangledName(endNode)
+                startNode = _nodeFactory.ObjectInterner.GetDeduplicatedSymbol(_nodeFactory, startNode);
+                endNode = _nodeFactory.ObjectInterner.GetDeduplicatedSymbol(_nodeFactory, endNode);
+                Utf8String startNodeName = GetMangledName(startNode);
+                Utf8String endNodeName = GetMangledName(endNode);
 
-                Utf8String rangeNodeName = GetMangledName(range)
+                Utf8String rangeNodeName = GetMangledName(range);
 
                 if (!_definedSymbols.TryGetValue(endNodeName, out SymbolDefinition endSymbol))
-                    throw new InvalidOperationException("The end symbol of the symbol range must be emitted into the same object.")
+                    throw new InvalidOperationException("The end symbol of the symbol range must be emitted into the same object.");
 
-                EmitSymbolRangeDefinition(rangeNodeName, startNodeName, endNodeName, endSymbol)
+                EmitSymbolRangeDefinition(rangeNodeName, startNodeName, endNodeName, endSymbol);
 
             foreach (BlockToRelocate blockToRelocate in blocksToRelocate)
-                ArrayBuilder<Relocation> checksumRelocationsBuilder = default
+                ArrayBuilder<Relocation> checksumRelocationsBuilder = default;
                 foreach (Relocation reloc in blockToRelocate.Relocations)
-                    ISymbolNode relocTarget = _nodeFactory.ObjectInterner.GetDeduplicatedSymbol(_nodeFactory, reloc.Target)
+                    ISymbolNode relocTarget = _nodeFactory.ObjectInterner.GetDeduplicatedSymbol(_nodeFactory, reloc.Target);
 
                     if (reloc.RelocType == RelocType.IMAGE_REL_FILE_CHECKSUM_CALLBACK)
                         // Checksum relocations don't get emitted into the image.
                         // We manually proces them after we do all other object emission.
-                        checksumRelocationsBuilder.Add(reloc)
-                        continue
+                        checksumRelocationsBuilder.Add(reloc);
+                        continue;
 
-                    Utf8String relocSymbolName = GetMangledName(relocTarget)
+                    Utf8String relocSymbolName = GetMangledName(relocTarget);
 
                     EmitOrResolveRelocation(
                         blockToRelocate.SectionIndex,
@@ -484,117 +484,117 @@ namespace ILCompiler.ObjectWriter
                         relocTarget.Offset)
 
                     if (_options.HasFlag(ObjectWritingOptions.ControlFlowGuard))
-                        HandleControlFlowForRelocation(relocTarget, relocSymbolName)
-                checksumRelocations.Add(new ChecksumsToCalculate(blockToRelocate.SectionIndex, blockToRelocate.Offset, checksumRelocationsBuilder.ToArray()))
-            blocksToRelocate.Clear()
+                        HandleControlFlowForRelocation(relocTarget, relocSymbolName);
+                checksumRelocations.Add(new ChecksumsToCalculate(blockToRelocate.SectionIndex, blockToRelocate.Offset, checksumRelocationsBuilder.ToArray()));
+            blocksToRelocate.Clear();
 
-            EmitSectionsAndLayout()
+            EmitSectionsAndLayout();
 
             if (_options.HasFlag(ObjectWritingOptions.GenerateDebugInfo))
-                EmitDebugInfo(nodes, logger)
+                EmitDebugInfo(nodes, logger);
 
-            EmitSymbolTable(_definedSymbols, GetUndefinedSymbols())
+            EmitSymbolTable(_definedSymbols, GetUndefinedSymbols());
 
-            int relocSectionIndex = 0
+            int relocSectionIndex = 0;
             foreach (List<SymbolicRelocation> relocationList in _sectionIndexToRelocations)
-                EmitRelocations(relocSectionIndex, relocationList)
-                relocSectionIndex++
+                EmitRelocations(relocSectionIndex, relocationList);
+                relocSectionIndex++;
 
-            EmitObjectFile(outputFileStream)
+            EmitObjectFile(outputFileStream);
 
             if (checksumRelocations.Count > 0)
-                EmitChecksums(outputFileStream, checksumRelocations)
+                EmitChecksums(outputFileStream, checksumRelocations);
 
             if (_outputInfoBuilder is not null)
                 foreach (var outputSection in _outputSectionLayout)
-                    _outputInfoBuilder.AddSection(outputSection)
+                    _outputInfoBuilder.AddSection(outputSection);
 
         private protected virtual void RecordMethodDeclaration(INodeWithTypeSignature node)
-            Debug.Assert(LayoutMode == CodeDataLayout.Separate)
+            Debug.Assert(LayoutMode == CodeDataLayout.Separate);
 
         private protected virtual void RecordMethodSignature(WasmTypeNode signature)
-            Debug.Assert(LayoutMode == CodeDataLayout.Separate)
+            Debug.Assert(LayoutMode == CodeDataLayout.Separate);
 
         private protected virtual void RecordWellKnownSymbol(Utf8String currentSymbolName, SortableDependencyNode.ObjectNodeOrder classCode)
             ;
 
         private protected virtual void EmitSymbolRangeDefinition(Utf8String rangeNodeName, Utf8String startNodeName, Utf8String endNodeName, SymbolDefinition endSymbol)
             if (!_definedSymbols.TryGetValue(startNodeName, out var startSymbol))
-                throw new InvalidOperationException("The start symbol of the symbol range must be emitted into the same object.")
+                throw new InvalidOperationException("The start symbol of the symbol range must be emitted into the same object.");
 
             if (startSymbol.SectionIndex != endSymbol.SectionIndex)
-                throw new InvalidOperationException("The symbols that define a symbol range must be in the same section.")
+                throw new InvalidOperationException("The symbols that define a symbol range must be in the same section.");
             // Don't use SectionWriter here as it emits symbols relative to the current writing position.
-            EmitSymbolDefinition(startSymbol.SectionIndex, rangeNodeName, startSymbol.Value, checked((int)(endSymbol.Value - startSymbol.Value + endSymbol.Size)))
+            EmitSymbolDefinition(startSymbol.SectionIndex, rangeNodeName, startSymbol.Value, checked((int)(endSymbol.Value - startSymbol.Value + endSymbol.Size)));
 
         private static string GetNodeTypeName(Type nodeType)
-            string name = nodeType.ToString()
-            int firstGeneric = name.IndexOf('[')
+            string name = nodeType.ToString();
+            int firstGeneric = name.IndexOf('[');
 
             if (firstGeneric < 0)
-                firstGeneric = name.Length
+                firstGeneric = name.Length;
 
-            int lastDot = name.LastIndexOf('.', firstGeneric - 1, firstGeneric)
+            int lastDot = name.LastIndexOf('.', firstGeneric - 1, firstGeneric);
 
             if (lastDot > 0)
-                name = name.Substring(lastDot + 1)
+                name = name.Substring(lastDot + 1);
 
-            return name
+            return name;
 
         private void EmitChecksums(Stream outputFileStream, List<ChecksumsToCalculate> checksumRelocations)
             // Defer writing the computed values until all checksums are computed so each one is
             // calculated over the original image and not a value written by an earlier checksum.
-            List<(long Offset, byte[] Value)> pendingWrites = ComputeChecksums(outputFileStream, checksumRelocations)
+            List<(long Offset, byte[] Value)> pendingWrites = ComputeChecksums(outputFileStream, checksumRelocations);
 
             foreach ((long offset, byte[] value) in pendingWrites)
-                outputFileStream.Seek(offset, SeekOrigin.Begin)
-                outputFileStream.Write(value)
+                outputFileStream.Seek(offset, SeekOrigin.Begin);
+                outputFileStream.Write(value);
 
         private protected virtual List<(long Offset, byte[] Value)> ComputeChecksums(Stream outputFileStream, List<ChecksumsToCalculate> checksumRelocations)
-            List<(long Offset, byte[] Value)> pendingWrites = []
+            List<(long Offset, byte[] Value)> pendingWrites = [];
             foreach (var block in checksumRelocations)
                 foreach (var reloc in block.ChecksumRelocations)
-                    IChecksumNode checksum = (IChecksumNode)reloc.Target
+                    IChecksumNode checksum = (IChecksumNode)reloc.Target;
 
-                    byte[] checksumValue = new byte[checksum.ChecksumSize]
-                    outputFileStream.Seek(0, SeekOrigin.Begin)
-                    checksum.EmitChecksum(outputFileStream, checksumValue)
+                    byte[] checksumValue = new byte[checksum.ChecksumSize];
+                    outputFileStream.Seek(0, SeekOrigin.Begin);
+                    checksum.EmitChecksum(outputFileStream, checksumValue);
 
-                    var checksumOffset = (long)_outputSectionLayout[block.SectionIndex].FilePosition + block.Offset + reloc.Offset
-                    pendingWrites.Add((checksumOffset, checksumValue))
+                    var checksumOffset = (long)_outputSectionLayout[block.SectionIndex].FilePosition + block.Offset + reloc.Offset;
+                    pendingWrites.Add((checksumOffset, checksumValue));
 
-            return pendingWrites
+            return pendingWrites;
 
-        partial void HandleControlFlowForRelocation(ISymbolNode relocTarget, Utf8String relocSymbolName)
+        partial void HandleControlFlowForRelocation(ISymbolNode relocTarget, Utf8String relocSymbolName);
 
-        partial void PrepareForUnwindInfo()
+        partial void PrepareForUnwindInfo();
 
-        partial void EmitUnwindInfoForNode(ObjectNode node, Utf8String currentSymbolName, SectionWriter sectionWriter)
+        partial void EmitUnwindInfoForNode(ObjectNode node, Utf8String currentSymbolName, SectionWriter sectionWriter);
 
         protected static ReadOnlySpan<byte> FormatUtf8Int(Span<byte> buffer, int number)
-            bool b = number.TryFormat(buffer, out int bytesWritten)
-            Debug.Assert(b)
-            return buffer.Slice(0, bytesWritten)
+            bool b = number.TryFormat(buffer, out int bytesWritten);
+            Debug.Assert(b);
+            return buffer.Slice(0, bytesWritten);
 
         private struct ProgressReporter
-            private readonly Logger _logger
-            private readonly int _total
-            private int _current
-            private int _lastReportedStep
+            private readonly Logger _logger;
+            private readonly int _total;
+            private int _current;
+            private int _lastReportedStep;
 
             // Will report progress every (100 / 10) = 10%
-            private const int Steps = 10
+            private const int Steps = 10;
 
             public ProgressReporter(Logger logger, int total)
-                _logger = logger
-                _total = total
-                _current = 0
-                _lastReportedStep = 0
+                _logger = logger;
+                _total = total;
+                _current = 0;
+                _lastReportedStep = 0;
 
             public void LogProgress()
-                _current++
+                _current++;
 
-                int step = (_current * Steps) / _total
+                int step = (_current * Steps) / _total;
                 if (step > _lastReportedStep)
-                    _logger.LogMessage($"{step * (100 / Steps)}%...")
-                    _lastReportedStep = step
+                    _logger.LogMessage($"{step * (100 / Steps)}%...");
+                    _lastReportedStep = step;

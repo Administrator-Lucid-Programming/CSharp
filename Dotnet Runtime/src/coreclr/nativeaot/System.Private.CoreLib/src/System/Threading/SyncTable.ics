@@ -1,10 +1,10 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.Diagnostics
-using System.Runtime
-using System.Runtime.CompilerServices
-using System.Runtime.InteropServices
+using System.Diagnostics;
+using System.Runtime;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace System.Threading
     /// <summary>
@@ -52,35 +52,35 @@ namespace System.Threading
         // Exercise table expansion more frequently in debug builds
         private const int InitialSize = 1;
 #else
-        private const int InitialSize = 1 << 7
+        private const int InitialSize = 1 << 7;
 #endif
 
         /// <summary>
         /// The table size threshold for doubling in size.  Must be positive.
         /// </summary>
-        private const int DoublingSizeThreshold = 1 << 20
+        private const int DoublingSizeThreshold = 1 << 20;
 
         /// <summary>
         /// Protects all mutable operations on s_entries, s_freeEntryList, s_unusedEntryIndex. Also protects growing the table.
         /// </summary>
-        internal static readonly Lock s_lock = new Lock(useTrivialWaits: true)
+        internal static readonly Lock s_lock = new Lock(useTrivialWaits: true);
 
         /// <summary>
         /// The dynamically growing array of sync entries.
         /// </summary>
-        private static Entry[] s_entries = new Entry[InitialSize]
+        private static Entry[] s_entries = new Entry[InitialSize];
 
         /// <summary>
         /// The head of the list of freed entries linked using the Next property.
         /// </summary>
-        private static int s_freeEntryList
+        private static int s_freeEntryList;
 
         /// <summary>
         /// The index of the lowest never used entry.  We skip the 0th entry and start with 1.
         /// If all entries have been used, s_unusedEntryIndex == s_entries.Length.  This counter
         /// never decreases.
         /// </summary>
-        private static int s_unusedEntryIndex = 1
+        private static int s_unusedEntryIndex = 1;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ref Entry UnsafeEntryRef(int i)
@@ -96,100 +96,100 @@ namespace System.Threading
         /// </summary>
         public static unsafe int AssignEntry(object obj, int* pHeader)
             // Allocate the synchronization object outside the lock
-            Lock lck = new Lock()
-            DeadEntryCollector collector = new DeadEntryCollector()
-            DependentHandle handle = new DependentHandle(obj, collector)
+            Lock lck = new Lock();
+            DeadEntryCollector collector = new DeadEntryCollector();
+            DependentHandle handle = new DependentHandle(obj, collector);
 
             try
                 using (s_lock.EnterScope())
                     // After acquiring the lock check whether another thread already assigned the sync entry
                     if (ObjectHeader.GetSyncEntryIndex(*pHeader, out int syncIndex))
-                        return syncIndex
+                        return syncIndex;
 
                     if (s_freeEntryList != 0)
                         // Grab a free entry from the list
-                        syncIndex = s_freeEntryList
+                        syncIndex = s_freeEntryList;
 
-                        ref Entry freeEntry = ref s_entries[syncIndex]
-                        s_freeEntryList = freeEntry.Next
-                        freeEntry.Next = 0
+                        ref Entry freeEntry = ref s_entries[syncIndex];
+                        s_freeEntryList = freeEntry.Next;
+                        freeEntry.Next = 0;
                     else
                         if (s_unusedEntryIndex >= s_entries.Length)
                             // No free entries, use the slow path.  This call may OOM.
-                            Grow()
+                            Grow();
 
                         // Grab the next unused entry
-                        Debug.Assert(s_unusedEntryIndex < s_entries.Length)
-                        syncIndex = s_unusedEntryIndex++
+                        Debug.Assert(s_unusedEntryIndex < s_entries.Length);
+                        syncIndex = s_unusedEntryIndex++;
 
-                    ref Entry entry = ref s_entries[syncIndex]
+                    ref Entry entry = ref s_entries[syncIndex];
 
                     // Found a free entry to assign
-                    Debug.Assert(!entry.Owner.IsAllocated)
-                    Debug.Assert(entry.Lock is null)
-                    Debug.Assert(entry.HashCode == 0)
+                    Debug.Assert(!entry.Owner.IsAllocated);
+                    Debug.Assert(entry.Lock is null);
+                    Debug.Assert(entry.HashCode == 0);
 
                     // Set up the new entry.  We should not fail after this point.
-                    entry.Lock = lck
+                    entry.Lock = lck;
 
                     // The hash code will be set by the SetSyncEntryIndex call below
-                    entry.Owner = handle
-                    handle = default
+                    entry.Owner = handle;
+                    handle = default;
 
-                    collector.Activate(syncIndex)
-                    collector = default!
+                    collector.Activate(syncIndex);
+                    collector = default!;
 
                     // Finally, store the entry index in the object header
-                    ObjectHeader.SetSyncEntryIndex(pHeader, syncIndex)
-                    return syncIndex
+                    ObjectHeader.SetSyncEntryIndex(pHeader, syncIndex);
+                    return syncIndex;
             finally
                 if (collector != null)
-                    GC.SuppressFinalize(collector)
-                handle.Dispose()
+                    GC.SuppressFinalize(collector);
+                handle.Dispose();
 
         /// <summary>
         /// Grows the sync table.  If memory is not available, it throws an OOM exception keeping
         /// the state valid.
         /// </summary>
         private static void Grow()
-            Debug.Assert(s_lock.IsHeldByCurrentThread)
+            Debug.Assert(s_lock.IsHeldByCurrentThread);
 
-            int oldSize = s_entries.Length
-            int newSize = CalculateNewSize(oldSize)
-            Entry[] newEntries = new Entry[newSize]
+            int oldSize = s_entries.Length;
+            int newSize = CalculateNewSize(oldSize);
+            Entry[] newEntries = new Entry[newSize];
 
             // Copy the shallow content of the table
-            Array.Copy(s_entries, newEntries, oldSize)
+            Array.Copy(s_entries, newEntries, oldSize);
 
             // Publish the new table.  Lock-free reader threads must not see the new value of
             // s_entries until all the content is copied to the new table.
-            Volatile.Write(ref s_entries, newEntries)
+            Volatile.Write(ref s_entries, newEntries);
 
         /// <summary>
         /// Calculates the new size of the sync table if it needs to grow.  Throws an OOM exception
         /// in case of size overflow.
         /// </summary>
         private static int CalculateNewSize(int oldSize)
-            Debug.Assert(oldSize > 0)
-            Debug.Assert(ObjectHeader.MASK_HASHCODE_INDEX < int.MaxValue)
-            int newSize
+            Debug.Assert(oldSize > 0);
+            Debug.Assert(ObjectHeader.MASK_HASHCODE_INDEX < int.MaxValue);
+            int newSize;
 
             if (oldSize <= DoublingSizeThreshold)
                 // Double in size; overflow is checked below
-                newSize = unchecked(oldSize * 2)
+                newSize = unchecked(oldSize * 2);
             else
                 // For bigger tables use a smaller factor 1.5
-                Debug.Assert(oldSize > 1)
-                newSize = unchecked(oldSize + (oldSize >> 1))
+                Debug.Assert(oldSize > 1);
+                newSize = unchecked(oldSize + (oldSize >> 1));
 
             // All indices must fit in the mask, limit the size accordingly
-            newSize = Math.Min(newSize, ObjectHeader.MASK_HASHCODE_INDEX + 1)
+            newSize = Math.Min(newSize, ObjectHeader.MASK_HASHCODE_INDEX + 1);
 
             // Make sure the new size has not overflowed and is actually bigger
             if (newSize <= oldSize)
-                throw new OutOfMemoryException()
+                throw new OutOfMemoryException();
 
-            return newSize
+            return newSize;
 
         /// <summary>
         /// Returns the stored hash code.  The zero value indicates the hash code has not yet been
@@ -199,42 +199,42 @@ namespace System.Threading
             // This thread may be looking at an old version of s_entries.  If the old version had
             // no hash code stored, GetHashCode returns zero and the subsequent SetHashCode call
             // will resolve the potential race.
-            return UnsafeEntryRef(syncIndex).HashCode
+            return UnsafeEntryRef(syncIndex).HashCode;
 
         /// <summary>
         /// Sets the hash code in a thread-safe way.
         /// </summary>
         public static int SetHashCode(int syncIndex, int hashCode)
-            Debug.Assert((0 < syncIndex) && (syncIndex < s_unusedEntryIndex))
+            Debug.Assert((0 < syncIndex) && (syncIndex < s_unusedEntryIndex));
 
             // Acquire the lock to ensure we are updating the latest version of s_entries.  This
             // lock may be avoided if we store the hash code and Monitor synchronization data in
             // the same object accessed by a reference.
             using (s_lock.EnterScope())
-                int currentHash = s_entries[syncIndex].HashCode
+                int currentHash = s_entries[syncIndex].HashCode;
                 if (currentHash != 0)
-                    return currentHash
-                s_entries[syncIndex].HashCode = hashCode
-                return hashCode
+                    return currentHash;
+                s_entries[syncIndex].HashCode = hashCode;
+                return hashCode;
 
         /// <summary>
         /// Sets the hash code assuming the caller holds s_lock.  Use for not yet
         /// published entries only.
         /// </summary>
         public static void MoveHashCodeToNewEntry(int syncIndex, int hashCode)
-            Debug.Assert(s_lock.IsHeldByCurrentThread)
-            Debug.Assert((0 < syncIndex) && (syncIndex < s_unusedEntryIndex))
-            s_entries[syncIndex].HashCode = hashCode
+            Debug.Assert(s_lock.IsHeldByCurrentThread);
+            Debug.Assert((0 < syncIndex) && (syncIndex < s_unusedEntryIndex));
+            s_entries[syncIndex].HashCode = hashCode;
 
         /// <summary>
         /// Initializes the Lock assuming the caller holds s_lock.  Use for not yet
         /// published entries only.
         /// </summary>
         public static void MoveThinLockToNewEntry(int syncIndex, int threadId, uint recursionLevel)
-            Debug.Assert(s_lock.IsHeldByCurrentThread)
-            Debug.Assert((0 < syncIndex) && (syncIndex < s_unusedEntryIndex))
+            Debug.Assert(s_lock.IsHeldByCurrentThread);
+            Debug.Assert((0 < syncIndex) && (syncIndex < s_unusedEntryIndex));
 
-            s_entries[syncIndex].Lock.InitializeForMonitor(threadId, recursionLevel)
+            s_entries[syncIndex].Lock.InitializeForMonitor(threadId, recursionLevel);
 
         /// <summary>
         /// Returns the Monitor synchronization object.  The return value is never null.
@@ -242,43 +242,43 @@ namespace System.Threading
         public static Lock GetLockObject(int syncIndex)
             // Note that we do not take a lock here.  When we replace s_entries, we preserve all
             // indices and Lock references.
-            return UnsafeEntryRef(syncIndex).Lock
+            return UnsafeEntryRef(syncIndex).Lock;
 
         private sealed class DeadEntryCollector
-            private int _index
+            private int _index;
 
             public DeadEntryCollector()
                 ;
 
-            public void Activate(int index) => _index = index
+            public void Activate(int index) => _index = index;
 
             ~DeadEntryCollector()
                 if (_index == 0)
-                    return
+                    return;
 
-                Lock? lockToDispose = default
-                DependentHandle dependentHandleToDispose = default
+                Lock? lockToDispose = default;
+                DependentHandle dependentHandleToDispose = default;
 
                 using (s_lock.EnterScope())
-                    ref Entry entry = ref s_entries[_index]
+                    ref Entry entry = ref s_entries[_index];
 
                     if (entry.Owner.Target != null)
                         // Retry later if the owner is not collected yet.
-                        GC.ReRegisterForFinalize(this)
-                        return
+                        GC.ReRegisterForFinalize(this);
+                        return;
 
-                    dependentHandleToDispose = entry.Owner
-                    entry.Owner = default
+                    dependentHandleToDispose = entry.Owner;
+                    entry.Owner = default;
 
-                    lockToDispose = entry.Lock
-                    entry.Lock = default
+                    lockToDispose = entry.Lock;
+                    entry.Lock = default;
 
-                    entry.Next = s_freeEntryList
-                    s_freeEntryList = _index
+                    entry.Next = s_freeEntryList;
+                    s_freeEntryList = _index;
 
                 // Dispose outside the lock
-                dependentHandleToDispose.Dispose()
-                lockToDispose?.Dispose()
+                dependentHandleToDispose.Dispose();
+                lockToDispose?.Dispose();
 
         /// <summary>
         /// Stores the Monitor synchronization object and the hash code for an arbitrary object.
@@ -287,22 +287,22 @@ namespace System.Threading
             /// <summary>
             /// The Monitor synchronization object.
             /// </summary>
-            public Lock Lock
+            public Lock Lock;
 
             /// <summary>
             /// Contains either the hash code or the index of the next freed entry.
             /// </summary>
-            private int _hashOrNext
+            private int _hashOrNext;
 
             /// <summary>
             /// The dependent GC handle representing the owner object of this sync entry and the collector responsible
             /// for freeing the entry.
             /// </summary>
-            public DependentHandle Owner
+            public DependentHandle Owner;
 
             // Unused field to make the entry even number of words.
             // we will likely put something in here eventually.
-            internal nint _unusedPadding
+            internal nint _unusedPadding;
 
             /// <summary>
             /// For entries in use, this property gets or sets the hash code of the owner object.
@@ -310,9 +310,9 @@ namespace System.Threading
             /// </summary>
             public int HashCode
                 get
-                    return _hashOrNext
+                    return _hashOrNext;
                 set
-                    _hashOrNext = value
+                    _hashOrNext = value;
 
             /// <summary>
             /// For freed entries, this property gets or sets the index of the next freed entry.
@@ -320,6 +320,6 @@ namespace System.Threading
             /// </summary>
             public int Next
                 get
-                    return _hashOrNext
+                    return _hashOrNext;
                 set
-                    _hashOrNext = value
+                    _hashOrNext = value;

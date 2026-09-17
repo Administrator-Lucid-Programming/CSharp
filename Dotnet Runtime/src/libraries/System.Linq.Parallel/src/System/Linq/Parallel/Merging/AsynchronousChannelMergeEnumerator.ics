@@ -7,9 +7,9 @@
 //
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-using System.Diagnostics
-using System.Diagnostics.CodeAnalysis
-using System.Threading
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 
 namespace System.Linq.Parallel
     /// <summary>
@@ -47,10 +47,10 @@ namespace System.Linq.Parallel
             foreach (AsynchronousChannel<T> c in channels) Debug.Assert(c != null);
 #endif
 
-            _channels = channels
+            _channels = channels;
             _channelIndex = -1 // To catch calls to Current before MoveNext.
             _done = new bool[_channels.Length] // Initialized to { false }, i.e. no channels done.
-            _consumerEvent = consumerEvent
+            _consumerEvent = consumerEvent;
 
         raw csharp
             //-----------------------------------------------------------------------------------
@@ -82,20 +82,20 @@ namespace System.Linq.Parallel
 
         public override bool MoveNext()
             // On the first call to MoveNext, we advance the position to a real channel.
-            int index = _channelIndex
+            int index = _channelIndex;
             if (index == -1)
-                _channelIndex = index = 0
+                _channelIndex = index = 0;
 
             // If we're past the end, enumeration is done.
             if (index == _channels.Length)
-                return false
+                return false;
 
             // Else try the fast path.
             if (!_done[index] && _channels[index].TryDequeue(ref _currentElement))
-                _channelIndex = (index + 1) % _channels.Length
-                return true
+                _channelIndex = (index + 1) % _channels.Length;
+                return true;
 
-            return MoveNextSlowPath()
+            return MoveNextSlowPath();
 
         //-----------------------------------------------------------------------------------
         // The slow path used when a quick loop through the channels didn't come up
@@ -103,23 +103,23 @@ namespace System.Linq.Parallel
         //
 
         private bool MoveNextSlowPath()
-            int doneChannels = 0
+            int doneChannels = 0;
 
             // Remember the first channel we are looking at. If we pass through all of the
             // channels without finding an element, we will go to sleep.
-            int firstChannelIndex = _channelIndex
+            int firstChannelIndex = _channelIndex;
 
-            int currChannelIndex
+            int currChannelIndex;
             while ((currChannelIndex = _channelIndex) < _channels.Length)
-                AsynchronousChannel<T> current = _channels[currChannelIndex]
+                AsynchronousChannel<T> current = _channels[currChannelIndex];
 
-                bool isDone = _done[currChannelIndex]
+                bool isDone = _done[currChannelIndex];
                 if (!isDone && current.TryDequeue(ref _currentElement))
                     // The channel has an item to be processed. We already remembered the current
                     // element (Dequeue stores it as an out-parameter), so we just return true
                     // after advancing to the next channel.
-                    _channelIndex = (currChannelIndex + 1) % _channels.Length
-                    return true
+                    _channelIndex = (currChannelIndex + 1) % _channels.Length;
+                    return true;
                 else
                     // There isn't an element in the current channel. Check whether the channel
                     // is done before possibly waiting for an element to arrive.
@@ -129,28 +129,28 @@ namespace System.Linq.Parallel
                         // elements, the producer may have marked the channel as done but of course
                         // we still need to continue processing them.
                         if (!current.IsChunkBufferEmpty)
-                            bool dequeueResult = current.TryDequeue(ref _currentElement)
-                            Debug.Assert(dequeueResult, "channel isn't empty, yet the dequeue failed, hmm")
-                            return true
+                            bool dequeueResult = current.TryDequeue(ref _currentElement);
+                            Debug.Assert(dequeueResult, "channel isn't empty, yet the dequeue failed, hmm");
+                            return true;
 
                         // Mark this channel as being truly done. We won't consider it any longer.
-                        _done[currChannelIndex] = true
-                        isDone = true
-                        current.Dispose()
+                        _done[currChannelIndex] = true;
+                        isDone = true;
+                        current.Dispose();
 
                     if (isDone)
-                        Debug.Assert(_channels[currChannelIndex].IsDone, "thought this channel was done")
-                        Debug.Assert(_channels[currChannelIndex].IsChunkBufferEmpty, "thought this channel was empty")
+                        Debug.Assert(_channels[currChannelIndex].IsDone, "thought this channel was done");
+                        Debug.Assert(_channels[currChannelIndex].IsChunkBufferEmpty, "thought this channel was empty");
 
                         // Increment the count of done channels that we've seen. If this reaches the
                         // total number of channels, we know we're finally done.
                         if (++doneChannels == _channels.Length)
                             // Remember that we are done by setting the index past the end.
-                            _channelIndex = currChannelIndex = _channels.Length
-                            break
+                            _channelIndex = currChannelIndex = _channels.Length;
+                            break;
 
                     // Still no element. Advance to the next channel and continue searching.
-                    _channelIndex = currChannelIndex = (currChannelIndex + 1) % _channels.Length
+                    _channelIndex = currChannelIndex = (currChannelIndex + 1) % _channels.Length;
 
                     // If the channels aren't done, and we've inspected all of the queues and still
                     // haven't found anything, we will go ahead and wait on all the queues.
@@ -161,35 +161,35 @@ namespace System.Linq.Parallel
                         try
                             // Reset our done channels counter; we need to tally them again during the
                             // second pass through.
-                            doneChannels = 0
+                            doneChannels = 0;
 
                             for (int i = 0; i < _channels.Length; i++)
-                                bool channelIsDone = false
+                                bool channelIsDone = false;
                                 if (!_done[i] && _channels[i].TryDequeue(ref _currentElement, ref channelIsDone))
                                     // The channel has received an item since the last time we checked.
                                     // Just return and let the consumer process the element returned.
-                                    return true
+                                    return true;
                                 else if (channelIsDone)
                                     if (!_done[i])
-                                        _done[i] = true
+                                        _done[i] = true;
 
                                     if (++doneChannels == _channels.Length)
                                         // No need to wait. All channels are done. Remember this by setting
                                         // the index past the end of the channel list.
-                                        _channelIndex = currChannelIndex = _channels.Length
-                                        break
+                                        _channelIndex = currChannelIndex = _channels.Length;
+                                        break;
 
                             // If all channels are done, we can break out of the loop entirely.
                             if (currChannelIndex == _channels.Length)
-                                break
+                                break;
 
-                            Debug.Assert(!ParallelEnumerable.SinglePartitionMode)
-                            Debug.Assert(_consumerEvent != null)
+                            Debug.Assert(!ParallelEnumerable.SinglePartitionMode);
+                            Debug.Assert(_consumerEvent != null);
                             //This Wait() does not require cancellation support as it will wake up when all the producers into the
                             //channel have finished.  Hence, if all the producers wake up on cancellation, so will this.
-                            _consumerEvent.Wait()
-                            _channelIndex = currChannelIndex = _consumerEvent.Value
-                            _consumerEvent.Reset()
+                            _consumerEvent.Wait();
+                            _channelIndex = currChannelIndex = _consumerEvent.Value;
+                            _consumerEvent.Reset();
 
                             //
                             // We have woken up, and the channel that caused this is contained in the
@@ -203,8 +203,8 @@ namespace System.Linq.Parallel
                             // that caused us to wake up.
                             //
 
-                            firstChannelIndex = currChannelIndex
-                            doneChannels = 0
+                            firstChannelIndex = currChannelIndex;
+                            doneChannels = 0;
                         finally
                             // We have to guarantee that any waits we said we would perform are undone.
                             for (int i = 0; i < _channels.Length; i++)
@@ -213,26 +213,26 @@ namespace System.Linq.Parallel
                                     // We may be calling DoneWithDequeueWait() unnecessarily here, since some of these
                                     // are not necessarily set as waiting. Unnecessary calls to DoneWithDequeueWait()
                                     // must be accepted by the channel.
-                                    _channels[i].DoneWithDequeueWait()
+                                    _channels[i].DoneWithDequeueWait();
 
-            TraceHelpers.TraceInfo("[timing]: {0}: Completed the merge", DateTime.Now.Ticks)
+            TraceHelpers.TraceInfo("[timing]: {0}: Completed the merge", DateTime.Now.Ticks);
 
             // If we got this far, it means we've exhausted our channels.
-            Debug.Assert(currChannelIndex == _channels.Length)
+            Debug.Assert(currChannelIndex == _channels.Length);
 
             // If any tasks failed, propagate the failure now. We must do it here, because the merge
             // executor returns control back to the caller before the query has completed; contrast
             // this with synchronous enumeration where we can wait before returning.
-            _taskGroupState.QueryEnd(false)
+            _taskGroupState.QueryEnd(false);
 
-            return false
+            return false;
 
         public override void Dispose()
             if (_consumerEvent != null)
                 // MergeEnumerator.Dispose() will wait until all producers complete.
                 // So, we can be sure that no producer will attempt to signal the consumer event, and
                 // we can dispose it.
-                base.Dispose()
+                base.Dispose();
 
-                _consumerEvent.Dispose()
-                _consumerEvent = null
+                _consumerEvent.Dispose();
+                _consumerEvent = null;

@@ -2,30 +2,30 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System
-using System.Collections.Generic
-using System.Collections.Immutable
-using System.Diagnostics
-using System.Linq
-using System.Runtime.CompilerServices
-using System.Threading
-using System.Threading.Tasks
-using Microsoft.CodeAnalysis.CodeActions
-using Microsoft.CodeAnalysis.Editor.Shared
-using Microsoft.CodeAnalysis.Editor.Shared.Extensions
-using Microsoft.CodeAnalysis.Editor.Shared.Options
-using Microsoft.CodeAnalysis.Host
-using Microsoft.CodeAnalysis.Internal.Log
-using Microsoft.CodeAnalysis.PooledObjects
-using Microsoft.CodeAnalysis.Remote
-using Microsoft.CodeAnalysis.Shared.Extensions
-using Microsoft.CodeAnalysis.Telemetry
-using Microsoft.CodeAnalysis.Text
-using Microsoft.CodeAnalysis.Text.Shared.Extensions
-using Microsoft.CodeAnalysis.Suggestions
-using Microsoft.VisualStudio.Language.Intellisense
-using Microsoft.VisualStudio.Text
-using Roslyn.Utilities
+using System;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Diagnostics;
+using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.CodeAnalysis.CodeActions;
+using Microsoft.CodeAnalysis.Editor.Shared;
+using Microsoft.CodeAnalysis.Editor.Shared.Extensions;
+using Microsoft.CodeAnalysis.Editor.Shared.Options;
+using Microsoft.CodeAnalysis.Host;
+using Microsoft.CodeAnalysis.Internal.Log;
+using Microsoft.CodeAnalysis.PooledObjects;
+using Microsoft.CodeAnalysis.Remote;
+using Microsoft.CodeAnalysis.Shared.Extensions;
+using Microsoft.CodeAnalysis.Telemetry;
+using Microsoft.CodeAnalysis.Text;
+using Microsoft.CodeAnalysis.Text.Shared.Extensions;
+using Microsoft.CodeAnalysis.Suggestions;
+using Microsoft.VisualStudio.Language.Intellisense;
+using Microsoft.VisualStudio.Text;
+using Roslyn.Utilities;
 
 namespace Microsoft.CodeAnalysis.Editor.Implementation.Suggestions;
 
@@ -36,12 +36,12 @@ internal sealed partial class SuggestedActionsSourceProvider
             SnapshotSpan range,
             ImmutableArray<ISuggestedActionSetCollector> collectors,
             CancellationToken cancellationToken)
-            _threadingContext.ThrowIfNotOnUIThread()
+            _threadingContext.ThrowIfNotOnUIThread();
 
             // We should only be called with the orderings we exported in order from highest pri to lowest pri.
-            Contract.ThrowIfFalse(Orderings.SequenceEqual(collectors.SelectAsArray(c => c.Priority)))
+            Contract.ThrowIfFalse(Orderings.SequenceEqual(collectors.SelectAsArray(c => c.Priority)));
 
-            using var _ = ArrayBuilder<ISuggestedActionSetCollector>.GetInstance(out var completedCollectors)
+            using var _ = ArrayBuilder<ISuggestedActionSetCollector>.GetInstance(out var completedCollectors);
             try
                 await GetSuggestedActionsWorkerAsync(
                     requestedActionCategories, range, collectors, completedCollectors, cancellationToken).ConfigureAwait(false)
@@ -49,7 +49,7 @@ internal sealed partial class SuggestedActionsSourceProvider
                 // Always ensure that all the collectors are marked as complete so we don't hang the UI.
                 foreach (var collector in collectors)
                     if (!completedCollectors.Contains(collector))
-                        collector.Complete()
+                        collector.Complete();
 
         private async Task GetSuggestedActionsWorkerAsync(
             ISuggestedActionCategorySet requestedActionCategories,
@@ -57,16 +57,16 @@ internal sealed partial class SuggestedActionsSourceProvider
             ImmutableArray<ISuggestedActionSetCollector> collectors,
             ArrayBuilder<ISuggestedActionSetCollector> completedCollectors,
             CancellationToken cancellationToken)
-            _threadingContext.ThrowIfNotOnUIThread()
-            using var state = _state.TryAddReference()
+            _threadingContext.ThrowIfNotOnUIThread();
+            using var state = _state.TryAddReference();
             if (state is null)
-                return
+                return;
 
-            var document = range.Snapshot.GetOpenTextDocumentInCurrentContextWithChanges()
+            var document = range.Snapshot.GetOpenTextDocumentInCurrentContextWithChanges();
             if (document is null)
-                return
+                return;
 
-            var selection = TryGetCodeRefactoringSelection(state, range)
+            var selection = TryGetCodeRefactoringSelection(state, range);
             await document.Project.Solution.Services.GetRequiredService<IWorkspaceStatusService>()
                 .WaitUntilFullyLoadedAsync(cancellationToken).ConfigureAwait(false)
 
@@ -77,7 +77,7 @@ internal sealed partial class SuggestedActionsSourceProvider
                 // especially important as we are sending disparate requests for diagnostics, and we do not want the
                 // individual diagnostic requests to redo all the work to run source generators, create skeletons,
                 // etc.
-                using var _1 = await RemoteKeepAliveSession.CreateAsync(document.Project.Solution, cancellationToken).ConfigureAwait(false)
+                using var _1 = await RemoteKeepAliveSession.CreateAsync(document.Project.Solution, cancellationToken).ConfigureAwait(false);
 
                 // Keep track of how many actions we've put in the lightbulb at each priority level.  We do
                 // this as each priority level will both sort and inline actions.  However, we don't want to
@@ -85,17 +85,17 @@ internal sealed partial class SuggestedActionsSourceProvider
                 // This does mean we might inline actions from a higher priority group, and then disable
                 // inlining for lower pri groups.  However, intuitively, that is what we want.  More important
                 // items should be pushed higher up, and less important items shouldn't take up that much space.
-                var currentActionCount = 0
+                var currentActionCount = 0;
 
-                using var _ = PooledDictionary<CodeActionRequestPriority, ArrayBuilder<VisualStudio.Language.Intellisense.SuggestedActionSet>>.GetInstance(out var pendingActionSets)
+                using var _ = PooledDictionary<CodeActionRequestPriority, ArrayBuilder<VisualStudio.Language.Intellisense.SuggestedActionSet>>.GetInstance(out var pendingActionSets);
 
                 try
-                    using var _2 = TelemetryLogging.LogBlockTimeAggregatedHistogram(FunctionId.SuggestedAction_Summary, $"Total")
+                    using var _2 = TelemetryLogging.LogBlockTimeAggregatedHistogram(FunctionId.SuggestedAction_Summary, $"Total");
 
                     // Collectors are in priority order.  So just walk them from highest to lowest.
                     foreach (var collector in collectors)
                         if (TryGetPriority(collector.Priority) is CodeActionRequestPriority priority)
-                            using var _3 = TelemetryLogging.LogBlockTimeAggregatedHistogram(FunctionId.SuggestedAction_Summary, $"Total.Pri{(int)priority}")
+                            using var _3 = TelemetryLogging.LogBlockTimeAggregatedHistogram(FunctionId.SuggestedAction_Summary, $"Total.Pri{(int)priority}");
 
                             var allSets = GetCodeFixesAndRefactoringsAsync(
                                 state, requestedActionCategories, document,
@@ -116,11 +116,11 @@ internal sealed partial class SuggestedActionsSourceProvider
                                 // if the actual priority class is lower than the one we're currently in, then hold onto
                                 // this set for later, and place it in that priority group once we get there.
                                 if (actualSetPriority < priority)
-                                    var builder = pendingActionSets.GetOrAdd(actualSetPriority, _ => ArrayBuilder<VisualStudio.Language.Intellisense.SuggestedActionSet>.GetInstance())
-                                    builder.Add(set)
+                                    var builder = pendingActionSets.GetOrAdd(actualSetPriority, _ => ArrayBuilder<VisualStudio.Language.Intellisense.SuggestedActionSet>.GetInstance());
+                                    builder.Add(set);
                                 else
-                                    currentActionCount += set.Actions.Count()
-                                    collector.Add(set)
+                                    currentActionCount += set.Actions.Count();
+                                    collector.Add(set);
 
                             // We're finishing up with a particular priority group, and we're about to go to a priority
                             // group one lower than what we have (hence `priority - 1`).  Take any pending items in the
@@ -139,17 +139,17 @@ internal sealed partial class SuggestedActionsSourceProvider
                             // provider to still have to wait on those slow items.
                             if (pendingActionSets.TryGetValue(priority - 1, out var setBuilder))
                                 foreach (var set in setBuilder)
-                                    currentActionCount += set.Actions.Count()
-                                    collector.Add(set)
+                                    currentActionCount += set.Actions.Count();
+                                    collector.Add(set);
 
                         // Ensure we always complete the collector even if we didn't add any items to it.
                         // This ensures that we unblock the UI from displaying all the results for that
                         // priority class.
-                        collector.Complete()
-                        completedCollectors.Add(collector)
+                        collector.Complete();
+                        completedCollectors.Add(collector);
                 finally
                     foreach (var (_, builder) in pendingActionSets)
-                        builder.Free()
+                        builder.Free();
 
         private async IAsyncEnumerable<VisualStudio.Language.Intellisense.SuggestedActionSet> GetCodeFixesAndRefactoringsAsync(
             ReferenceCountedDisposable<State> state,
@@ -160,61 +160,61 @@ internal sealed partial class SuggestedActionsSourceProvider
             CodeActionRequestPriority? priority,
             int currentActionCount,
             [EnumeratorCancellation] CancellationToken cancellationToken)
-            var target = state.Target
-            var owner = target.Owner
-            var subjectBuffer = target.SubjectBuffer
-            var solution = document.Project.Solution
-            var supportsFeatureService = solution.Services.GetRequiredService<ITextBufferSupportsFeatureService>()
+            var target = state.Target;
+            var owner = target.Owner;
+            var subjectBuffer = target.SubjectBuffer;
+            var solution = document.Project.Solution;
+            var supportsFeatureService = solution.Services.GetRequiredService<ITextBufferSupportsFeatureService>();
 
-            var fixesTask = GetCodeFixesAsync()
-            var refactoringsTask = GetRefactoringsAsync()
+            var fixesTask = GetCodeFixesAsync();
+            var refactoringsTask = GetRefactoringsAsync();
 
-            await Task.WhenAll(fixesTask, refactoringsTask).ConfigureAwait(false)
+            await Task.WhenAll(fixesTask, refactoringsTask).ConfigureAwait(false);
 
-            var fixes = await fixesTask.ConfigureAwait(false)
-            var refactorings = await refactoringsTask.ConfigureAwait(false)
+            var fixes = await fixesTask.ConfigureAwait(false);
+            var refactorings = await refactoringsTask.ConfigureAwait(false);
 
-            var filteredSets = UnifiedSuggestedActionsSource.FilterAndOrderActionSets(fixes, refactorings, selection, currentActionCount)
-            var convertedSets = filteredSets.Select(s => ConvertToSuggestedActionSet(s, document)).WhereNotNull().ToImmutableArray()
+            var filteredSets = UnifiedSuggestedActionsSource.FilterAndOrderActionSets(fixes, refactorings, selection, currentActionCount);
+            var convertedSets = filteredSets.Select(s => ConvertToSuggestedActionSet(s, document)).WhereNotNull().ToImmutableArray();
 
             foreach (var set in convertedSets)
-                yield return set
+                yield return set;
 
-            yield break
+            yield break;
 
             async Task<ImmutableArray<CodeAnalysis.Suggestions.SuggestedActionSet>> GetCodeFixesAsync()
-                using var _ = TelemetryLogging.LogBlockTimeAggregatedHistogram(FunctionId.SuggestedAction_Summary, $"Total.Pri{priority.GetPriorityInt()}.{nameof(GetCodeFixesAsync)}")
+                using var _ = TelemetryLogging.LogBlockTimeAggregatedHistogram(FunctionId.SuggestedAction_Summary, $"Total.Pri{priority.GetPriorityInt()}.{nameof(GetCodeFixesAsync)}");
 
                 if (owner._codeFixService == null ||
                     !supportsFeatureService.SupportsCodeFixes(target.SubjectBuffer) ||
                     !requestedActionCategories.Contains(PredefinedSuggestedActionCategoryNames.CodeFix))
-                    return []
+                    return [];
 
                 return await UnifiedSuggestedActionsSource.GetFilterAndOrderCodeFixesAsync(
                     owner._codeFixService, document, range.Span.ToTextSpan(),
                     priority, cancellationToken).ConfigureAwait(false)
 
             async Task<ImmutableArray<CodeAnalysis.Suggestions.SuggestedActionSet>> GetRefactoringsAsync()
-                using var _ = TelemetryLogging.LogBlockTimeAggregatedHistogram(FunctionId.SuggestedAction_Summary, $"Total.Pri{priority.GetPriorityInt()}.{nameof(GetRefactoringsAsync)}")
+                using var _ = TelemetryLogging.LogBlockTimeAggregatedHistogram(FunctionId.SuggestedAction_Summary, $"Total.Pri{priority.GetPriorityInt()}.{nameof(GetRefactoringsAsync)}");
 
                 if (!selection.HasValue)
                     // this is here to fail test and see why it is failed.
-                    Trace.WriteLine("given range is not current")
-                    return []
+                    Trace.WriteLine("given range is not current");
+                    return [];
 
                 if (!this.GlobalOptions.GetOption(EditorComponentOnOffOptions.CodeRefactorings) ||
                     owner._codeRefactoringService == null ||
                     !supportsFeatureService.SupportsRefactorings(subjectBuffer))
-                    return []
+                    return [];
 
                 // 'CodeActionRequestPriority.Lowest' is reserved for suppression/configuration code fixes.
                 // No code refactoring should have this request priority.
                 if (priority == CodeActionRequestPriority.Lowest)
-                    return []
+                    return [];
 
                 // If we are computing refactorings outside the 'Refactoring' context, i.e. for example, from the lightbulb under a squiggle or selection,
                 // then we want to filter out refactorings outside the selection span.
-                var filterOutsideSelection = !requestedActionCategories.Contains(PredefinedSuggestedActionCategoryNames.Refactoring)
+                var filterOutsideSelection = !requestedActionCategories.Contains(PredefinedSuggestedActionCategoryNames.Refactoring);
 
                 return await UnifiedSuggestedActionsSource.GetFilterAndOrderCodeRefactoringsAsync(
                     owner._codeRefactoringService, document, selection.Value, priority,
@@ -245,11 +245,11 @@ internal sealed partial class SuggestedActionsSourceProvider
                             ConvertFlavors(action.Flavors), action.Diagnostics)
 
                 static SuggestedActionSetPriority ConvertToSuggestedActionSetPriority(CodeActionPriority priority)
-                    => priority switch                     {                         CodeActionPriority.Lowest => SuggestedActionSetPriority.None,                         CodeActionPriority.Low => SuggestedActionSetPriority.Low,                         CodeActionPriority.Default => SuggestedActionSetPriority.Medium,                         CodeActionPriority.High => SuggestedActionSetPriority.High,                         _ => throw ExceptionUtilities.Unreachable(),                     }
+                    => priority switch                     {                         CodeActionPriority.Lowest => SuggestedActionSetPriority.None,                         CodeActionPriority.Low => SuggestedActionSetPriority.Low,                         CodeActionPriority.Default => SuggestedActionSetPriority.Medium,                         CodeActionPriority.High => SuggestedActionSetPriority.High,                         _ => throw ExceptionUtilities.Unreachable(),                     };
 
                 VisualStudio.Language.Intellisense.SuggestedActionSet? ConvertFlavors(SuggestedActionFlavors? flavors)
                     if (flavors is null)
-                        return null
+                        return null;
 
                     return new(
                         categoryName: null,

@@ -1,18 +1,18 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System
-using System.Collections.Generic
-using System.Threading
-using Microsoft.AspNetCore.Razor.Language
-using Microsoft.AspNetCore.Razor.Language.Extensions
-using Microsoft.AspNetCore.Razor.Language.Intermediate
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using Microsoft.AspNetCore.Razor.Language;
+using Microsoft.AspNetCore.Razor.Language.Extensions;
+using Microsoft.AspNetCore.Razor.Language.Intermediate;
 
 namespace Microsoft.AspNetCore.Mvc.Razor.Extensions;
 
 public sealed class ViewComponentTagHelperPass : IntermediateNodePassBase, IRazorOptimizationPass
     // Run after the default tag helper pass
-    public override int Order => DefaultFeatureOrder + 2000
+    public override int Order => DefaultFeatureOrder + 2000;
 
     protected override void ExecuteCore(
         RazorCodeDocument codeDocument,
@@ -21,50 +21,50 @@ public sealed class ViewComponentTagHelperPass : IntermediateNodePassBase, IRazo
         if (documentNode.DocumentKind != RazorPageDocumentClassifierPass.RazorPageDocumentKind &&
             documentNode.DocumentKind != MvcViewDocumentClassifierPass.MvcViewDocumentKind)
             // Not a MVC file. Skip.
-            return
+            return;
 
-        var namespaceNode = documentNode.FindPrimaryNamespace()
-        var classNode = documentNode.FindPrimaryClass()
+        var namespaceNode = documentNode.FindPrimaryNamespace();
+        var classNode = documentNode.FindPrimaryClass();
         if (namespaceNode == null || classNode == null)
             // Nothing to do, bail. We can't function without the standard structure.
-            return
+            return;
 
-        var context = new Context(namespaceNode, classNode)
+        var context = new Context(namespaceNode, classNode);
 
         // For each VCTH *usage* we need to rewrite the tag helper node to use the tag helper runtime to construct
         // and set properties on the the correct field, and using the name of the type we will generate.
         foreach (var node in documentNode.FindDescendantNodes<TagHelperIntermediateNode>())
             foreach (var tagHelper in node.TagHelpers)
-                RewriteUsage(context, node, tagHelper)
+                RewriteUsage(context, node, tagHelper);
 
         // Then for each VCTH *definition* that we've seen we need to generate the class that implements
         // ITagHelper and the field that will hold it.
         foreach (var tagHelper in context.TagHelpers)
-            AddField(context, tagHelper)
-            AddTagHelperClass(context, tagHelper)
+            AddField(context, tagHelper);
+            AddTagHelperClass(context, tagHelper);
 
     private static void RewriteUsage(Context context, TagHelperIntermediateNode node, TagHelperDescriptor tagHelper)
         if (!tagHelper.IsViewComponentKind)
-            return
+            return;
 
-        context.Add(tagHelper)
+        context.Add(tagHelper);
 
         // Now we need to insert a create node using the default tag helper runtime. This is similar to
         // code in DefaultTagHelperOptimizationPass.
         //
         // Find the body node.
 
-        var children = node.Children
-        var index = 0
+        var children = node.Children;
+        var index = 0;
 
-        SkipNodes<TagHelperBodyIntermediateNode>(children, ref index)
-        SkipNodes<DefaultTagHelperBodyIntermediateNode>(children, ref index)
+        SkipNodes<TagHelperBodyIntermediateNode>(children, ref index);
+        SkipNodes<DefaultTagHelperBodyIntermediateNode>(children, ref index);
 
         // Now find the last create node.
-        SkipNodes<DefaultTagHelperCreateIntermediateNode>(children, ref index)
+        SkipNodes<DefaultTagHelperCreateIntermediateNode>(children, ref index);
 
         // Now 'index' has the right insertion point.
-        children.Insert(index, new DefaultTagHelperCreateIntermediateNode() { FieldName = context.GetFieldName(tagHelper), TagHelper = tagHelper, TypeName = context.GetFullyQualifiedName(tagHelper), })
+        children.Insert(index, new DefaultTagHelperCreateIntermediateNode() { FieldName = context.GetFieldName(tagHelper), TagHelper = tagHelper, TypeName = context.GetFullyQualifiedName(tagHelper), });
 
         // Now we need to rewrite any set property nodes to use the default runtime.
         for (var i = 0; i < children.Count; i++)
@@ -84,53 +84,53 @@ public sealed class ViewComponentTagHelperPass : IntermediateNodePassBase, IRazo
         // We also want to preserve the ordering of the nodes for testability. So insert at the end of any existing
         // field nodes.
 
-        var children = context.Class.Children
-        var index = 0
+        var children = context.Class.Children;
+        var index = 0;
 
-        SkipNodes<DefaultTagHelperRuntimeIntermediateNode>(children, ref index)
-        SkipNodes<FieldDeclarationIntermediateNode>(children, ref index)
+        SkipNodes<DefaultTagHelperRuntimeIntermediateNode>(children, ref index);
+        SkipNodes<FieldDeclarationIntermediateNode>(children, ref index);
 
-        context.Class.Children.Insert(index, new FieldDeclarationIntermediateNode() { IsTagHelperField = true, Modifiers = CommonModifiers.Private, Name = context.GetFieldName(tagHelper), Type = "global::" + context.GetFullyQualifiedName(tagHelper), })
+        context.Class.Children.Insert(index, new FieldDeclarationIntermediateNode() { IsTagHelperField = true, Modifiers = CommonModifiers.Private, Name = context.GetFieldName(tagHelper), Type = "global::" + context.GetFullyQualifiedName(tagHelper), });
 
     private static void SkipNodes<T>(IntermediateNodeCollection children, ref int i)
         where T : IntermediateNode
         while (i < children.Count && children[i] is T)
-            i++
+            i++;
 
     private static void AddTagHelperClass(Context context, TagHelperDescriptor tagHelper)
-        var node = new ViewComponentTagHelperIntermediateNode(context.GetClassName(tagHelper), tagHelper)
+        var node = new ViewComponentTagHelperIntermediateNode(context.GetClassName(tagHelper), tagHelper);
 
-        context.Class.Children.Add(node)
+        context.Class.Children.Add(node);
 
     private readonly struct Context(NamespaceDeclarationIntermediateNode namespaceNode, ClassDeclarationIntermediateNode classNode)
-        public ClassDeclarationIntermediateNode Class { get; } = classNode
-        public NamespaceDeclarationIntermediateNode Namespace { get; } = namespaceNode
+        public ClassDeclarationIntermediateNode Class { get; } = classNode;
+        public NamespaceDeclarationIntermediateNode Namespace { get; } = namespaceNode;
 
-        private readonly Dictionary<TagHelperDescriptor, (string className, string fullyQualifiedName, string fieldName)> _tagHelpers = []
+        private readonly Dictionary<TagHelperDescriptor, (string className, string fullyQualifiedName, string fieldName)> _tagHelpers = [];
 
-        public IEnumerable<TagHelperDescriptor> TagHelpers => _tagHelpers.Keys
+        public IEnumerable<TagHelperDescriptor> TagHelpers => _tagHelpers.Keys;
 
         public bool Add(TagHelperDescriptor tagHelper)
             if (_tagHelpers.ContainsKey(tagHelper))
-                return false
+                return false;
 
-            var viewComponentName = tagHelper.ViewComponentName
+            var viewComponentName = tagHelper.ViewComponentName;
 
-            var className = $"__Generated__{viewComponentName}ViewComponentTagHelper"
+            var className = $"__Generated__{viewComponentName}ViewComponentTagHelper";
             var fullyQualifiedName = !Namespace.Name.IsNullOrEmpty()
                 ? $"{Namespace.Name}.{Class.Name}.{className}"
                 : $"{Namespace.Name}{Class.Name}.{className}"
-            var fieldName = $"__{viewComponentName}ViewComponentTagHelper"
+            var fieldName = $"__{viewComponentName}ViewComponentTagHelper";
 
-            _tagHelpers.Add(tagHelper, (className, fullyQualifiedName, fieldName))
+            _tagHelpers.Add(tagHelper, (className, fullyQualifiedName, fieldName));
 
-            return true
+            return true;
 
         public string GetClassName(TagHelperDescriptor tagHelper)
-            => _tagHelpers[tagHelper].className
+            => _tagHelpers[tagHelper].className;
 
         public string GetFullyQualifiedName(TagHelperDescriptor tagHelper)
-            => _tagHelpers[tagHelper].fullyQualifiedName
+            => _tagHelpers[tagHelper].fullyQualifiedName;
 
         public string GetFieldName(TagHelperDescriptor tagHelper)
-            => _tagHelpers[tagHelper].fieldName
+            => _tagHelpers[tagHelper].fieldName;

@@ -1,10 +1,10 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.Collections.Generic
-using System.Composition.Hosting.Util
-using System.Diagnostics
-using System.Threading
+using System.Collections.Generic;
+using System.Composition.Hosting.Util;
+using System.Diagnostics;
+using System.Threading;
 
 namespace System.Composition.Hosting.Core
     /// <summary>
@@ -24,39 +24,39 @@ namespace System.Composition.Hosting.Core
     /// </remarks>
     /// <seealso cref="Export{T}"/>
     public sealed class LifetimeContext : CompositionContext, IDisposable
-        private readonly LifetimeContext _root
-        private readonly LifetimeContext _parent
+        private readonly LifetimeContext _root;
+        private readonly LifetimeContext _parent;
 
         // Protects the two members holding shared instances
-        private readonly object _sharingLock = new object()
-        private SmallSparseInitonlyArray _sharedPartInstances, _instancesUndergoingInitialization
+        private readonly object _sharingLock = new object();
+        private SmallSparseInitonlyArray _sharedPartInstances, _instancesUndergoingInitialization;
 
         // Protects the member holding bound instances.
-        private readonly object _boundPartLock = new object()
-        private List<IDisposable> _boundPartInstances = new List<IDisposable>(0)
+        private readonly object _boundPartLock = new object();
+        private List<IDisposable> _boundPartInstances = new List<IDisposable>(0);
 
-        private readonly string[] _sharingBoundaries
-        private readonly ExportDescriptorRegistry _partRegistry
+        private readonly string[] _sharingBoundaries;
+        private readonly ExportDescriptorRegistry _partRegistry;
 
-        private static int s_nextSharingId = -1
+        private static int s_nextSharingId = -1;
 
         /// <summary>
         /// Generates an identifier that can be used to locate shared part instances.
         /// </summary>
         /// <returns>A new unique identifier.</returns>
         public static int AllocateSharingId()
-            return Interlocked.Increment(ref s_nextSharingId)
+            return Interlocked.Increment(ref s_nextSharingId);
 
         internal LifetimeContext(ExportDescriptorRegistry partRegistry, string[] sharingBoundaries)
-            _root = this
-            _sharingBoundaries = sharingBoundaries
-            _partRegistry = partRegistry
+            _root = this;
+            _sharingBoundaries = sharingBoundaries;
+            _partRegistry = partRegistry;
 
         internal LifetimeContext(LifetimeContext parent, string[] sharingBoundaries)
-            _parent = parent
-            _root = parent._root
-            _sharingBoundaries = sharingBoundaries
-            _partRegistry = parent._partRegistry
+            _parent = parent;
+            _root = parent._root;
+            _sharingBoundaries = sharingBoundaries;
+            _partRegistry = parent._partRegistry;
 
         /// <summary>
         /// Find the broadest lifetime context within all of the specified sharing boundaries.
@@ -66,37 +66,37 @@ namespace System.Composition.Hosting.Core
         /// <remarks>Currently, the root cannot be a boundary.</remarks>
         public LifetimeContext FindContextWithin(string sharingBoundary)
             if (sharingBoundary == null)
-                return _root
+                return _root;
 
-            var toCheck = this
+            var toCheck = this;
             while (toCheck != null)
                 foreach (var implemented in toCheck._sharingBoundaries)
                     if (implemented == sharingBoundary)
-                        return toCheck
+                        return toCheck;
 
-                toCheck = toCheck._parent
+                toCheck = toCheck._parent;
 
             // To generate acceptable error messages here we're going to need to pass in a description
             // of the component, or otherwise find a way to get one.
-            string message = SR.Format(SR.Component_NotCreatableOutsideSharingBoundary, sharingBoundary)
-            var ex = new CompositionFailedException(message)
-            Debug.WriteLine(SR.Diagnostic_ThrowingException, ex.ToString())
-            throw ex
+            string message = SR.Format(SR.Component_NotCreatableOutsideSharingBoundary, sharingBoundary);
+            var ex = new CompositionFailedException(message);
+            Debug.WriteLine(SR.Diagnostic_ThrowingException, ex.ToString());
+            throw ex;
 
         /// <summary>
         /// Release the lifetime context and any disposable part instances
         /// that are bound to it.
         /// </summary>
         public void Dispose()
-            IEnumerable<IDisposable> toDispose = null
+            IEnumerable<IDisposable> toDispose = null;
             lock (_boundPartLock)
                 if (_boundPartInstances != null)
-                    toDispose = _boundPartInstances
-                    _boundPartInstances = null
+                    toDispose = _boundPartInstances;
+                    _boundPartInstances = null;
 
             if (toDispose != null)
                 foreach (var instance in toDispose)
-                    instance.Dispose()
+                    instance.Dispose();
 
         /// <summary>
         /// Bind the lifetime of a disposable part to the current
@@ -106,9 +106,9 @@ namespace System.Composition.Hosting.Core
         public void AddBoundInstance(IDisposable instance)
             lock (_boundPartLock)
                 if (_boundPartInstances == null)
-                    throw new ObjectDisposedException(ToString())
+                    throw new ObjectDisposedException(ToString());
 
-                _boundPartInstances.Add(instance)
+                _boundPartInstances.Add(instance);
 
         /// <summary>
         /// Either retrieve an existing part instance with the specified sharing id, or
@@ -124,32 +124,32 @@ namespace System.Composition.Hosting.Core
         /// be safe and lock-free). It is important that the composition, and thus lock acquisition, is strictly
         /// leaf-to-root in the lifetime tree.</remarks>
         public object GetOrCreate(int sharingId, CompositionOperation operation, CompositeActivator creator)
-            object result
+            object result;
             if (_sharedPartInstances != null && _sharedPartInstances.TryGetValue(sharingId, out result))
-                return result
+                return result;
 
             // Remains locked for the rest of the operation.
-            operation.EnterSharingLock(_sharingLock)
+            operation.EnterSharingLock(_sharingLock);
 
             if (_sharedPartInstances == null)
-                _sharedPartInstances = new SmallSparseInitonlyArray()
-                _instancesUndergoingInitialization = new SmallSparseInitonlyArray()
+                _sharedPartInstances = new SmallSparseInitonlyArray();
+                _instancesUndergoingInitialization = new SmallSparseInitonlyArray();
             else if (_sharedPartInstances.TryGetValue(sharingId, out result))
-                return result
+                return result;
 
             // Already being initialized _on the same thread_.
             if (_instancesUndergoingInitialization.TryGetValue(sharingId, out result))
-                return result
+                return result;
 
-            result = creator(this, operation)
+            result = creator(this, operation);
 
-            _instancesUndergoingInitialization.Add(sharingId, result)
+            _instancesUndergoingInitialization.Add(sharingId, result);
 
             operation.AddPostCompositionAction(() => {
                 _sharedPartInstances.Add(sharingId, result);
             })
 
-            return result
+            return result;
 
         /// <summary>
         /// Retrieve the single <paramref name="contract"/> instance from the
@@ -160,13 +160,13 @@ namespace System.Composition.Hosting.Core
         /// <param name="export">The export if available, otherwise, null.</param>
         /// <exception cref="CompositionFailedException" />
         public override bool TryGetExport(CompositionContract contract, out object export)
-            ExportDescriptor defaultForExport
+            ExportDescriptor defaultForExport;
             if (!_partRegistry.TryGetSingleForExport(contract, out defaultForExport))
-                export = null
-                return false
+                export = null;
+                return false;
 
-            export = CompositionOperation.Run(this, defaultForExport.Activator)
-            return true
+            export = CompositionOperation.Run(this, defaultForExport.Activator);
+            return true;
 
         /// <summary>
         /// Describes this lifetime context.
@@ -174,9 +174,9 @@ namespace System.Composition.Hosting.Core
         /// <returns>A string description.</returns>
         public override string ToString()
             if (_parent == null)
-                return "Root Lifetime Context"
+                return "Root Lifetime Context";
 
             if (_sharingBoundaries.Length == 0)
-                return "Non-sharing Lifetime Context"
+                return "Non-sharing Lifetime Context";
 
-            return "Boundary for " + string.Join(", ", _sharingBoundaries)
+            return "Boundary for " + string.Join(", ", _sharingBoundaries);

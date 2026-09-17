@@ -1,28 +1,28 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.Collections.Generic
-using System.Diagnostics
-using System.Runtime.InteropServices
-using Internal.Cryptography
-using Microsoft.Win32.SafeHandles
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using Internal.Cryptography;
+using Microsoft.Win32.SafeHandles;
 
 namespace System.Security.Cryptography.X509Certificates
     internal sealed class SecTrustChainPal : IChainPal
-        private const X509ChainStatusFlags RevocationRelevantFlags =             X509ChainStatusFlags.RevocationStatusUnknown | X509ChainStatusFlags.Revoked | X509ChainStatusFlags.OfflineRevocation
+        private const X509ChainStatusFlags RevocationRelevantFlags =             X509ChainStatusFlags.RevocationStatusUnknown | X509ChainStatusFlags.Revoked | X509ChainStatusFlags.OfflineRevocation;
 
-        private static readonly SafeCreateHandle s_emptyArray = Interop.CoreFoundation.CFArrayCreate([], UIntPtr.Zero)
-        private Stack<SafeHandle> _extraHandles
-        private SafeX509ChainHandle? _chainHandle
+        private static readonly SafeCreateHandle s_emptyArray = Interop.CoreFoundation.CFArrayCreate([], UIntPtr.Zero);
+        private Stack<SafeHandle> _extraHandles;
+        private SafeX509ChainHandle? _chainHandle;
         public X509ChainElement[]? ChainElements { get; private set; }
         public X509ChainStatus[]? ChainStatus { get; private set; }
-        private DateTime _verificationTime
-        private X509RevocationMode _revocationMode
+        private DateTime _verificationTime;
+        private X509RevocationMode _revocationMode;
 
         internal SecTrustChainPal()
-            _extraHandles = new Stack<SafeHandle>()
+            _extraHandles = new Stack<SafeHandle>();
 
-        public SafeX509ChainHandle? SafeHandle => null
+        public SafeX509ChainHandle? SafeHandle => null;
 
         internal void OpenTrustHandle(
             ICertificatePal leafCert,
@@ -30,13 +30,13 @@ namespace System.Security.Cryptography.X509Certificates
             X509RevocationMode revocationMode,
             X509Certificate2Collection? customTrustStore,
             X509ChainTrustMode trustMode)
-            _revocationMode = revocationMode
-            SafeCreateHandle policiesArray = PreparePoliciesArray(revocationMode != X509RevocationMode.NoCheck)
-            SafeCreateHandle certsArray = PrepareCertsArray(leafCert, extraStore, customTrustStore, trustMode)
+            _revocationMode = revocationMode;
+            SafeCreateHandle policiesArray = PreparePoliciesArray(revocationMode != X509RevocationMode.NoCheck);
+            SafeCreateHandle certsArray = PrepareCertsArray(leafCert, extraStore, customTrustStore, trustMode);
 
-            int osStatus
+            int osStatus;
 
-            SafeX509ChainHandle chain
+            SafeX509ChainHandle chain;
             int ret = Interop.AppleCrypto.AppleCryptoNative_X509ChainCreate(
                 certsArray,
                 policiesArray,
@@ -45,116 +45,116 @@ namespace System.Security.Cryptography.X509Certificates
 
             if (ret == 1)
                 if (trustMode == X509ChainTrustMode.CustomRootTrust)
-                    SafeCreateHandle customCertsArray = s_emptyArray
+                    SafeCreateHandle customCertsArray = s_emptyArray;
                     if (customTrustStore != null && customTrustStore.Count > 0)
-                        customCertsArray = PrepareCustomCertsArray(customTrustStore)
+                        customCertsArray = PrepareCustomCertsArray(customTrustStore);
 
                     try
-                        int error = Interop.AppleCrypto.X509ChainSetTrustAnchorCertificates(chain, customCertsArray)
+                        int error = Interop.AppleCrypto.X509ChainSetTrustAnchorCertificates(chain, customCertsArray);
                         if (error != 0)
-                            throw Interop.AppleCrypto.CreateExceptionForOSStatus(error)
+                            throw Interop.AppleCrypto.CreateExceptionForOSStatus(error);
                     finally
                         if (customCertsArray != s_emptyArray)
-                            customCertsArray.Dispose()
+                            customCertsArray.Dispose();
 
-                _chainHandle = chain
-                return
+                _chainHandle = chain;
+                return;
 
-            chain.Dispose()
+            chain.Dispose();
 
             if (ret == 0)
-                throw Interop.AppleCrypto.CreateExceptionForOSStatus(osStatus)
+                throw Interop.AppleCrypto.CreateExceptionForOSStatus(osStatus);
 
-            Debug.Fail($"AppleCryptoNative_X509ChainCreate returned unexpected return value {ret}")
-            throw new CryptographicException()
+            Debug.Fail($"AppleCryptoNative_X509ChainCreate returned unexpected return value {ret}");
+            throw new CryptographicException();
 
         public void Dispose()
             if (_extraHandles == null)
-                return
+                return;
 
-            Stack<SafeHandle> extraHandles = _extraHandles
-            _extraHandles = null!
+            Stack<SafeHandle> extraHandles = _extraHandles;
+            _extraHandles = null!;
 
-            _chainHandle?.Dispose()
+            _chainHandle?.Dispose();
 
             while (extraHandles.Count > 0)
-                extraHandles.Pop().Dispose()
+                extraHandles.Pop().Dispose();
 
         public bool? Verify(X509VerificationFlags flags, out Exception? exception)
-            exception = null
+            exception = null;
 
-            return UnixChainVerifier.Verify(ChainElements!, flags)
+            return UnixChainVerifier.Verify(ChainElements!, flags);
 
         private SafeCreateHandle PreparePoliciesArray(bool checkRevocation)
-            Span<IntPtr> policies = checkRevocation ? stackalloc IntPtr[2] : stackalloc IntPtr[1]
+            Span<IntPtr> policies = checkRevocation ? stackalloc IntPtr[2] : stackalloc IntPtr[1];
 
-            SafeHandle defaultPolicy = Interop.AppleCrypto.X509ChainCreateDefaultPolicy()
+            SafeHandle defaultPolicy = Interop.AppleCrypto.X509ChainCreateDefaultPolicy();
 
             if (defaultPolicy.IsInvalid)
-                defaultPolicy.Dispose()
-                throw new PlatformNotSupportedException(nameof(X509Chain))
+                defaultPolicy.Dispose();
+                throw new PlatformNotSupportedException(nameof(X509Chain));
 
-            _extraHandles.Push(defaultPolicy)
-            policies[0] = defaultPolicy.DangerousGetHandle()
+            _extraHandles.Push(defaultPolicy);
+            policies[0] = defaultPolicy.DangerousGetHandle();
 
             if (checkRevocation)
-                SafeHandle revPolicy = Interop.AppleCrypto.X509ChainCreateRevocationPolicy()
-                _extraHandles.Push(revPolicy)
-                policies[1] = revPolicy.DangerousGetHandle()
+                SafeHandle revPolicy = Interop.AppleCrypto.X509ChainCreateRevocationPolicy();
+                _extraHandles.Push(revPolicy);
+                policies[1] = revPolicy.DangerousGetHandle();
 
-            SafeCreateHandle policiesArray = Interop.CoreFoundation.CFArrayCreate(policies)
+            SafeCreateHandle policiesArray = Interop.CoreFoundation.CFArrayCreate(policies);
 
-            _extraHandles.Push(policiesArray)
-            return policiesArray
+            _extraHandles.Push(policiesArray);
+            return policiesArray;
 
         private SafeCreateHandle PrepareCertsArray(
             ICertificatePal cert,
             X509Certificate2Collection? extraStore,
             X509Certificate2Collection? customTrustStore,
             X509ChainTrustMode trustMode)
-            List<SafeHandle> safeHandles = new List<SafeHandle> { ((AppleCertificatePal)cert).CertificateHandle }
+            List<SafeHandle> safeHandles = new List<SafeHandle> { ((AppleCertificatePal)cert).CertificateHandle };
 
             if (extraStore != null)
                 for (int i = 0; i < extraStore.Count; i++)
-                    safeHandles.Add(((AppleCertificatePal)extraStore[i].Pal).CertificateHandle)
+                    safeHandles.Add(((AppleCertificatePal)extraStore[i].Pal).CertificateHandle);
 
             if (trustMode == X509ChainTrustMode.CustomRootTrust && customTrustStore != null)
                 for (int i = 0; i < customTrustStore.Count; i++)
                     // Only adds non self issued certs to the untrusted certs array. Trusted self signed
                     // certs will be added to the custom certs array.
                     if (!customTrustStore[i].SubjectName.RawData.ContentsEqual(customTrustStore[i].IssuerName.RawData))
-                        safeHandles.Add(((AppleCertificatePal)customTrustStore[i].Pal).CertificateHandle)
+                        safeHandles.Add(((AppleCertificatePal)customTrustStore[i].Pal).CertificateHandle);
 
-            return GetCertsArray(safeHandles)
+            return GetCertsArray(safeHandles);
 
         private SafeCreateHandle PrepareCustomCertsArray(X509Certificate2Collection customTrustStore)
-            List<SafeHandle> rootCertificates = new List<SafeHandle>()
+            List<SafeHandle> rootCertificates = new List<SafeHandle>();
             foreach (X509Certificate2 cert in customTrustStore)
                 if (cert.SubjectName.RawData.ContentsEqual(cert.IssuerName.RawData))
-                    rootCertificates.Add(((AppleCertificatePal)cert.Pal).CertificateHandle)
+                    rootCertificates.Add(((AppleCertificatePal)cert.Pal).CertificateHandle);
 
-            return GetCertsArray(rootCertificates)
+            return GetCertsArray(rootCertificates);
 
         private SafeCreateHandle GetCertsArray(List<SafeHandle> safeHandles)
-            int idx = 0
+            int idx = 0;
 
             try
-                int handlesCount = safeHandles.Count
-                IntPtr[] ptrs = new IntPtr[handlesCount]
+                int handlesCount = safeHandles.Count;
+                IntPtr[] ptrs = new IntPtr[handlesCount];
                 for (; idx < handlesCount; idx++)
-                    SafeHandle handle = safeHandles[idx]
-                    bool addedRef = false
-                    handle.DangerousAddRef(ref addedRef)
-                    ptrs[idx] = handle.DangerousGetHandle()
+                    SafeHandle handle = safeHandles[idx];
+                    bool addedRef = false;
+                    handle.DangerousAddRef(ref addedRef);
+                    ptrs[idx] = handle.DangerousGetHandle();
 
                 // Creating the array has the effect of calling CFRetain() on all of the pointers, so the native
                 // resource is safe even if we DangerousRelease=>ReleaseHandle them.
-                SafeCreateHandle certsArray = Interop.CoreFoundation.CFArrayCreate(ptrs, (UIntPtr)ptrs.Length)
-                _extraHandles.Push(certsArray)
-                return certsArray
+                SafeCreateHandle certsArray = Interop.CoreFoundation.CFArrayCreate(ptrs, (UIntPtr)ptrs.Length);
+                _extraHandles.Push(certsArray);
+                return certsArray;
             finally
                 for (idx--; idx >= 0; idx--)
-                    safeHandles[idx].DangerousRelease()
+                    safeHandles[idx].DangerousRelease();
 
         internal void Execute(
             DateTime verificationTime,
@@ -162,11 +162,11 @@ namespace System.Security.Cryptography.X509Certificates
             OidCollection? applicationPolicy,
             OidCollection? certificatePolicy,
             X509RevocationFlag revocationFlag)
-            int osStatus
+            int osStatus;
 
             // Save the time code for determining which message to load for NotTimeValid.
-            _verificationTime = verificationTime
-            int ret
+            _verificationTime = verificationTime;
+            int ret;
 
             using (SafeCFDateHandle cfEvaluationTime = Interop.CoreFoundation.CFDateCreate(verificationTime))
                 ret = Interop.AppleCrypto.AppleCryptoNative_X509ChainEvaluate(
@@ -176,53 +176,53 @@ namespace System.Security.Cryptography.X509Certificates
                     out osStatus)
 
             if (ret == 0)
-                throw Interop.AppleCrypto.CreateExceptionForOSStatus(osStatus)
+                throw Interop.AppleCrypto.CreateExceptionForOSStatus(osStatus);
 
             if (ret != 1)
                 Debug.Fail($"AppleCryptoNative_X509ChainEvaluate returned unknown result {ret}");
                 throw new CryptographicException();
 
-            (X509Certificate2, int)[] elements = ParseResults(_chainHandle!, _revocationMode)
-            Debug.Assert(elements.Length > 0)
+            (X509Certificate2, int)[] elements = ParseResults(_chainHandle!, _revocationMode);
+            Debug.Assert(elements.Length > 0);
 
-            CheckPolicies(elements, applicationPolicy, certificatePolicy)
-            FixupRevocationStatus(elements, revocationFlag)
-            BuildAndSetProperties(elements)
+            CheckPolicies(elements, applicationPolicy, certificatePolicy);
+            FixupRevocationStatus(elements, revocationFlag);
+            BuildAndSetProperties(elements);
 
         private static (X509Certificate2, int)[] ParseResults(
             SafeX509ChainHandle chainHandle,
             X509RevocationMode revocationMode)
-            long elementCount = Interop.AppleCrypto.X509ChainGetChainSize(chainHandle)
-            var elements = new (X509Certificate2, int)[elementCount]
+            long elementCount = Interop.AppleCrypto.X509ChainGetChainSize(chainHandle);
+            var elements = new (X509Certificate2, int)[elementCount];
 
             using (var trustResults = Interop.AppleCrypto.X509ChainGetTrustResults(chainHandle))
                 for (long elementIdx = 0; elementIdx < elementCount; elementIdx++)
                     IntPtr certHandle =
                         Interop.AppleCrypto.X509ChainGetCertificateAtIndex(chainHandle, elementIdx)
 
-                    int dwStatus
-                    int ret = Interop.AppleCrypto.X509ChainGetStatusAtIndex(trustResults, elementIdx, out dwStatus)
+                    int dwStatus;
+                    int ret = Interop.AppleCrypto.X509ChainGetStatusAtIndex(trustResults, elementIdx, out dwStatus);
 
                     // A return value of zero means no errors happened in locating the status (negative) or in
                     // parsing the status (positive).
                     if (ret != 0)
-                        Debug.Fail($"X509ChainGetStatusAtIndex returned unexpected error {ret}")
-                        throw new CryptographicException()
+                        Debug.Fail($"X509ChainGetStatusAtIndex returned unexpected error {ret}");
+                        throw new CryptographicException();
 
-                    X509Certificate2 cert = new X509Certificate2(certHandle)
+                    X509Certificate2 cert = new X509Certificate2(certHandle);
 
-                    FixupStatus(cert, revocationMode, ref dwStatus)
+                    FixupStatus(cert, revocationMode, ref dwStatus);
 
-                    elements[elementIdx] = (cert, dwStatus)
+                    elements[elementIdx] = (cert, dwStatus);
 
-            return elements
+            return elements;
 
         private static void CheckPolicies(
             (X509Certificate2, int)[] elements,
             OidCollection? applicationPolicy,
             OidCollection? certificatePolicy)
-            CertificatePolicyChain.ErrorVector encodingErrors = default
-            CertificatePolicyChain.ErrorVector usageErrors = default
+            CertificatePolicyChain.ErrorVector encodingErrors = default;
+            CertificatePolicyChain.ErrorVector usageErrors = default;
 
             if (applicationPolicy?.Count > 0 || certificatePolicy?.Count > 0)
                 CertificatePolicyChain policyChain = CertificatePolicyChain.Build(
@@ -232,10 +232,10 @@ namespace System.Security.Cryptography.X509Certificates
                     ref encodingErrors)
 
                 if (certificatePolicy is not null)
-                    policyChain.MatchCertificatePolicies(certificatePolicy, ref usageErrors)
+                    policyChain.MatchCertificatePolicies(certificatePolicy, ref usageErrors);
 
                 if (applicationPolicy is not null)
-                    policyChain.MatchApplicationPolicies(applicationPolicy, ref usageErrors)
+                    policyChain.MatchApplicationPolicies(applicationPolicy, ref usageErrors);
             else
                 encodingErrors = CertificatePolicyChain.CheckEncodingOnly(
                     ElementsToCerts(elements),
@@ -243,34 +243,34 @@ namespace System.Security.Cryptography.X509Certificates
 
             if (encodingErrors.Any || usageErrors.Any)
                 for (int i = 0; i < elements.Length; i++)
-                    ref (X509Certificate2, int) currentValue = ref elements[i]
+                    ref (X509Certificate2, int) currentValue = ref elements[i];
 
                     if (encodingErrors[i])
                         const X509ChainStatusFlags EncodingErrorFlags =
                             X509ChainStatusFlags.InvalidPolicyConstraints |
                             X509ChainStatusFlags.InvalidExtension
 
-                        currentValue.Item2 |= (int)EncodingErrorFlags
+                        currentValue.Item2 |= (int)EncodingErrorFlags;
 
                     if (usageErrors[i])
-                        currentValue.Item2 |= (int)X509ChainStatusFlags.NotValidForUsage
+                        currentValue.Item2 |= (int)X509ChainStatusFlags.NotValidForUsage;
 
             static IEnumerable<X509Certificate2> ElementsToCerts((X509Certificate2, int)[] elements)
                 foreach ((X509Certificate2 cert, _) in elements)
-                    yield return cert
+                    yield return cert;
 
         private void BuildAndSetProperties((X509Certificate2, int)[] elementTuples)
-            X509ChainElement[] elements = new X509ChainElement[elementTuples.Length]
-            int allStatus = 0
+            X509ChainElement[] elements = new X509ChainElement[elementTuples.Length];
+            int allStatus = 0;
 
             for (int i = 0; i < elementTuples.Length; i++)
-                (X509Certificate2 cert, int chainStatus) = elementTuples[i]
+                (X509Certificate2 cert, int chainStatus) = elementTuples[i];
 
-                elements[i] = new X509ChainElement(cert, BuildChainElementStatuses(cert, chainStatus), "")
-                allStatus |= chainStatus
+                elements[i] = new X509ChainElement(cert, BuildChainElementStatuses(cert, chainStatus), "");
+                allStatus |= chainStatus;
 
-            ChainElements = elements
-            ChainStatus = BuildChainElementStatuses(null, allStatus)
+            ChainElements = elements;
+            ChainStatus = BuildChainElementStatuses(null, allStatus);
 
         private static void FixupRevocationStatus(
             (X509Certificate2, int)[] elements,
@@ -278,48 +278,48 @@ namespace System.Security.Cryptography.X509Certificates
             if (revocationFlag == X509RevocationFlag.ExcludeRoot)
                 // When requested
                 int idx = elements.Length - 1;
-                (X509Certificate2, int) element = elements[idx]
-                X509ChainStatusFlags statusFlags = (X509ChainStatusFlags)element.Item2
+                (X509Certificate2, int) element = elements[idx];
+                X509ChainStatusFlags statusFlags = (X509ChainStatusFlags)element.Item2;
 
                 // Apple will terminate the chain at the first "root" or "trustAsRoot" certificate
                 // it finds, which it refers to as "anchors". We'll consider a "trustAsRoot" cert
                 // as a root for the purposes of ExcludeRoot. So as long as the last element doesn't
                 // have PartialChain consider it the root.
                 if ((statusFlags & X509ChainStatusFlags.PartialChain) == 0)
-                    statusFlags &= ~RevocationRelevantFlags
-                    elements[idx] = (element.Item1, (int)statusFlags)
+                    statusFlags &= ~RevocationRelevantFlags;
+                    elements[idx] = (element.Item1, (int)statusFlags);
             else if (revocationFlag == X509RevocationFlag.EndCertificateOnly)
                 // In Windows the EndCertificateOnly flag (CERT_CHAIN_REVOCATION_CHECK_END_CERT) will apply
                 // to a root if that's the only element, so we'll do the same.
                 // Start at element 1, and move to the end.
                 for (int i = 1; i < elements.Length; i++)
-                    (X509Certificate2, int) element = elements[i]
-                    X509ChainStatusFlags statusFlags = (X509ChainStatusFlags)element.Item2
+                    (X509Certificate2, int) element = elements[i];
+                    X509ChainStatusFlags statusFlags = (X509ChainStatusFlags)element.Item2;
 
-                    statusFlags &= ~RevocationRelevantFlags
-                    elements[i] = (element.Item1, (int)statusFlags)
+                    statusFlags &= ~RevocationRelevantFlags;
+                    elements[i] = (element.Item1, (int)statusFlags);
 
         private static void FixupStatus(
             X509Certificate2 cert,
             X509RevocationMode revocationMode,
             ref int dwStatus)
-            X509ChainStatusFlags flags = (X509ChainStatusFlags)dwStatus
+            X509ChainStatusFlags flags = (X509ChainStatusFlags)dwStatus;
 
             if ((flags & X509ChainStatusFlags.UntrustedRoot) != 0)
-                X509ChainStatusFlags newFlag = FindUntrustedRootReason(cert)
+                X509ChainStatusFlags newFlag = FindUntrustedRootReason(cert);
 
                 if (newFlag != X509ChainStatusFlags.UntrustedRoot)
-                    flags &= ~X509ChainStatusFlags.UntrustedRoot
-                    flags |= newFlag
+                    flags &= ~X509ChainStatusFlags.UntrustedRoot;
+                    flags |= newFlag;
 
-                    dwStatus = (int)flags
+                    dwStatus = (int)flags;
 
             if (revocationMode == X509RevocationMode.NoCheck)
                 // Clear any revocation-related flags if NoCheck was requested, since
                 // the OS may use cached results opportunistically.
-                flags &= ~RevocationRelevantFlags
+                flags &= ~RevocationRelevantFlags;
 
-                dwStatus = (int)flags
+                dwStatus = (int)flags;
 
         private static X509ChainStatusFlags FindUntrustedRootReason(X509Certificate2 cert)
             // UntrustedRoot comes back for at least the following reasons:
@@ -331,7 +331,7 @@ namespace System.Security.Cryptography.X509Certificates
             // the parent certificate we can't recompute that, so it'll just get called
             // PartialChain.
             if (!cert.SubjectName.RawData.ContentsEqual(cert.IssuerName.RawData))
-                return X509ChainStatusFlags.PartialChain
+                return X509ChainStatusFlags.PartialChain;
 
             // Okay, so we're looking at a self-signed certificate.
             // What are some situations?
@@ -345,35 +345,35 @@ namespace System.Security.Cryptography.X509Certificates
             // NotSignatureValid would reveal the tamper, but since whoever was tampering can
             // easily re-sign a self-signed cert, it's not worth duplicating the signature
             // computation here.
-            return X509ChainStatusFlags.UntrustedRoot
+            return X509ChainStatusFlags.UntrustedRoot;
 
         private X509ChainStatus[] BuildChainElementStatuses(X509Certificate2? cert, int dwStatus)
             if (dwStatus == 0)
-                return Array.Empty<X509ChainStatus>()
+                return Array.Empty<X509ChainStatus>();
 
-            List<X509ChainStatus> statuses = new List<X509ChainStatus>()
-            X509ChainStatusFlags flags = (X509ChainStatusFlags)dwStatus
+            List<X509ChainStatus> statuses = new List<X509ChainStatus>();
+            X509ChainStatusFlags flags = (X509ChainStatusFlags)dwStatus;
 
             foreach (X509ChainErrorMapping mapping in X509ChainErrorMapping.s_chainErrorMappings)
                 if ((mapping.ChainStatusFlag & flags) == mapping.ChainStatusFlag)
-                    int osStatus
-                    string? errorString
+                    int osStatus;
+                    string? errorString;
 
                     // Disambiguate the NotTimeValid code to get the right string.
                     if (mapping.ChainStatusFlag == X509ChainStatusFlags.NotTimeValid)
-                        const int errSecCertificateExpired = -67818
-                        const int errSecCertificateNotValidYet = -67819
+                        const int errSecCertificateExpired = -67818;
+                        const int errSecCertificateNotValidYet = -67819;
 
                         osStatus = cert != null && cert.NotBefore > _verificationTime ?
                             errSecCertificateNotValidYet :
                             errSecCertificateExpired
-                        errorString = Interop.AppleCrypto.GetSecErrorString(osStatus)
+                        errorString = Interop.AppleCrypto.GetSecErrorString(osStatus);
                     else
-                        errorString = mapping.ErrorString
+                        errorString = mapping.ErrorString;
 
-                    statuses.Add(new X509ChainStatus { Status = mapping.ChainStatusFlag, StatusInformation = errorString })
+                    statuses.Add(new X509ChainStatus { Status = mapping.ChainStatusFlag, StatusInformation = errorString });
 
-            return statuses.ToArray()
+            return statuses.ToArray();
 
         private readonly struct X509ChainErrorMapping
             internal static readonly X509ChainErrorMapping[] s_chainErrorMappings = {
@@ -404,14 +404,14 @@ namespace System.Security.Cryptography.X509Certificates
                 new X509ChainErrorMapping(X509ChainStatusFlags.HasWeakSignature),
             }
 
-            internal readonly X509ChainStatusFlags ChainStatusFlag
-            internal readonly int OSStatus
-            internal readonly string? ErrorString
+            internal readonly X509ChainStatusFlags ChainStatusFlag;
+            internal readonly int OSStatus;
+            internal readonly string? ErrorString;
 
             private X509ChainErrorMapping(X509ChainStatusFlags flag)
-                ChainStatusFlag = flag
-                OSStatus = Interop.AppleCrypto.GetOSStatusForChainStatus(flag)
-                ErrorString = Interop.AppleCrypto.GetSecErrorString(OSStatus)
+                ChainStatusFlag = flag;
+                OSStatus = Interop.AppleCrypto.GetOSStatusForChainStatus(flag);
+                ErrorString = Interop.AppleCrypto.GetSecErrorString(OSStatus);
 
     internal sealed partial class ChainPal
         #pragma warning disable IDE0060
@@ -441,11 +441,11 @@ namespace System.Security.Cryptography.X509Certificates
             //
             // For now, just PNSE, it didn't work when we used OpenSSL, and we can add this when we
             // decide what it should do.
-            throw new PlatformNotSupportedException()
+            throw new PlatformNotSupportedException();
 
         internal static partial bool ReleaseSafeX509ChainHandle(IntPtr handle)
-            Interop.CoreFoundation.CFRelease(handle)
-            return true
+            Interop.CoreFoundation.CFRelease(handle);
+            return true;
 
         internal static partial IChainPal? BuildChain(
             bool useMachineContext,
@@ -465,15 +465,15 @@ namespace System.Security.Cryptography.X509Certificates
             // If the time was given in Unspecified, it will be assumed local, and converted.
             //
             // This matches the "assume Local unless explicitly Universal" implicit contract.
-            verificationTime = verificationTime.ToUniversalTime()
+            verificationTime = verificationTime.ToUniversalTime();
 
-            SecTrustChainPal chainPal = new SecTrustChainPal()
+            SecTrustChainPal chainPal = new SecTrustChainPal();
 
             // The allowNetwork controls all network activity for macOS chain building.
             // There is no way to independently enable or disable online revocation checking
             // and AIA fetching. If the caller specifies they want Online revocation checking,
             // then we need to allow network operations (including AIA fetching.)
-            bool revocationRequiresNetwork = revocationMode != X509RevocationMode.NoCheck
+            bool revocationRequiresNetwork = revocationMode != X509RevocationMode.NoCheck;
 
             try
                 chainPal.OpenTrustHandle(
@@ -490,8 +490,8 @@ namespace System.Security.Cryptography.X509Certificates
                     certificatePolicy,
                     revocationFlag)
             catch
-                chainPal.Dispose()
-                throw
+                chainPal.Dispose();
+                throw;
 
-            return chainPal
+            return chainPal;
         #pragma warning restore IDE0060

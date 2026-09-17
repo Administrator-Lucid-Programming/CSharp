@@ -1,15 +1,15 @@
-using System.Collections.Concurrent
-using Microsoft.Extensions.Hosting
-using Microsoft.Extensions.Logging
-using Microsoft.Extensions.Options
-using Umbraco.Cms.Core
-using Umbraco.Cms.Core.Configuration.Models
-using Umbraco.Cms.Core.Models
-using Umbraco.Cms.Core.Persistence.Querying
-using Umbraco.Cms.Core.Persistence.Repositories
-using Umbraco.Cms.Core.Scoping
-using Umbraco.Cms.Core.Services
-using Umbraco.Cms.Core.Services.Navigation
+using System.Collections.Concurrent;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Umbraco.Cms.Core;
+using Umbraco.Cms.Core.Configuration.Models;
+using Umbraco.Cms.Core.Models;
+using Umbraco.Cms.Core.Persistence.Querying;
+using Umbraco.Cms.Core.Persistence.Repositories;
+using Umbraco.Cms.Core.Scoping;
+using Umbraco.Cms.Core.Services;
+using Umbraco.Cms.Core.Services.Navigation;
 
 namespace Umbraco.Cms.Infrastructure.Search;
 
@@ -24,18 +24,18 @@ namespace Umbraco.Cms.Infrastructure.Search;
 ///     under bursty saves.
 /// </remarks>
 internal sealed class DeferredSearchReindexService : IDeferredSearchReindexService, IDisposable
-    private readonly IDocumentRepository _documentRepository
-    private readonly IMediaRepository _mediaRepository
-    private readonly IMemberRepository _memberRepository
-    private readonly IUmbracoIndexingHandler _umbracoIndexingHandler
-    private readonly IPublishStatusQueryService _publishStatusQueryService
-    private readonly IOptionsMonitor<IndexingSettings> _indexingSettings
-    private readonly ICoreScopeProvider _scopeProvider
-    private readonly ILogger<DeferredSearchReindexService> _logger
-    private readonly CancellationTokenSource _shutdownCts
-    private readonly ConcurrentDictionary<int, byte> _pendingContentTypeIds = new()
-    private readonly ConcurrentDictionary<int, byte> _pendingMediaTypeIds = new()
-    private readonly ConcurrentDictionary<int, byte> _pendingMemberTypeIds = new()
+    private readonly IDocumentRepository _documentRepository;
+    private readonly IMediaRepository _mediaRepository;
+    private readonly IMemberRepository _memberRepository;
+    private readonly IUmbracoIndexingHandler _umbracoIndexingHandler;
+    private readonly IPublishStatusQueryService _publishStatusQueryService;
+    private readonly IOptionsMonitor<IndexingSettings> _indexingSettings;
+    private readonly ICoreScopeProvider _scopeProvider;
+    private readonly ILogger<DeferredSearchReindexService> _logger;
+    private readonly CancellationTokenSource _shutdownCts;
+    private readonly ConcurrentDictionary<int, byte> _pendingContentTypeIds = new();
+    private readonly ConcurrentDictionary<int, byte> _pendingMediaTypeIds = new();
+    private readonly ConcurrentDictionary<int, byte> _pendingMemberTypeIds = new();
     private int _processing; // 0 = idle, 1 = active
 
     /// <summary>
@@ -60,40 +60,40 @@ internal sealed class DeferredSearchReindexService : IDeferredSearchReindexServi
         ICoreScopeProvider scopeProvider,
         ILogger<DeferredSearchReindexService> logger,
         IHostApplicationLifetime hostApplicationLifetime)
-        _documentRepository = documentRepository
-        _mediaRepository = mediaRepository
-        _memberRepository = memberRepository
-        _umbracoIndexingHandler = umbracoIndexingHandler
-        _publishStatusQueryService = publishStatusQueryService
-        _indexingSettings = indexingSettings
-        _scopeProvider = scopeProvider
-        _logger = logger
-        _shutdownCts = CancellationTokenSource.CreateLinkedTokenSource(hostApplicationLifetime.ApplicationStopping)
+        _documentRepository = documentRepository;
+        _mediaRepository = mediaRepository;
+        _memberRepository = memberRepository;
+        _umbracoIndexingHandler = umbracoIndexingHandler;
+        _publishStatusQueryService = publishStatusQueryService;
+        _indexingSettings = indexingSettings;
+        _scopeProvider = scopeProvider;
+        _logger = logger;
+        _shutdownCts = CancellationTokenSource.CreateLinkedTokenSource(hostApplicationLifetime.ApplicationStopping);
 
     /// <inheritdoc />
     public void QueueContentTypeReindex(IReadOnlyCollection<int> contentTypeIds)
         foreach (var id in contentTypeIds)
-            _pendingContentTypeIds.TryAdd(id, 0)
+            _pendingContentTypeIds.TryAdd(id, 0);
 
-        ScheduleProcessing()
+        ScheduleProcessing();
 
     /// <inheritdoc />
     public void QueueMediaTypeReindex(IReadOnlyCollection<int> mediaTypeIds)
         foreach (var id in mediaTypeIds)
-            _pendingMediaTypeIds.TryAdd(id, 0)
+            _pendingMediaTypeIds.TryAdd(id, 0);
 
-        ScheduleProcessing()
+        ScheduleProcessing();
 
     /// <inheritdoc />
     public void QueueMemberTypeReindex(IReadOnlyCollection<int> memberTypeIds)
         foreach (var id in memberTypeIds)
-            _pendingMemberTypeIds.TryAdd(id, 0)
+            _pendingMemberTypeIds.TryAdd(id, 0);
 
-        ScheduleProcessing()
+        ScheduleProcessing();
 
     private void ScheduleProcessing()
         if (_shutdownCts.IsCancellationRequested)
-            return
+            return;
 
         if (Interlocked.CompareExchange(ref _processing, 1, 0) == 0)
             // Suppress execution context flow so the background task does not inherit the
@@ -101,55 +101,55 @@ internal sealed class DeferredSearchReindexService : IDeferredSearchReindexServi
             // thread would share the same database connection as the notification handler,
             // causing "open DataReader" errors from concurrent use of a single connection.
             using (ExecutionContext.SuppressFlow())
-                Task.Run(() => ProcessPendingReindexAsync(_shutdownCts.Token))
+                Task.Run(() => ProcessPendingReindexAsync(_shutdownCts.Token));
 
     private async Task ProcessPendingReindexAsync(CancellationToken cancellationToken)
-        const int MaxConsecutiveFailures = 3
-        var consecutiveFailures = 0
+        const int MaxConsecutiveFailures = 3;
+        var consecutiveFailures = 0;
 
         try
             while (HasPendingIds())
-                cancellationToken.ThrowIfCancellationRequested()
+                cancellationToken.ThrowIfCancellationRequested();
 
-                var contentTypeIds = DrainIds(_pendingContentTypeIds)
-                var mediaTypeIds = DrainIds(_pendingMediaTypeIds)
-                var memberTypeIds = DrainIds(_pendingMemberTypeIds)
+                var contentTypeIds = DrainIds(_pendingContentTypeIds);
+                var mediaTypeIds = DrainIds(_pendingMediaTypeIds);
+                var memberTypeIds = DrainIds(_pendingMemberTypeIds);
 
                 try
                     if (contentTypeIds.Length > 0)
-                        _logger.LogInformation("Deferred reindex starting for content type IDs: {ContentTypeIds}", contentTypeIds)
-                        ReindexContentOfContentTypes(contentTypeIds)
-                        _logger.LogInformation("Deferred reindex completed for content type IDs: {ContentTypeIds}", contentTypeIds)
+                        _logger.LogInformation("Deferred reindex starting for content type IDs: {ContentTypeIds}", contentTypeIds);
+                        ReindexContentOfContentTypes(contentTypeIds);
+                        _logger.LogInformation("Deferred reindex completed for content type IDs: {ContentTypeIds}", contentTypeIds);
 
                     if (mediaTypeIds.Length > 0)
-                        _logger.LogInformation("Deferred reindex starting for media type IDs: {MediaTypeIds}", mediaTypeIds)
-                        ReindexMediaOfMediaTypes(mediaTypeIds)
-                        _logger.LogInformation("Deferred reindex completed for media type IDs: {MediaTypeIds}", mediaTypeIds)
+                        _logger.LogInformation("Deferred reindex starting for media type IDs: {MediaTypeIds}", mediaTypeIds);
+                        ReindexMediaOfMediaTypes(mediaTypeIds);
+                        _logger.LogInformation("Deferred reindex completed for media type IDs: {MediaTypeIds}", mediaTypeIds);
 
                     if (memberTypeIds.Length > 0)
-                        _logger.LogInformation("Deferred reindex starting for member type IDs: {MemberTypeIds}", memberTypeIds)
-                        ReindexMemberOfMemberTypes(memberTypeIds)
-                        _logger.LogInformation("Deferred reindex completed for member type IDs: {MemberTypeIds}", memberTypeIds)
+                        _logger.LogInformation("Deferred reindex starting for member type IDs: {MemberTypeIds}", memberTypeIds);
+                        ReindexMemberOfMemberTypes(memberTypeIds);
+                        _logger.LogInformation("Deferred reindex completed for member type IDs: {MemberTypeIds}", memberTypeIds);
 
-                    consecutiveFailures = 0
+                    consecutiveFailures = 0;
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                    RequeueIds(_pendingContentTypeIds, contentTypeIds)
-                    RequeueIds(_pendingMediaTypeIds, mediaTypeIds)
-                    RequeueIds(_pendingMemberTypeIds, memberTypeIds)
-                    throw
+                    RequeueIds(_pendingContentTypeIds, contentTypeIds);
+                    RequeueIds(_pendingMediaTypeIds, mediaTypeIds);
+                    RequeueIds(_pendingMemberTypeIds, memberTypeIds);
+                    throw;
                 catch (Exception ex)
-                    consecutiveFailures++
+                    consecutiveFailures++;
 
-                    RequeueIds(_pendingContentTypeIds, contentTypeIds)
-                    RequeueIds(_pendingMediaTypeIds, mediaTypeIds)
-                    RequeueIds(_pendingMemberTypeIds, memberTypeIds)
+                    RequeueIds(_pendingContentTypeIds, contentTypeIds);
+                    RequeueIds(_pendingMediaTypeIds, mediaTypeIds);
+                    RequeueIds(_pendingMemberTypeIds, memberTypeIds);
 
                     if (consecutiveFailures >= MaxConsecutiveFailures)
                         _logger.LogError(
                             ex,
                             "Background search reindex failed {Count} consecutive times; IDs will be retried on the next content type save",
                             consecutiveFailures)
-                        return
+                        return;
 
                     _logger.LogWarning(
                         ex,
@@ -157,16 +157,16 @@ internal sealed class DeferredSearchReindexService : IDeferredSearchReindexServi
                         consecutiveFailures,
                         MaxConsecutiveFailures)
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            _logger.LogInformation("Background search reindex cancelled due to application shutdown")
+            _logger.LogInformation("Background search reindex cancelled due to application shutdown");
         finally
-            Interlocked.Exchange(ref _processing, 0)
+            Interlocked.Exchange(ref _processing, 0);
 
         if (HasPendingIds())
-            ScheduleProcessing()
+            ScheduleProcessing();
 
     private void ReindexContentOfContentTypes(int[] contentTypeIds)
-        List<int> contentTypeIdsAsList = [.. contentTypeIds]
-        var publishChecked = new Dictionary<int, bool>()
+        List<int> contentTypeIdsAsList = [.. contentTypeIds];
+        var publishChecked = new Dictionary<int, bool>();
 
         PageAndReindex(
             _documentRepository,
@@ -186,7 +186,7 @@ internal sealed class DeferredSearchReindexService : IDeferredSearchReindexServi
             )
 
     private void ReindexMediaOfMediaTypes(int[] mediaTypeIds)
-        List<int> mediaTypeIdsAsList = [.. mediaTypeIds]
+        List<int> mediaTypeIdsAsList = [.. mediaTypeIds];
 
         PageAndReindex(
             _mediaRepository,
@@ -196,7 +196,7 @@ internal sealed class DeferredSearchReindexService : IDeferredSearchReindexServi
             c => _umbracoIndexingHandler.ReIndexForMedia(c, c.Trashed == false))
 
     private void ReindexMemberOfMemberTypes(int[] memberTypeIds)
-        List<int> memberTypeIdsAsList = [.. memberTypeIds]
+        List<int> memberTypeIdsAsList = [.. memberTypeIds];
 
         PageAndReindex(
             _memberRepository,
@@ -222,25 +222,25 @@ internal sealed class DeferredSearchReindexService : IDeferredSearchReindexServi
         Ordering ordering,
         Action<TEntity> reindex)
         where TEntity : class, IContentBase
-        var pageSize = _indexingSettings.CurrentValue.BatchSize
-        var page = 0
-        var total = long.MaxValue
+        var pageSize = _indexingSettings.CurrentValue.BatchSize;
+        var page = 0;
+        var total = long.MaxValue;
         while (page * pageSize < total)
-            TEntity[] items
+            TEntity[] items;
             using (ICoreScope scope = _scopeProvider.CreateCoreScope(autoComplete: true))
                 items = repository.GetPage(
                     queryFactory(), page++, pageSize, out total, null, null, ordering).ToArray()
 
             foreach (TEntity item in items)
-                reindex(item)
+                reindex(item);
 
     /// <summary>
     ///     Waits until the background worker is idle and no IDs are pending. Internal for test purposes.
     /// </summary>
     internal async Task WaitForPendingReindexAsync(CancellationToken cancellationToken = default)
         while (Volatile.Read(ref _processing) == 1 || HasPendingIds())
-            cancellationToken.ThrowIfCancellationRequested()
-            await Task.Delay(10, cancellationToken)
+            cancellationToken.ThrowIfCancellationRequested();
+            await Task.Delay(10, cancellationToken);
 
     /// <summary>
     ///     Waits until the background worker finishes, even if IDs remain pending (e.g. after max retries).
@@ -248,23 +248,23 @@ internal sealed class DeferredSearchReindexService : IDeferredSearchReindexServi
     /// </summary>
     internal async Task WaitForWorkerIdleAsync(CancellationToken cancellationToken = default)
         while (Volatile.Read(ref _processing) == 1)
-            cancellationToken.ThrowIfCancellationRequested()
-            await Task.Delay(10, cancellationToken)
+            cancellationToken.ThrowIfCancellationRequested();
+            await Task.Delay(10, cancellationToken);
 
     private bool HasPendingIds() => _pendingContentTypeIds.IsEmpty is false ||
         _pendingMediaTypeIds.IsEmpty is false ||
         _pendingMemberTypeIds.IsEmpty is false
 
     private static int[] DrainIds(ConcurrentDictionary<int, byte> dictionary)
-        var keys = dictionary.Keys.ToArray()
+        var keys = dictionary.Keys.ToArray();
         foreach (var key in keys)
-            dictionary.TryRemove(key, out _)
+            dictionary.TryRemove(key, out _);
 
-        return keys
+        return keys;
 
     private static void RequeueIds(ConcurrentDictionary<int, byte> dictionary, int[] ids)
         foreach (var id in ids)
-            dictionary.TryAdd(id, 0)
+            dictionary.TryAdd(id, 0);
 
     /// <inheritdoc />
-    public void Dispose() => _shutdownCts.Dispose()
+    public void Dispose() => _shutdownCts.Dispose();

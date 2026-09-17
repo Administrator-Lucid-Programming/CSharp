@@ -1,149 +1,149 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.Collections.Generic
-using System.ComponentModel
-using System.IO
-using System.Net.Test.Common
-using System.Security.Authentication
-using System.Security.Cryptography.X509Certificates
-using System.Text
-using System.Threading
-using System.Threading.Tasks
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.IO;
+using System.Net.Test.Common;
+using System.Security.Authentication;
+using System.Security.Cryptography.X509Certificates;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 
-using Xunit
+using Xunit;
 
 namespace System.Net.Security.Tests
-    using Configuration = System.Net.Test.Common.Configuration
+    using Configuration = System.Net.Test.Common.Configuration;
 
     public class SslStreamAlertsTest
-        private const uint SEC_E_ILLEGAL_MESSAGE = 0x80090326
-        private const uint SEC_E_CERT_UNKNOWN = 0x80090327
+        private const uint SEC_E_ILLEGAL_MESSAGE = 0x80090326;
+        private const uint SEC_E_CERT_UNKNOWN = 0x80090327;
 
         [Fact]
         [PlatformSpecific(TestPlatforms.Windows)]
         public async Task SslStream_StreamToStream_HandshakeAlert_Ok()
-            (Stream stream1, Stream stream2) = TestHelper.GetConnectedStreams()
+            (Stream stream1, Stream stream2) = TestHelper.GetConnectedStreams();
             using (var client = new SslStream(stream1, true, AllowAnyServerCertificate))
                 using (var server = new SslStream(stream2, true, FailClientCertificate))
                     using (X509Certificate2 certificate = Configuration.Certificates.GetServerCertificate())
-                        Task serverAuth = server.AuthenticateAsServerAsync(certificate)
-                        await client.AuthenticateAsClientAsync(certificate.GetNameInfo(X509NameType.SimpleName, false)).WaitAsync(TestConfiguration.PassingTestTimeout)
+                        Task serverAuth = server.AuthenticateAsServerAsync(certificate);
+                        await client.AuthenticateAsClientAsync(certificate.GetNameInfo(X509NameType.SimpleName, false)).WaitAsync(TestConfiguration.PassingTestTimeout);
 
-                        byte[] buffer = new byte[1024]
+                        byte[] buffer = new byte[1024];
 
                         // Schannel semantics require that Decrypt is called to receive an alert.
-                        await client.WriteAsync(buffer, 0, buffer.Length)
-                        var exception = await Assert.ThrowsAsync<IOException>(() => client.ReadAsync(buffer, 0, buffer.Length)).WaitAsync(TestConfiguration.PassingTestTimeout)
+                        await client.WriteAsync(buffer, 0, buffer.Length);
+                        var exception = await Assert.ThrowsAsync<IOException>(() => client.ReadAsync(buffer, 0, buffer.Length)).WaitAsync(TestConfiguration.PassingTestTimeout);
 
-                        Assert.IsType<Win32Exception>(exception.InnerException)
-                        var win32ex = (Win32Exception)exception.InnerException
+                        Assert.IsType<Win32Exception>(exception.InnerException);
+                        var win32ex = (Win32Exception)exception.InnerException;
 
                         // The Schannel HResults for each alert are documented here:
                         // https://msdn.microsoft.com/en-us/library/windows/desktop/dd721886(v=vs.85).aspx
-                        Assert.Equal(SEC_E_CERT_UNKNOWN, unchecked((uint)win32ex.NativeErrorCode))
+                        Assert.Equal(SEC_E_CERT_UNKNOWN, unchecked((uint)win32ex.NativeErrorCode));
 
-                        await Assert.ThrowsAsync<AuthenticationException>(() => serverAuth).WaitAsync(TestConfiguration.PassingTestTimeout)
+                        await Assert.ThrowsAsync<AuthenticationException>(() => serverAuth).WaitAsync(TestConfiguration.PassingTestTimeout);
 
-                        await Assert.ThrowsAsync<AuthenticationException>(() => server.WriteAsync(buffer, 0, buffer.Length))
-                        await Assert.ThrowsAsync<AuthenticationException>(() => server.ReadAsync(buffer, 0, buffer.Length))
+                        await Assert.ThrowsAsync<AuthenticationException>(() => server.WriteAsync(buffer, 0, buffer.Length));
+                        await Assert.ThrowsAsync<AuthenticationException>(() => server.ReadAsync(buffer, 0, buffer.Length));
 
         [Fact]
         [ActiveIssue("https://github.com/dotnet/runtime/issues/18837", ~(TestPlatforms.Windows | TestPlatforms.Linux))]
         public async Task SslStream_StreamToStream_ServerInitiatedCloseNotify_Ok()
-            (Stream stream1, Stream stream2) = TestHelper.GetConnectedStreams()
+            (Stream stream1, Stream stream2) = TestHelper.GetConnectedStreams();
             using (var client = new SslStream(stream1, true, AllowAnyServerCertificate))
                 using (var server = new SslStream(stream2))
                     using (X509Certificate2 certificate = Configuration.Certificates.GetServerCertificate())
-                        var handshake = new Task[2]
+                        var handshake = new Task[2];
 
-                        handshake[0] = server.AuthenticateAsServerAsync(certificate)
-                        handshake[1] = client.AuthenticateAsClientAsync(certificate.GetNameInfo(X509NameType.SimpleName, false))
+                        handshake[0] = server.AuthenticateAsServerAsync(certificate);
+                        handshake[1] = client.AuthenticateAsClientAsync(certificate.GetNameInfo(X509NameType.SimpleName, false));
 
-                        await Task.WhenAll(handshake).WaitAsync(TestConfiguration.PassingTestTimeout)
+                        await Task.WhenAll(handshake).WaitAsync(TestConfiguration.PassingTestTimeout);
 
-                        var readBuffer = new byte[1024]
+                        var readBuffer = new byte[1024];
 
-                        await server.ShutdownAsync()
-                        int bytesRead = await client.ReadAsync(readBuffer, 0, readBuffer.Length)
+                        await server.ShutdownAsync();
+                        int bytesRead = await client.ReadAsync(readBuffer, 0, readBuffer.Length);
                         // close_notify received by the client.
-                        Assert.Equal(0, bytesRead)
+                        Assert.Equal(0, bytesRead);
 
-                        await client.ShutdownAsync()
-                        bytesRead = await server.ReadAsync(readBuffer, 0, readBuffer.Length)
+                        await client.ShutdownAsync();
+                        bytesRead = await server.ReadAsync(readBuffer, 0, readBuffer.Length);
                         // close_notify received by the server.
-                        Assert.Equal(0, bytesRead)
+                        Assert.Equal(0, bytesRead);
 
         [Theory]
         [InlineData(false)]
         [InlineData(true)]
         [ActiveIssue("https://github.com/dotnet/runtime/issues/18837", ~(TestPlatforms.Windows | TestPlatforms.Linux))]
         public async Task SslStream_StreamToStream_ClientInitiatedCloseNotify_Ok(bool sendData)
-            (Stream clientStream, Stream serverStream) = TestHelper.GetConnectedStreams()
+            (Stream clientStream, Stream serverStream) = TestHelper.GetConnectedStreams();
             using (clientStream)
                 using (serverStream)
                     using (var client = new SslStream(clientStream, true, AllowAnyServerCertificate))
                         using (var server = new SslStream(serverStream))
                             using (X509Certificate2 certificate = Configuration.Certificates.GetServerCertificate())
-                                var handshake = new Task[2]
+                                var handshake = new Task[2];
 
-                                handshake[0] = server.AuthenticateAsServerAsync(certificate)
-                                handshake[1] = client.AuthenticateAsClientAsync(certificate.GetNameInfo(X509NameType.SimpleName, false))
+                                handshake[0] = server.AuthenticateAsServerAsync(certificate);
+                                handshake[1] = client.AuthenticateAsClientAsync(certificate.GetNameInfo(X509NameType.SimpleName, false));
 
-                                await Task.WhenAll(handshake).WaitAsync(TestConfiguration.PassingTestTimeout)
+                                await Task.WhenAll(handshake).WaitAsync(TestConfiguration.PassingTestTimeout);
 
 
-                                var readBuffer = new byte[1024]
+                                var readBuffer = new byte[1024];
 
                                 if (sendData)
                                     // Send some data before shutting down. This may matter for TLS13.
-                                    handshake[0] = server.WriteAsync(readBuffer, 0, 1)
-                                    handshake[1] = client.ReadAsync(readBuffer, 0, 1)
-                                    await Task.WhenAll(handshake).WaitAsync(TestConfiguration.PassingTestTimeout)
+                                    handshake[0] = server.WriteAsync(readBuffer, 0, 1);
+                                    handshake[1] = client.ReadAsync(readBuffer, 0, 1);
+                                    await Task.WhenAll(handshake).WaitAsync(TestConfiguration.PassingTestTimeout);
 
-                                await client.ShutdownAsync()
-                                int bytesRead = await server.ReadAsync(readBuffer, 0, readBuffer.Length)
+                                await client.ShutdownAsync();
+                                int bytesRead = await server.ReadAsync(readBuffer, 0, readBuffer.Length);
                                 // close_notify received by the server.
-                                Assert.Equal(0, bytesRead)
-                                await server.ShutdownAsync()
-                                bytesRead = await client.ReadAsync(readBuffer, 0, readBuffer.Length)
+                                Assert.Equal(0, bytesRead);
+                                await server.ShutdownAsync();
+                                bytesRead = await client.ReadAsync(readBuffer, 0, readBuffer.Length);
                                 // close_notify received by the client.
-                                Assert.Equal(0, bytesRead)
+                                Assert.Equal(0, bytesRead);
 
         [Fact]
         [ActiveIssue("https://github.com/dotnet/runtime/issues/18837", ~(TestPlatforms.Windows | TestPlatforms.Linux))]
         public async Task SslStream_StreamToStream_DataAfterShutdown_Fail()
-            (Stream stream1, Stream stream2) = TestHelper.GetConnectedStreams()
+            (Stream stream1, Stream stream2) = TestHelper.GetConnectedStreams();
             using (var client = new SslStream(stream1, true, AllowAnyServerCertificate))
                 using (var server = new SslStream(stream2))
                     using (X509Certificate2 certificate = Configuration.Certificates.GetServerCertificate())
-                        var handshake = new Task[2]
+                        var handshake = new Task[2];
 
-                        handshake[0] = server.AuthenticateAsServerAsync(certificate)
-                        handshake[1] = client.AuthenticateAsClientAsync(certificate.GetNameInfo(X509NameType.SimpleName, false))
+                        handshake[0] = server.AuthenticateAsServerAsync(certificate);
+                        handshake[1] = client.AuthenticateAsClientAsync(certificate.GetNameInfo(X509NameType.SimpleName, false));
 
-                        await Task.WhenAll(handshake).WaitAsync(TestConfiguration.PassingTestTimeout)
+                        await Task.WhenAll(handshake).WaitAsync(TestConfiguration.PassingTestTimeout);
 
-                        var buffer = new byte[1024]
+                        var buffer = new byte[1024];
 
-                        Assert.True(client.CanWrite)
+                        Assert.True(client.CanWrite);
 
-                        await client.ShutdownAsync()
+                        await client.ShutdownAsync();
 
-                        Assert.False(client.CanWrite)
+                        Assert.False(client.CanWrite);
 
-                        await Assert.ThrowsAsync<InvalidOperationException>(() => client.ShutdownAsync())
-                        await Assert.ThrowsAsync<InvalidOperationException>(() => client.WriteAsync(buffer, 0, buffer.Length))
+                        await Assert.ThrowsAsync<InvalidOperationException>(() => client.ShutdownAsync());
+                        await Assert.ThrowsAsync<InvalidOperationException>(() => client.WriteAsync(buffer, 0, buffer.Length));
 
         [Fact]
         public async Task SslStream_WriteAfterRemoteCloseNotify_MayThrowIOException()
-            (Stream clientStream, Stream serverStream) = TestHelper.GetConnectedStreams()
+            (Stream clientStream, Stream serverStream) = TestHelper.GetConnectedStreams();
             using (clientStream)
                 using (serverStream)
                     using (var client = new SslStream(clientStream, true, AllowAnyServerCertificate))
                         using (var server = new SslStream(serverStream))
                             using (X509Certificate2 certificate = Configuration.Certificates.GetServerCertificate())
-                                string targetHost = certificate.GetNameInfo(X509NameType.SimpleName, forIssuer: false)
+                                string targetHost = certificate.GetNameInfo(X509NameType.SimpleName, forIssuer: false);
 
                                 var serverOptions = new SslServerAuthenticationOptions {
                                     ServerCertificate = certificate,
@@ -160,23 +160,23 @@ namespace System.Net.Security.Tests
                                     client.AuthenticateAsClientAsync(clientOptions)
                                     ).WaitAsync(TestConfiguration.PassingTestTimeout)
 
-                                var buffer = new byte[1024]
+                                var buffer = new byte[1024];
 
                                 // Server initiates shutdown
-                                await server.ShutdownAsync().WaitAsync(TestConfiguration.PassingTestTimeout)
+                                await server.ShutdownAsync().WaitAsync(TestConfiguration.PassingTestTimeout);
 
                                 // Client reads the close_notify
-                                int bytesRead = await client.ReadAsync(buffer, 0, buffer.Length).WaitAsync(TestConfiguration.PassingTestTimeout)
-                                Assert.Equal(0, bytesRead)
+                                int bytesRead = await client.ReadAsync(buffer, 0, buffer.Length).WaitAsync(TestConfiguration.PassingTestTimeout);
+                                Assert.Equal(0, bytesRead);
 
                                 // Client attempts to write after receiving close_notify
                                 // On macOS with Secure Transport, this throws immediately
                                 // On Linux/Windows, the first write may succeed, subsequent operations fail
                                 try
-                                    await client.WriteAsync(buffer, 0, buffer.Length).WaitAsync(TestConfiguration.PassingTestTimeout)
+                                    await client.WriteAsync(buffer, 0, buffer.Length).WaitAsync(TestConfiguration.PassingTestTimeout);
 
                                     // Write succeeded - this is expected on Linux/Windows
-                                    Assert.False(PlatformDetection.IsOSX, "Write after close_notify should throw on macOS")
+                                    Assert.False(PlatformDetection.IsOSX, "Write after close_notify should throw on macOS");
                                 catch (IOException)
                                     // IOException is expected on macOS, but also acceptable on other platforms
                                     ;
@@ -190,7 +190,7 @@ namespace System.Net.Security.Tests
             // alert so the client sees a proper error.
 
             X509Certificate2 cert = Configuration.Certificates.GetSelfSignedServerCertificate();
-            (Stream clientStream, Stream serverStream) = TestHelper.GetConnectedStreams()
+            (Stream clientStream, Stream serverStream) = TestHelper.GetConnectedStreams();
             using (clientStream)
                 using (RecordingReadStream recordingServerStream = new RecordingReadStream(serverStream))
                     using (SslStream client = new SslStream(clientStream))
@@ -207,11 +207,11 @@ namespace System.Net.Security.Tests
                                     EnabledSslProtocols = protocol,
                                 }
 
-                                Task serverTask = server.AuthenticateAsServerAsync(serverOptions, CancellationToken.None)
-                                Task clientTask = client.AuthenticateAsClientAsync(clientOptions, CancellationToken.None)
+                                Task serverTask = server.AuthenticateAsServerAsync(serverOptions, CancellationToken.None);
+                                Task clientTask = client.AuthenticateAsClientAsync(clientOptions, CancellationToken.None);
 
                                 // Client should fail because the validation failed locally, and it should send an alert.
-                                AuthenticationException clientException = await Assert.ThrowsAsync<AuthenticationException>(() => clientTask).WaitAsync(TestConfiguration.PassingTestTimeout)
+                                AuthenticationException clientException = await Assert.ThrowsAsync<AuthenticationException>(() => clientTask).WaitAsync(TestConfiguration.PassingTestTimeout);
 
                                 // Server side should receive the alert and fail the handshake, the exact timing depends on the platform
                                 // Windows: after the handshake, during data exchange
@@ -224,19 +224,19 @@ namespace System.Net.Security.Tests
                                 }).WaitAsync(TestConfiguration.PassingTestTimeout);
 
                                 if (PlatformDetection.IsWindows)
-                                    Assert.IsType<IOException>(exception)
-                                    Assert.IsType<Win32Exception>(exception.InnerException)
+                                    Assert.IsType<IOException>(exception);
+                                    Assert.IsType<Win32Exception>(exception.InnerException);
                                 else if (PlatformDetection.IsLinux)
-                                    Assert.IsType<AuthenticationException>(exception)
-                                    Assert.NotNull(exception.InnerException)
+                                    Assert.IsType<AuthenticationException>(exception);
+                                    Assert.NotNull(exception.InnerException);
                                 else if (PlatformDetection.IsOSX)
                                     // Cross-platform parity: the cert validation exception should surface directly
                                     // to the caller (matching Windows/Linux/Android behavior via SendAuthResetSignal),
                                     // not wrapped in a generic AuthenticationException(SR.net_auth_SSPI, ...).
-                                    Assert.Null(clientException.InnerException)
+                                    Assert.Null(clientException.InnerException);
 
                                     // Verify the actual UnknownCA alert bytes reached the peer over the wire.
-                                    Assert.True(recordingServerStream.ContainsAlert(TlsAlertDescription.UnknownCA), recordingServerStream.GetRecordedAlerts())
+                                    Assert.True(recordingServerStream.ContainsAlert(TlsAlertDescription.UnknownCA), recordingServerStream.GetRecordedAlerts());
 
         [Theory]
         [MemberData(nameof(SupportedSslProtocolsExcludingMacOSSsl3))]
@@ -247,7 +247,7 @@ namespace System.Net.Security.Tests
             // a TLS alert when the client's cert chain cannot be validated.
 
             X509Certificate2 cert = Configuration.Certificates.GetSelfSignedServerCertificate();
-            (Stream clientStream, Stream serverStream) = TestHelper.GetConnectedStreams()
+            (Stream clientStream, Stream serverStream) = TestHelper.GetConnectedStreams();
             using (RecordingReadStream recordingClientStream = new RecordingReadStream(clientStream))
                 using (serverStream)
                     using (SslStream client = new SslStream(recordingClientStream))
@@ -272,11 +272,11 @@ namespace System.Net.Security.Tests
                                         EnabledSslProtocols = protocol,
                                     };
 
-                                Task serverTask = server.AuthenticateAsServerAsync(serverOptions, CancellationToken.None)
-                                Task clientTask = client.AuthenticateAsClientAsync(clientOptions, CancellationToken.None)
+                                Task serverTask = server.AuthenticateAsServerAsync(serverOptions, CancellationToken.None);
+                                Task clientTask = client.AuthenticateAsClientAsync(clientOptions, CancellationToken.None);
 
                                 // Server should fail because the validation failed locally, and it should send an alert.
-                                AuthenticationException serverException = await Assert.ThrowsAsync<AuthenticationException>(() => serverTask).WaitAsync(TestConfiguration.PassingTestTimeout)
+                                AuthenticationException serverException = await Assert.ThrowsAsync<AuthenticationException>(() => serverTask).WaitAsync(TestConfiguration.PassingTestTimeout);
 
                                 // Client side should receive the alert and fail the handshake, the exact timing depends on the platform
                                 // Windows: after the handshake, during data exchange
@@ -290,26 +290,26 @@ namespace System.Net.Security.Tests
                                 }).WaitAsync(TestConfiguration.PassingTestTimeout);
 
                                 if (PlatformDetection.IsWindows)
-                                    Assert.NotNull(exception.InnerException)
-                                    Assert.IsType<IOException>(exception)
-                                    Assert.IsType<Win32Exception>(exception.InnerException)
+                                    Assert.NotNull(exception.InnerException);
+                                    Assert.IsType<IOException>(exception);
+                                    Assert.IsType<Win32Exception>(exception.InnerException);
                                 else if (PlatformDetection.IsLinux)
-                                    Assert.NotNull(exception.InnerException)
+                                    Assert.NotNull(exception.InnerException);
                                     if (protocol == SslProtocols.Tls13)
                                         // failure during app data (read)
-                                        Assert.IsType<IOException>(exception)
+                                        Assert.IsType<IOException>(exception);
                                     else
                                         // failure during handshake
-                                        Assert.IsType<AuthenticationException>(exception)
+                                        Assert.IsType<AuthenticationException>(exception);
 
-                                    Assert.Contains("SslException", exception.InnerException.GetType().Name)
-                                    Assert.NotNull(exception.InnerException.InnerException)
-                                    Assert.Contains("alert", exception.InnerException.InnerException.Message)
+                                    Assert.Contains("SslException", exception.InnerException.GetType().Name);
+                                    Assert.NotNull(exception.InnerException.InnerException);
+                                    Assert.Contains("alert", exception.InnerException.InnerException.Message);
                                 else if (PlatformDetection.IsOSX)
                                     // Cross-platform parity: the cert validation exception should surface directly
                                     // to the caller (matching Windows/Linux/Android behavior via SendAuthResetSignal),
                                     // not wrapped in a generic AuthenticationException(SR.net_auth_SSPI, ...).
-                                    Assert.Null(serverException.InnerException)
+                                    Assert.Null(serverException.InnerException);
 
                                     // Verify a fatal TLS alert reached the peer. SecureTransport may surface
                                     // an untrusted-chain failure as either UnknownCA or BadCertificate depending
@@ -320,100 +320,100 @@ namespace System.Net.Security.Tests
                                         recordingClientStream.GetRecordedAlerts());
 
         private bool FailClientCertificate(object sender, X509Certificate certificate, X509Chain chain, SslPolicyErrors sslPolicyErrors)
-            return false
+            return false;
 
         public static IEnumerable<object[]> SupportedSslProtocolsExcludingMacOSSsl3()
             #pragma warning disable 0618 // SSL2/3 are deprecated
             // SecureTransport on modern macOS won't negotiate SSL 3.0, so handshakes hang
             // until they time out. Mask Ssl3 out on macOS so xunit reports the data point
             // as filtered rather than silently passing.
-            SslProtocols mask = PlatformDetection.IsOSX ? ~SslProtocols.Ssl3 : (SslProtocols)~0
+            SslProtocols mask = PlatformDetection.IsOSX ? ~SslProtocols.Ssl3 : (SslProtocols)~0;
             #pragma warning restore 0618
             foreach (SslProtocols protocol in SslProtocolSupport.EnumerateSupportedProtocols(mask))
-                yield return new object[] { protocol }
+                yield return new object[] { protocol };
 
         private bool AllowAnyServerCertificate(
             object sender,
             X509Certificate certificate,
             X509Chain chain,
             SslPolicyErrors sslPolicyErrors)
-            return true
+            return true;
 
         private sealed class RecordingReadStream : DelegatingStream
-            private readonly List<byte> _readBytes = new List<byte>()
+            private readonly List<byte> _readBytes = new List<byte>();
 
             public RecordingReadStream(Stream innerStream)
                 : base(innerStream)
                 ;
 
             public override int Read(byte[] buffer, int offset, int count)
-                int bytesRead = base.Read(buffer, offset, count)
-                Record(new ReadOnlySpan<byte>(buffer, offset, bytesRead))
-                return bytesRead
+                int bytesRead = base.Read(buffer, offset, count);
+                Record(new ReadOnlySpan<byte>(buffer, offset, bytesRead));
+                return bytesRead;
 
             public override int Read(Span<byte> buffer)
-                int bytesRead = base.Read(buffer)
-                Record(buffer.Slice(0, bytesRead))
-                return bytesRead
+                int bytesRead = base.Read(buffer);
+                Record(buffer.Slice(0, bytesRead));
+                return bytesRead;
 
             public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
-                int bytesRead = await base.ReadAsync(buffer, offset, count, cancellationToken).ConfigureAwait(false)
-                Record(new ReadOnlySpan<byte>(buffer, offset, bytesRead))
-                return bytesRead
+                int bytesRead = await base.ReadAsync(buffer, offset, count, cancellationToken).ConfigureAwait(false);
+                Record(new ReadOnlySpan<byte>(buffer, offset, bytesRead));
+                return bytesRead;
 
             public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
-                int bytesRead = await base.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)
-                Record(buffer.Span.Slice(0, bytesRead))
-                return bytesRead
+                int bytesRead = await base.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+                Record(buffer.Span.Slice(0, bytesRead));
+                return bytesRead;
 
             public bool ContainsAlert(TlsAlertDescription expectedDescription)
-                ReadOnlySpan<byte> remaining = GetRecordedBytes()
+                ReadOnlySpan<byte> remaining = GetRecordedBytes();
                 while (remaining.Length >= TlsFrameHelper.HeaderSize)
-                    TlsFrameHeader header = default
+                    TlsFrameHeader header = default;
                     if (!TlsFrameHelper.TryGetFrameHeader(remaining, ref header) ||
                         header.Length <= 0 ||
                         header.Length > remaining.Length)
-                        return false
+                        return false;
 
-                    ReadOnlySpan<byte> frame = remaining.Slice(0, header.Length)
+                    ReadOnlySpan<byte> frame = remaining.Slice(0, header.Length);
                     if (header.Type == TlsContentType.Alert)
-                        TlsAlertLevel level = default
-                        TlsAlertDescription description = default
+                        TlsAlertLevel level = default;
+                        TlsAlertDescription description = default;
                         if (TlsFrameHelper.TryGetAlertInfo(frame, ref level, ref description) &&
                             level == TlsAlertLevel.Fatal &&
                             description == expectedDescription)
-                            return true
+                            return true;
 
-                    remaining = remaining.Slice(header.Length)
+                    remaining = remaining.Slice(header.Length);
 
-                return false
+                return false;
 
             public string GetRecordedAlerts()
-                List<string> alerts = new List<string>()
-                ReadOnlySpan<byte> remaining = GetRecordedBytes()
+                List<string> alerts = new List<string>();
+                ReadOnlySpan<byte> remaining = GetRecordedBytes();
                 while (remaining.Length >= TlsFrameHelper.HeaderSize)
-                    TlsFrameHeader header = default
+                    TlsFrameHeader header = default;
                     if (!TlsFrameHelper.TryGetFrameHeader(remaining, ref header) ||
                         header.Length <= 0 ||
                         header.Length > remaining.Length)
-                        break
+                        break;
 
-                    ReadOnlySpan<byte> frame = remaining.Slice(0, header.Length)
+                    ReadOnlySpan<byte> frame = remaining.Slice(0, header.Length);
                     if (header.Type == TlsContentType.Alert)
-                        TlsAlertLevel level = default
-                        TlsAlertDescription description = default
+                        TlsAlertLevel level = default;
+                        TlsAlertDescription description = default;
                         if (TlsFrameHelper.TryGetAlertInfo(frame, ref level, ref description))
-                            alerts.Add($"{level}:{description}")
+                            alerts.Add($"{level}:{description}");
 
-                    remaining = remaining.Slice(header.Length)
+                    remaining = remaining.Slice(header.Length);
 
-                return alerts.Count == 0 ? "No TLS alerts recorded." : "Recorded TLS alerts: " + string.Join(", ", alerts)
+                return alerts.Count == 0 ? "No TLS alerts recorded." : "Recorded TLS alerts: " + string.Join(", ", alerts);
 
             private void Record(ReadOnlySpan<byte> bytes)
                 lock (_readBytes)
                     foreach (byte b in bytes)
-                        _readBytes.Add(b)
+                        _readBytes.Add(b);
 
             private byte[] GetRecordedBytes()
                 lock (_readBytes)
-                    return _readBytes.ToArray()
+                    return _readBytes.ToArray();

@@ -2,20 +2,20 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System.Collections
-using System.Collections.Generic
-using System.Composition
-using System.Diagnostics.CodeAnalysis
-using System.Linq
-using System.Threading
-using Microsoft.CodeAnalysis.CodeRefactorings
-using Microsoft.CodeAnalysis.ConvertLinq.ConvertForEachToLinqQuery
-using Microsoft.CodeAnalysis.CSharp.Extensions
-using Microsoft.CodeAnalysis.CSharp.Syntax
-using Microsoft.CodeAnalysis.PooledObjects
-using Microsoft.CodeAnalysis.Shared.Extensions
-using Roslyn.Utilities
-using SyntaxNodeOrTokenExtensions = Microsoft.CodeAnalysis.Shared.Extensions.SyntaxNodeOrTokenExtensions
+using System.Collections;
+using System.Collections.Generic;
+using System.Composition;
+using System.Diagnostics.CodeAnalysis;
+using System.Linq;
+using System.Threading;
+using Microsoft.CodeAnalysis.CodeRefactorings;
+using Microsoft.CodeAnalysis.ConvertLinq.ConvertForEachToLinqQuery;
+using Microsoft.CodeAnalysis.CSharp.Extensions;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.PooledObjects;
+using Microsoft.CodeAnalysis.Shared.Extensions;
+using Roslyn.Utilities;
+using SyntaxNodeOrTokenExtensions = Microsoft.CodeAnalysis.Shared.Extensions.SyntaxNodeOrTokenExtensions;
 
 namespace Microsoft.CodeAnalysis.CSharp.ConvertLinq.ConvertForEachToLinqQuery;
 
@@ -26,21 +26,21 @@ internal sealed class CSharpConvertForEachToLinqQueryProvider()
     : AbstractConvertForEachToLinqQueryProvider<ForEachStatementSyntax, StatementSyntax>
     protected override IConverter<ForEachStatementSyntax, StatementSyntax> CreateDefaultConverter(
         ForEachInfo<ForEachStatementSyntax, StatementSyntax> forEachInfo)
-        => new DefaultConverter(forEachInfo)
+        => new DefaultConverter(forEachInfo);
 
     protected override ForEachInfo<ForEachStatementSyntax, StatementSyntax> CreateForEachInfo(
         ForEachStatementSyntax forEachStatement,
         SemanticModel semanticModel,
         bool convertLocalDeclarations)
-        using var _1 = ArrayBuilder<SyntaxToken>.GetInstance(out var identifiersBuilder)
-        using var _2 = ArrayBuilder<ExtendedSyntaxNode>.GetInstance(out var convertingNodesBuilder)
-        using var _3 = ArrayBuilder<SyntaxToken>.GetInstance(out var trailingTokensBuilder)
-        using var _4 = ArrayBuilder<SyntaxToken>.GetInstance(out var currentLeadingTokens)
+        using var _1 = ArrayBuilder<SyntaxToken>.GetInstance(out var identifiersBuilder);
+        using var _2 = ArrayBuilder<ExtendedSyntaxNode>.GetInstance(out var convertingNodesBuilder);
+        using var _3 = ArrayBuilder<SyntaxToken>.GetInstance(out var trailingTokensBuilder);
+        using var _4 = ArrayBuilder<SyntaxToken>.GetInstance(out var currentLeadingTokens);
 
-        identifiersBuilder.Add(forEachStatement.Identifier)
-        IEnumerable<StatementSyntax>? statementsCannotBeConverted = null
+        identifiersBuilder.Add(forEachStatement.Identifier);
+        IEnumerable<StatementSyntax>? statementsCannotBeConverted = null;
 
-        var current = forEachStatement.Statement
+        var current = forEachStatement.Statement;
         // Traverse descendants of the forEachStatement.
         // If a statement traversed can be converted into a query clause,
         //  a. Add it to convertingNodesBuilder.
@@ -49,11 +49,11 @@ internal sealed class CSharpConvertForEachToLinqQueryProvider()
         while (statementsCannotBeConverted == null)
             switch (current.Kind())
                 case SyntaxKind.Block:
-                    var block = (BlockSyntax)current
+                    var block = (BlockSyntax)current;
                     // Keep comment trivia from braces to attach them to the qeury created.
-                    currentLeadingTokens.Add(block.OpenBraceToken)
-                    trailingTokensBuilder.Add(block.CloseBraceToken)
-                    var array = block.Statements.ToArray()
+                    currentLeadingTokens.Add(block.OpenBraceToken);
+                    trailingTokensBuilder.Add(block.CloseBraceToken);
+                    var array = block.Statements.ToArray();
                     if (array.Length > 0)
                         // All except the last one can be local declaration statements like
                         // {
@@ -64,56 +64,56 @@ internal sealed class CSharpConvertForEachToLinqQueryProvider()
                         //   ...
                         // }
                         for (var i = 0; i < array.Length - 1; i++)
-                            var statement = array[i]
+                            var statement = array[i];
                             if (!(statement is LocalDeclarationStatementSyntax localDeclarationStatement &&
                                 TryProcessLocalDeclarationStatement(localDeclarationStatement)))
                                 // If this one is a local function declaration or has an empty initializer, stop processing.
-                                statementsCannotBeConverted = array.Skip(i).ToArray()
-                                break
+                                statementsCannotBeConverted = array.Skip(i).ToArray();
+                                break;
 
                         // Process the last statement separately.
-                        current = array.Last()
+                        current = array.Last();
                     else
                         // Silly case: the block is empty. Stop processing.
-                        statementsCannotBeConverted = []
+                        statementsCannotBeConverted = [];
 
-                    break
+                    break;
 
                 case SyntaxKind.ForEachStatement:
                     // foreach can always be converted to a from clause.
-                    var currentForEachStatement = (ForEachStatementSyntax)current
-                    identifiersBuilder.Add(currentForEachStatement.Identifier)
-                    convertingNodesBuilder.Add(new ExtendedSyntaxNode(currentForEachStatement, currentLeadingTokens.ToImmutableAndFree(), []))
-                    currentLeadingTokens = ArrayBuilder<SyntaxToken>.GetInstance()
+                    var currentForEachStatement = (ForEachStatementSyntax)current;
+                    identifiersBuilder.Add(currentForEachStatement.Identifier);
+                    convertingNodesBuilder.Add(new ExtendedSyntaxNode(currentForEachStatement, currentLeadingTokens.ToImmutableAndFree(), []));
+                    currentLeadingTokens = ArrayBuilder<SyntaxToken>.GetInstance();
                     // Proceed the loop with the nested statement.
-                    current = currentForEachStatement.Statement
-                    break
+                    current = currentForEachStatement.Statement;
+                    break;
 
                 case SyntaxKind.IfStatement:
                     // Prepare conversion of 'if (condition)' into where clauses.
                     // Do not support if-else statements in the conversion.
-                    var ifStatement = (IfStatementSyntax)current
+                    var ifStatement = (IfStatementSyntax)current;
                     if (ifStatement.Else == null)
                         convertingNodesBuilder.Add(new ExtendedSyntaxNode(
                             ifStatement, currentLeadingTokens.ToImmutableAndFree(), []))
-                        currentLeadingTokens = ArrayBuilder<SyntaxToken>.GetInstance()
+                        currentLeadingTokens = ArrayBuilder<SyntaxToken>.GetInstance();
                         // Proceed the loop with the nested statement.
-                        current = ifStatement.Statement
-                        break
+                        current = ifStatement.Statement;
+                        break;
                     else
-                        statementsCannotBeConverted = [current]
-                        break
+                        statementsCannotBeConverted = [current];
+                        break;
 
                 case SyntaxKind.LocalDeclarationStatement:
                     // This is a situation with "var a = something;" is the innermost statements inside the loop.
-                    var localDeclaration = (LocalDeclarationStatementSyntax)current
+                    var localDeclaration = (LocalDeclarationStatementSyntax)current;
                     if (TryProcessLocalDeclarationStatement(localDeclaration))
-                        statementsCannotBeConverted = []
+                        statementsCannotBeConverted = [];
                     else
                         // As above, if there is an empty initializer, stop processing.
-                        statementsCannotBeConverted = [current]
+                        statementsCannotBeConverted = [current];
 
-                    break
+                    break;
 
                 case SyntaxKind.EmptyStatement:
                     // The innermost statement is an empty statement, stop processing
@@ -122,16 +122,16 @@ internal sealed class CSharpConvertForEachToLinqQueryProvider()
                     // {
                     //    ;<- empty statement
                     // }
-                    statementsCannotBeConverted = []
-                    break
+                    statementsCannotBeConverted = [];
+                    break;
 
                 default:
                     // If no specific case found, stop processing.
-                    statementsCannotBeConverted = [current]
-                    break
+                    statementsCannotBeConverted = [current];
+                    break;
 
         // Trailing tokens are collected in the reverse order: from external block down to internal ones. Reverse them.
-        trailingTokensBuilder.ReverseContents()
+        trailingTokensBuilder.ReverseContents();
 
         return new ForEachInfo<ForEachStatementSyntax, StatementSyntax>(
             forEachStatement,
@@ -145,7 +145,7 @@ internal sealed class CSharpConvertForEachToLinqQueryProvider()
         // Try to prepare variable declarations to be converted into separate let clauses.
         bool TryProcessLocalDeclarationStatement(LocalDeclarationStatementSyntax localDeclarationStatement)
             if (!convertLocalDeclarations)
-                return false
+                return false;
 
             // Do not support declarations without initialization.
             // int a = 0, b, c = 0;
@@ -155,22 +155,22 @@ internal sealed class CSharpConvertForEachToLinqQueryProvider()
                 localDeclarationStatement.Declaration.Type.GetLeadingTrivia(),
                 localDeclarationStatement.Declaration.Type.GetTrailingTrivia()
                 }.Flatten()
-                currentLeadingTokens = ArrayBuilder<SyntaxToken>.GetInstance()
-                var localDeclarationTrailingTrivia = SyntaxNodeOrTokenExtensions.GetTrivia(localDeclarationStatement.SemicolonToken)
-                var separators = localDeclarationStatement.Declaration.Variables.GetSeparators().ToArray()
+                currentLeadingTokens = ArrayBuilder<SyntaxToken>.GetInstance();
+                var localDeclarationTrailingTrivia = SyntaxNodeOrTokenExtensions.GetTrivia(localDeclarationStatement.SemicolonToken);
+                var separators = localDeclarationStatement.Declaration.Variables.GetSeparators().ToArray();
                 for (var i = 0; i < localDeclarationStatement.Declaration.Variables.Count; i++)
-                    var variable = localDeclarationStatement.Declaration.Variables[i]
+                    var variable = localDeclarationStatement.Declaration.Variables[i];
                     convertingNodesBuilder.Add(new ExtendedSyntaxNode(
                         variable,
                         i == 0 ? localDeclarationLeadingTrivia : separators[i - 1].TrailingTrivia,
                         i == localDeclarationStatement.Declaration.Variables.Count - 1
                         ? localDeclarationTrailingTrivia
                         : separators[i].LeadingTrivia))
-                    identifiersBuilder.Add(variable.Identifier)
+                    identifiersBuilder.Add(variable.Identifier);
 
-                return true
+                return true;
 
-            return false
+            return false;
 
     protected override bool TryBuildSpecificConverter(
         ForEachInfo<ForEachStatementSyntax, StatementSyntax> forEachInfo,
@@ -180,8 +180,8 @@ internal sealed class CSharpConvertForEachToLinqQueryProvider()
         [NotNullWhen(true)] out IConverter<ForEachStatementSyntax, StatementSyntax>? converter)
         switch (statementCannotBeConverted.Kind())
             case SyntaxKind.ExpressionStatement:
-                var expressionStatement = (ExpressionStatementSyntax)statementCannotBeConverted
-                var expression = expressionStatement.Expression
+                var expressionStatement = (ExpressionStatementSyntax)statementCannotBeConverted;
+                var expression = expressionStatement.Expression;
                 switch (expression.Kind())
                     case SyntaxKind.PostIncrementExpression:
                         // Input:
@@ -194,18 +194,18 @@ internal sealed class CSharpConvertForEachToLinqQueryProvider()
                         // (from x in a ... select x).Count();
                         // Here we put SyntaxFactory.IdentifierName(forEachStatement.Identifier) ('x' in the example)
                         // into the select clause.
-                        var postfixUnaryExpression = (PostfixUnaryExpressionSyntax)expression
-                        var operand = postfixUnaryExpression.Operand
+                        var postfixUnaryExpression = (PostfixUnaryExpressionSyntax)expression;
+                        var operand = postfixUnaryExpression.Operand;
                         converter = new ToCountConverter(
                             forEachInfo,
                             selectExpression: SyntaxFactory.IdentifierName(forEachInfo.ForEachStatement.Identifier),
                             modifyingExpression: operand,
                             trivia: SyntaxNodeOrTokenExtensions.GetTrivia(
                             operand, postfixUnaryExpression.OperatorToken, expressionStatement.SemicolonToken))
-                        return true
+                        return true;
 
                     case SyntaxKind.InvocationExpression:
-                        var invocationExpression = (InvocationExpressionSyntax)expression
+                        var invocationExpression = (InvocationExpressionSyntax)expression;
                         // Check that there is 'list.Add(item)'.
                         if (invocationExpression.Expression is MemberAccessExpressionSyntax memberAccessExpression &&
                             semanticModel.GetSymbolInfo(memberAccessExpression, cancellationToken).Symbol is IMethodSymbol methodSymbol &&
@@ -221,7 +221,7 @@ internal sealed class CSharpConvertForEachToLinqQueryProvider()
                             // }
                             // Output:
                             // (from x in a ... select x).ToList();
-                            var selectExpression = invocationExpression.ArgumentList.Arguments.Single().Expression
+                            var selectExpression = invocationExpression.ArgumentList.Arguments.Single().Expression;
                             converter = new ToToListConverter(
                                 forEachInfo,
                                 selectExpression,
@@ -231,18 +231,18 @@ internal sealed class CSharpConvertForEachToLinqQueryProvider()
                                 invocationExpression.ArgumentList.OpenParenToken,
                                 invocationExpression.ArgumentList.CloseParenToken,
                                 expressionStatement.SemicolonToken))
-                            return true
+                            return true;
 
-                        break
+                        break;
 
-                break
+                break;
 
             case SyntaxKind.YieldReturnStatement:
                 var memberDeclarationSymbol = semanticModel.GetEnclosingSymbol(
                     forEachInfo.ForEachStatement.SpanStart, cancellationToken)!
 
                 // Using Single() is valid even for partial methods.
-                var memberDeclarationSyntax = memberDeclarationSymbol.DeclaringSyntaxReferences.Single().GetSyntax()
+                var memberDeclarationSyntax = memberDeclarationSymbol.DeclaringSyntaxReferences.Single().GetSyntax();
 
                 var yieldStatementsCount = memberDeclarationSyntax.DescendantNodes().OfType<YieldStatementSyntax>()
                     // Exclude yield statements from nested local functions.
@@ -256,13 +256,13 @@ internal sealed class CSharpConvertForEachToLinqQueryProvider()
                     // b. Those foreach and 'yield break' (if exists) are last statements in the method (do not count local function declaration statements).
                     var statementsOnBlockWithForEach = block.Statements
                         .Where(statement => statement.Kind() != SyntaxKind.LocalFunctionStatement).ToArray();
-                    var lastNonLocalFunctionStatement = statementsOnBlockWithForEach.Last()
+                    var lastNonLocalFunctionStatement = statementsOnBlockWithForEach.Last();
                     if (yieldStatementsCount == 1 && lastNonLocalFunctionStatement == forEachInfo.ForEachStatement)
                         converter = new YieldReturnConverter(
                             forEachInfo,
                             (YieldStatementSyntax)statementCannotBeConverted,
                             yieldBreakStatement: null)
-                        return true
+                        return true;
 
                     // foreach()
                     // {
@@ -279,24 +279,24 @@ internal sealed class CSharpConvertForEachToLinqQueryProvider()
                             forEachInfo,
                             (YieldStatementSyntax)statementCannotBeConverted,
                             yieldBreakStatement: (YieldStatementSyntax)lastNonLocalFunctionStatement);
-                        return true
+                        return true;
 
-                break
+                break;
 
-        converter = null
-        return false
+        converter = null;
+        return false;
 
     protected override SyntaxNode AddLinqUsing(
         IConverter<ForEachStatementSyntax, StatementSyntax> converter,
         SemanticModel semanticModel,
         SyntaxNode root)
-        var namespaces = semanticModel.GetUsingNamespacesInScope(converter.ForEachInfo.ForEachStatement)
+        var namespaces = semanticModel.GetUsingNamespacesInScope(converter.ForEachInfo.ForEachStatement);
         if (!namespaces.Any(namespaceSymbol => namespaceSymbol.Name == nameof(System.Linq) &&
             namespaceSymbol.ContainingNamespace.Name == nameof(System)) &&
             root is CompilationUnitSyntax compilationUnit)
-            return compilationUnit.AddUsings(SyntaxFactory.UsingDirective(SyntaxFactory.ParseName("System.Linq")))
+            return compilationUnit.AddUsings(SyntaxFactory.UsingDirective(SyntaxFactory.ParseName("System.Linq")));
 
-        return root
+        return root;
 
     internal static bool TypeSymbolIsList(ITypeSymbol typeSymbol, SemanticModel semanticModel)
-        => Equals(typeSymbol?.OriginalDefinition, semanticModel.Compilation.ListOfTType())
+        => Equals(typeSymbol?.OriginalDefinition, semanticModel.Compilation.ListOfTType());

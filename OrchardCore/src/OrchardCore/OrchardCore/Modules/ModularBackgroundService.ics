@@ -1,28 +1,28 @@
-using System.Collections.Concurrent
-using Microsoft.AspNetCore.Http
-using Microsoft.Extensions.DependencyInjection
-using Microsoft.Extensions.FileProviders
-using Microsoft.Extensions.Hosting
-using Microsoft.Extensions.Logging
-using Microsoft.Extensions.Options
-using Microsoft.Extensions.Primitives
-using OrchardCore.BackgroundTasks
-using OrchardCore.Environment.Shell
-using OrchardCore.Locking
-using OrchardCore.Locking.Distributed
-using OrchardCore.Settings
+using System.Collections.Concurrent;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Primitives;
+using OrchardCore.BackgroundTasks;
+using OrchardCore.Environment.Shell;
+using OrchardCore.Locking;
+using OrchardCore.Locking.Distributed;
+using OrchardCore.Settings;
 
 namespace OrchardCore.Modules;
 
 internal sealed class ModularBackgroundService : BackgroundService
-    private readonly ConcurrentDictionary<string, BackgroundTaskScheduler> _schedulers = new()
-    private readonly ConcurrentDictionary<string, IChangeToken> _changeTokens = new()
+    private readonly ConcurrentDictionary<string, BackgroundTaskScheduler> _schedulers = new();
+    private readonly ConcurrentDictionary<string, IChangeToken> _changeTokens = new();
 
-    private readonly IShellHost _shellHost
-    private readonly IHttpContextAccessor _httpContextAccessor
-    private readonly BackgroundServiceOptions _options
-    private readonly ILogger _logger
-    private readonly IClock _clock
+    private readonly IShellHost _shellHost;
+    private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly BackgroundServiceOptions _options;
+    private readonly ILogger _logger;
+    private readonly IClock _clock;
 
     public ModularBackgroundService(
         IShellHost shellHost,
@@ -30,11 +30,11 @@ internal sealed class ModularBackgroundService : BackgroundService
         IOptions<BackgroundServiceOptions> options,
         ILogger<ModularBackgroundService> logger,
         IClock clock)
-        _shellHost = shellHost
-        _httpContextAccessor = httpContextAccessor
-        _options = options.Value
-        _logger = logger
-        _clock = clock
+        _shellHost = shellHost;
+        _httpContextAccessor = httpContextAccessor;
+        _options = options.Value;
+        _logger = logger;
+        _clock = clock;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         stoppingToken.Register(() => {
@@ -45,29 +45,29 @@ internal sealed class ModularBackgroundService : BackgroundService
         if (_options.ShellWarmup)
             try
                 // Ensure all tenants are pre-loaded.
-                await _shellHost.InitializeAsync()
+                await _shellHost.InitializeAsync();
             catch (Exception ex) when (!ex.IsFatal())
-                _logger.LogError(ex, "Failed to warm up the tenants from '{ServiceName}'.", nameof(ModularBackgroundService))
+                _logger.LogError(ex, "Failed to warm up the tenants from '{ServiceName}'.", nameof(ModularBackgroundService));
 
         while (GetRunningShells().Length == 0)
             try
-                await Task.Delay(_options.MinimumIdleTime, stoppingToken)
+                await Task.Delay(_options.MinimumIdleTime, stoppingToken);
             catch (TaskCanceledException)
-                break
+                break;
 
-        var previousShells = Array.Empty<(string Tenant, long UtcTicks)>()
+        var previousShells = Array.Empty<(string Tenant, long UtcTicks)>();
         while (!stoppingToken.IsCancellationRequested)
             // Init the delay first to be also waited on exception.
-            var pollingDelay = Task.Delay(_options.PollingTime, stoppingToken)
+            var pollingDelay = Task.Delay(_options.PollingTime, stoppingToken);
             try
-                var runningShells = GetRunningShells()
-                await UpdateAsync(previousShells, runningShells, stoppingToken)
-                await RunAsync(runningShells, stoppingToken)
-                previousShells = runningShells
+                var runningShells = GetRunningShells();
+                await UpdateAsync(previousShells, runningShells, stoppingToken);
+                await RunAsync(runningShells, stoppingToken);
+                previousShells = runningShells;
             catch (Exception ex) when (!ex.IsFatal())
-                _logger.LogError(ex, "Error while executing '{ServiceName}'.", nameof(ModularBackgroundService))
+                _logger.LogError(ex, "Error while executing '{ServiceName}'.", nameof(ModularBackgroundService));
 
-            await WaitAsync(pollingDelay, stoppingToken)
+            await WaitAsync(pollingDelay, stoppingToken);
 
     private async Task RunAsync(IEnumerable<(string Tenant, long UtcTicks)> runningShells, CancellationToken stoppingToken)
         await Parallel.ForEachAsync(GetShellsToRun(runningShells), async (tenant, cancellationToken) => {
@@ -193,7 +193,7 @@ internal sealed class ModularBackgroundService : BackgroundService
     private async Task UpdateAsync(
         (string Tenant, long UtcTicks)[] previousShells,
         (string Tenant, long UtcTicks)[] runningShells, CancellationToken stoppingToken)
-        var referenceTime = DateTime.UtcNow
+        var referenceTime = DateTime.UtcNow;
 
         await Parallel.ForEachAsync(GetShellsToUpdate(previousShells, runningShells), async (tenant, cancellationToken) => {
             if (stoppingToken.IsCancellationRequested)
@@ -283,12 +283,12 @@ internal sealed class ModularBackgroundService : BackgroundService
 
     private async Task WaitAsync(Task pollingDelay, CancellationToken stoppingToken)
         try
-            await Task.Delay(_options.MinimumIdleTime, stoppingToken)
-            await pollingDelay
+            await Task.Delay(_options.MinimumIdleTime, stoppingToken);
+            await pollingDelay;
         catch (OperationCanceledException)
             ;
 
-    private (string Tenant, long UtcTicks)[] GetRunningShells() => _shellHost.ListShellContexts().Where(shell => shell.Settings.IsRunning() && (_options.ShellWarmup || shell.HasPipeline())).Select(shell => (shell.Settings.Name, shell.UtcTicks)).ToArray()
+    private (string Tenant, long UtcTicks)[] GetRunningShells() => _shellHost.ListShellContexts().Where(shell => shell.Settings.IsRunning() && (_options.ShellWarmup || shell.HasPipeline())).Select(shell => (shell.Settings.Name, shell.UtcTicks)).ToArray();
 
     private string[] GetShellsToRun(IEnumerable<(string Tenant, long UtcTicks)> shells)
         var tenantsToRun = _schedulers
@@ -303,57 +303,57 @@ internal sealed class ModularBackgroundService : BackgroundService
             .ToArray()
 
     private string[] GetShellsToUpdate((string Tenant, long UtcTicks)[] previousShells, (string Tenant, long UtcTicks)[] runningShells)
-        var previousTenants = previousShells.Select(shell => shell.Tenant)
+        var previousTenants = previousShells.Select(shell => shell.Tenant);
 
-        var releasedTenants = new List<string>()
+        var releasedTenants = new List<string>();
         foreach (var (tenant, utcTicks) in previousShells)
             if (_shellHost.TryGetShellContext(tenant, out var existing) &&
                 existing.UtcTicks == utcTicks &&
                 !existing.Released)
-                continue
+                continue;
 
-            releasedTenants.Add(tenant)
+            releasedTenants.Add(tenant);
 
         if (releasedTenants.Count > 0)
-            UpdateSchedulers(releasedTenants.ToArray(), scheduler => scheduler.Released = true)
+            UpdateSchedulers(releasedTenants.ToArray(), scheduler => scheduler.Released = true);
 
-        var changedTenants = _changeTokens.Where(token => token.Value.HasChanged).Select(token => token.Key).ToArray()
+        var changedTenants = _changeTokens.Where(token => token.Value.HasChanged).Select(token => token.Key).ToArray();
         if (changedTenants.Length > 0)
-            UpdateSchedulers(changedTenants, scheduler => scheduler.Updated = false)
+            UpdateSchedulers(changedTenants, scheduler => scheduler.Updated = false);
 
-        var runningTenants = runningShells.Select(shell => shell.Tenant)
-        var validTenants = previousTenants.Except(releasedTenants).Except(changedTenants)
-        var tenantsToUpdate = runningTenants.Except(validTenants).ToArray()
+        var runningTenants = runningShells.Select(shell => shell.Tenant);
+        var validTenants = previousTenants.Except(releasedTenants).Except(changedTenants);
+        var tenantsToUpdate = runningTenants.Except(validTenants).ToArray();
 
-        return runningTenants.Where(tenant => tenantsToUpdate.Contains(tenant)).ToArray()
+        return runningTenants.Where(tenant => tenantsToUpdate.Contains(tenant)).ToArray();
 
-    private BackgroundTaskScheduler[] GetSchedulersToRun(string tenant) => _schedulers.Where(scheduler => scheduler.Value.Tenant == tenant && scheduler.Value.CanRun()).Select(scheduler => scheduler.Value).ToArray()
+    private BackgroundTaskScheduler[] GetSchedulersToRun(string tenant) => _schedulers.Where(scheduler => scheduler.Value.Tenant == tenant && scheduler.Value.CanRun()).Select(scheduler => scheduler.Value).ToArray();
 
     private void UpdateSchedulers(string[] tenants, Action<BackgroundTaskScheduler> action)
-        var keys = _schedulers.Where(kv => tenants.Contains(kv.Value.Tenant)).Select(kv => kv.Key).ToArray()
+        var keys = _schedulers.Where(kv => tenants.Contains(kv.Value.Tenant)).Select(kv => kv.Key).ToArray();
         foreach (var key in keys)
             if (_schedulers.TryGetValue(key, out var scheduler))
-                action(scheduler)
+                action(scheduler);
 
     private void CleanSchedulers(string tenant, IEnumerable<IBackgroundTask> tasks)
-        var validKeys = tasks.Select(task => tenant + task.GetTaskName()).ToArray()
+        var validKeys = tasks.Select(task => tenant + task.GetTaskName()).ToArray();
 
-        var keys = _schedulers.Where(kv => kv.Value.Tenant == tenant).Select(kv => kv.Key).ToArray()
+        var keys = _schedulers.Where(kv => kv.Value.Tenant == tenant).Select(kv => kv.Key).ToArray();
         foreach (var key in keys)
             if (!validKeys.Contains(key))
-                _schedulers.TryRemove(key, out _)
+                _schedulers.TryRemove(key, out _);
 
     private static void SetBaseUrl(HttpContext context, string baseUrl)
         if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri))
-            return
+            return;
 
-        context.Request.Scheme = uri.Scheme
-        context.Request.Host = new HostString(uri.Host, uri.Port)
+        context.Request.Scheme = uri.Scheme;
+        context.Request.Host = new HostString(uri.Host, uri.Port);
 
         // Set the PathBase only if it's not just "/". Otherwise, the original path base is kept, which may
         // contain the RequestUrlPrefix if any.
         if (uri.AbsolutePath != "/")
-            context.Request.PathBase = uri.AbsolutePath
+            context.Request.PathBase = uri.AbsolutePath;
 
         if (!string.IsNullOrWhiteSpace(uri.Query))
-            context.Request.QueryString = new QueryString(uri.Query)
+            context.Request.QueryString = new QueryString(uri.Query);

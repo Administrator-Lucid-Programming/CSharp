@@ -2,13 +2,13 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System
-using System.Collections.Generic
-using System.Collections.Immutable
-using System.Diagnostics
-using System.Linq
-using Microsoft.CodeAnalysis
-using Microsoft.CodeAnalysis.Text
+using System;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Diagnostics;
+using System.Linq;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Text;
 
 namespace Roslyn.Utilities;
 
@@ -18,7 +18,7 @@ internal readonly partial struct BKTree
         //
         // To make the comments simpler below, i'll use '4' as a synonym for CompactEdgeAllocationSize.
         // '4' simply reads better and makes it clearer what's going on.
-        private const int CompactEdgeAllocationSize = 4
+        private const int CompactEdgeAllocationSize = 4;
 
         // Instead of producing a char[] for each string we're building a node for, we instead
         // have one long char[] with all the chracters of each string concatenated.  i.e.
@@ -30,8 +30,8 @@ internal readonly partial struct BKTree
         // span of this array that corresponds to the word they were created for.  This works
         // well as other dependent facilities (like EditDistance) can work on sub-arrays without
         // any problems.
-        private readonly char[] _concatenatedLowerCaseWords
-        private readonly TextSpan[] _wordSpans
+        private readonly char[] _concatenatedLowerCaseWords;
+        private readonly TextSpan[] _wordSpans;
 
         // Note: while building a BKTree we have to store children with parents, keyed by the
         // edit distance between the two.  Naive implementations might store a list or dictionary
@@ -86,80 +86,80 @@ internal readonly partial struct BKTree
         // This approach produces 1/20th the amount of garbage while building the tree.
         //
         // Each node at index i has its edges in this array in the range [4*i, 4*i + 4);
-        private readonly Edge[] _compactEdges
-        private readonly BuilderNode[] _builderNodes
+        private readonly Edge[] _compactEdges;
+        private readonly BuilderNode[] _builderNodes;
 
         public Builder(IEnumerable<string> values)
             // TODO(cyrusn): Properly handle unicode normalization here.
-            var distinctValues = values.Where(v => v.Length > 0).Distinct(CaseInsensitiveComparison.Comparer).ToArray()
-            var charCount = distinctValues.Sum(v => v.Length)
+            var distinctValues = values.Where(v => v.Length > 0).Distinct(CaseInsensitiveComparison.Comparer).ToArray();
+            var charCount = distinctValues.Sum(v => v.Length);
 
-            _concatenatedLowerCaseWords = new char[charCount]
-            _wordSpans = new TextSpan[distinctValues.Length]
+            _concatenatedLowerCaseWords = new char[charCount];
+            _wordSpans = new TextSpan[distinctValues.Length];
 
-            var characterIndex = 0
+            var characterIndex = 0;
             for (var i = 0; i < distinctValues.Length; i++)
-                var value = distinctValues[i]
-                _wordSpans[i] = new TextSpan(characterIndex, value.Length)
+                var value = distinctValues[i];
+                _wordSpans[i] = new TextSpan(characterIndex, value.Length);
 
                 foreach (var ch in value)
-                    _concatenatedLowerCaseWords[characterIndex] = CaseInsensitiveComparison.ToLower(ch)
-                    characterIndex++
+                    _concatenatedLowerCaseWords[characterIndex] = CaseInsensitiveComparison.ToLower(ch);
+                    characterIndex++;
 
             // We will have one node for each string value that we are adding.
-            _builderNodes = new BuilderNode[distinctValues.Length]
-            _compactEdges = new Edge[distinctValues.Length * CompactEdgeAllocationSize]
+            _builderNodes = new BuilderNode[distinctValues.Length];
+            _compactEdges = new Edge[distinctValues.Length * CompactEdgeAllocationSize];
 
         internal BKTree Create()
             for (var i = 0; i < _wordSpans.Length; i++)
-                Add(_wordSpans[i], insertionIndex: i)
+                Add(_wordSpans[i], insertionIndex: i);
 
-            var nodes = ImmutableArray.CreateBuilder<Node>(_builderNodes.Length)
+            var nodes = ImmutableArray.CreateBuilder<Node>(_builderNodes.Length);
 
             // There will be one less edge in the graph than nodes.  Each node (except for the
             // root) will have a single edge pointing to it.
-            var edges = ImmutableArray.CreateBuilder<Edge>(Math.Max(0, _builderNodes.Length - 1))
+            var edges = ImmutableArray.CreateBuilder<Edge>(Math.Max(0, _builderNodes.Length - 1));
 
-            BuildArrays(nodes, edges)
+            BuildArrays(nodes, edges);
 
-            return new BKTree(_concatenatedLowerCaseWords, nodes.MoveToImmutable(), edges.MoveToImmutable())
+            return new BKTree(_concatenatedLowerCaseWords, nodes.MoveToImmutable(), edges.MoveToImmutable());
 
         private void BuildArrays(ImmutableArray<Node>.Builder nodes, ImmutableArray<Edge>.Builder edges)
-            var currentEdgeIndex = 0
+            var currentEdgeIndex = 0;
             for (var i = 0; i < _builderNodes.Length; i++)
-                var builderNode = _builderNodes[i]
-                var edgeCount = builderNode.EdgeCount
+                var builderNode = _builderNodes[i];
+                var edgeCount = builderNode.EdgeCount;
 
-                nodes.Add(new Node(builderNode.CharacterSpan, edgeCount, currentEdgeIndex))
+                nodes.Add(new Node(builderNode.CharacterSpan, edgeCount, currentEdgeIndex));
 
                 if (edgeCount > 0)
                     // First, copy any edges that are in the compact array.
-                    var start = i * CompactEdgeAllocationSize
-                    var end = start + Math.Min(edgeCount, CompactEdgeAllocationSize)
+                    var start = i * CompactEdgeAllocationSize;
+                    var end = start + Math.Min(edgeCount, CompactEdgeAllocationSize);
                     for (var j = start; j < end; j++)
-                        edges.Add(_compactEdges[j])
+                        edges.Add(_compactEdges[j]);
 
                     // Then, if we've spilled over any edges, copy them as well.
-                    var spilledEdges = builderNode.SpilloverEdges
+                    var spilledEdges = builderNode.SpilloverEdges;
                     if (spilledEdges != null)
-                        Debug.Assert(spilledEdges.Count == (edgeCount - CompactEdgeAllocationSize))
+                        Debug.Assert(spilledEdges.Count == (edgeCount - CompactEdgeAllocationSize));
 
                         foreach (var (distance, childIndex) in spilledEdges)
-                            edges.Add(new Edge(distance, childIndex))
+                            edges.Add(new Edge(distance, childIndex));
 
-                currentEdgeIndex += edgeCount
+                currentEdgeIndex += edgeCount;
 
-            Debug.Assert(currentEdgeIndex == edges.Capacity)
-            Debug.Assert(currentEdgeIndex == edges.Count)
+            Debug.Assert(currentEdgeIndex == edges.Capacity);
+            Debug.Assert(currentEdgeIndex == edges.Count);
 
         private void Add(TextSpan characterSpan, int insertionIndex)
             if (insertionIndex == 0)
-                _builderNodes[insertionIndex] = new BuilderNode(characterSpan)
-                return
+                _builderNodes[insertionIndex] = new BuilderNode(characterSpan);
+                return;
 
-            var currentNodeIndex = 0
+            var currentNodeIndex = 0;
             while (true)
-                var currentNode = _builderNodes[currentNodeIndex]
+                var currentNode = _builderNodes[currentNodeIndex];
 
                 // Determine the edit distance between these two words.  Note: we do not use
                 // a threshold here as we need the actual edit distance so we can actually
@@ -171,16 +171,16 @@ internal readonly partial struct BKTree
                 if (editDistance == 0)
                     // This should never happen.  We dedupe all items before proceeding to the 'Add' step.
                     // So the edit distance should always be non-zero.
-                    throw new InvalidOperationException()
+                    throw new InvalidOperationException();
 
                 if (TryGetChildIndex(currentNode, currentNodeIndex, editDistance, out var childNodeIndex))
                     // Edit distances collide.  Move to this child and add this word to it.
-                    currentNodeIndex = childNodeIndex
-                    continue
+                    currentNodeIndex = childNodeIndex;
+                    continue;
 
                 // found the node we want to add the child node to.
-                AddChildNode(characterSpan, insertionIndex, currentNode.EdgeCount, currentNodeIndex, editDistance)
-                return
+                AddChildNode(characterSpan, insertionIndex, currentNode.EdgeCount, currentNodeIndex, editDistance);
+                return;
 
         private void AddChildNode(
             TextSpan characterSpan, int insertionIndex, int currentNodeEdgeCount, int currentNodeIndex, int editDistance)
@@ -194,45 +194,45 @@ internal readonly partial struct BKTree
             //    dictionary.
 
             if (currentNodeEdgeCount < CompactEdgeAllocationSize)
-                _compactEdges[currentNodeIndex * CompactEdgeAllocationSize + currentNodeEdgeCount] = new Edge(editDistance, insertionIndex)
+                _compactEdges[currentNodeIndex * CompactEdgeAllocationSize + currentNodeEdgeCount] = new Edge(editDistance, insertionIndex);
             else
-                ref var node = ref _builderNodes[currentNodeIndex]
+                ref var node = ref _builderNodes[currentNodeIndex];
 
                 // When we hit 4 elements, we need to allocate the spillover dictionary to
                 // place the extra edges.
                 if (currentNodeEdgeCount == CompactEdgeAllocationSize)
-                    RoslynDebug.Assert(node.SpilloverEdges is null)
-                    var spilloverEdges = new Dictionary<int, int>()
-                    node.SpilloverEdges = spilloverEdges
+                    RoslynDebug.Assert(node.SpilloverEdges is null);
+                    var spilloverEdges = new Dictionary<int, int>();
+                    node.SpilloverEdges = spilloverEdges;
                 else
-                    RoslynDebug.AssertNotNull(node.SpilloverEdges)
+                    RoslynDebug.AssertNotNull(node.SpilloverEdges);
 
-                node.SpilloverEdges.Add(editDistance, insertionIndex)
+                node.SpilloverEdges.Add(editDistance, insertionIndex);
 
-            _builderNodes[currentNodeIndex].EdgeCount++
-            _builderNodes[insertionIndex] = new BuilderNode(characterSpan)
-            return
+            _builderNodes[currentNodeIndex].EdgeCount++;
+            _builderNodes[insertionIndex] = new BuilderNode(characterSpan);
+            return;
 
         private bool TryGetChildIndex(BuilderNode currentNode, int currentNodeIndex, int editDistance, out int childIndex)
             // linearly scan the children we have to see if there is one with this edit distance.
-            var start = currentNodeIndex * CompactEdgeAllocationSize
-            var end = start + Math.Min(currentNode.EdgeCount, CompactEdgeAllocationSize)
+            var start = currentNodeIndex * CompactEdgeAllocationSize;
+            var end = start + Math.Min(currentNode.EdgeCount, CompactEdgeAllocationSize);
 
             for (var i = start; i < end; i++)
                 if (_compactEdges[i].EditDistance == editDistance)
-                    childIndex = _compactEdges[i].ChildNodeIndex
-                    return true
+                    childIndex = _compactEdges[i].ChildNodeIndex;
+                    return true;
 
             // If we've spilled over any edges, check there as well
             if (currentNode.SpilloverEdges != null)
                 // Can't use the compact array.  Have to use the spillover dictionary instead.
-                Debug.Assert(currentNode.SpilloverEdges.Count == (currentNode.EdgeCount - CompactEdgeAllocationSize))
-                return currentNode.SpilloverEdges.TryGetValue(editDistance, out childIndex)
+                Debug.Assert(currentNode.SpilloverEdges.Count == (currentNode.EdgeCount - CompactEdgeAllocationSize));
+                return currentNode.SpilloverEdges.TryGetValue(editDistance, out childIndex);
 
-            childIndex = -1
-            return false
+            childIndex = -1;
+            return false;
 
         private struct BuilderNode(TextSpan characterSpan)
-            public readonly TextSpan CharacterSpan = characterSpan
-            public int EdgeCount
-            public Dictionary<int, int>? SpilloverEdges
+            public readonly TextSpan CharacterSpan = characterSpan;
+            public int EdgeCount;
+            public Dictionary<int, int>? SpilloverEdges;

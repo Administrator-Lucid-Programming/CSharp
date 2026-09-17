@@ -2,17 +2,17 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System
-using System.Collections.Immutable
-using System.Diagnostics
-using System.Threading
-using System.Threading.Tasks
-using Microsoft.CodeAnalysis.Collections
-using Microsoft.CodeAnalysis.Host
-using Microsoft.CodeAnalysis.Shared.Collections
-using Microsoft.CodeAnalysis.Shared.Extensions
-using Microsoft.CodeAnalysis.Text
-using Microsoft.CodeAnalysis.Utilities
+using System;
+using System.Collections.Immutable;
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.CodeAnalysis.Collections;
+using Microsoft.CodeAnalysis.Host;
+using Microsoft.CodeAnalysis.Shared.Collections;
+using Microsoft.CodeAnalysis.Shared.Extensions;
+using Microsoft.CodeAnalysis.Text;
+using Microsoft.CodeAnalysis.Utilities;
 
 namespace Microsoft.CodeAnalysis.Classification;
 
@@ -31,12 +31,12 @@ internal static partial class ClassifierHelper
         ClassificationOptions options,
         bool includeAdditiveSpans,
         CancellationToken cancellationToken)
-        using var _ = Classifier.GetPooledList(out var classifiedSpans)
+        using var _ = Classifier.GetPooledList(out var classifiedSpans);
 
         await AddClassifiedSpansAsync(classifiedSpans, document, [span], options, includeAdditiveSpans, cancellationToken)
             .ConfigureAwait(false)
 
-        return [.. classifiedSpans]
+        return [.. classifiedSpans];
 
     /// <summary>
     /// Classifies the provided <paramref name="spans"/> in the given <paramref name="document"/>. This will do this
@@ -57,9 +57,9 @@ internal static partial class ClassifierHelper
         ClassificationOptions options,
         bool includeAdditiveSpans,
         CancellationToken cancellationToken)
-        var classificationService = document.GetLanguageService<IClassificationService>()
+        var classificationService = document.GetLanguageService<IClassificationService>();
         if (classificationService == null)
-            return
+            return;
 
         // Call out to the individual language to classify the chunk of text around the
         // reference. We'll get both the syntactic and semantic spans for this region.
@@ -68,15 +68,15 @@ internal static partial class ClassifierHelper
         // name), we'll do a later merging step to get the final correct list of
         // classifications.  For tagging, normally the editor handles this.  But as
         // we're producing the list of Inlines ourselves, we have to handles this here.
-        using var _1 = Classifier.GetPooledList(out var syntaxSpans)
-        using var _2 = Classifier.GetPooledList(out var semanticSpans)
+        using var _1 = Classifier.GetPooledList(out var syntaxSpans);
+        using var _2 = Classifier.GetPooledList(out var semanticSpans);
 
-        await classificationService.AddSyntacticClassificationsAsync(document, spans, syntaxSpans, cancellationToken).ConfigureAwait(false)
+        await classificationService.AddSyntacticClassificationsAsync(document, spans, syntaxSpans, cancellationToken).ConfigureAwait(false);
 
         // Intentional that we're adding both semantic and embedded lang classifications to the same array.  Both
         // are 'semantic' from the perspective of this helper method.
-        await classificationService.AddSemanticClassificationsAsync(document, spans, options, semanticSpans, cancellationToken).ConfigureAwait(false)
-        await classificationService.AddEmbeddedLanguageClassificationsAsync(document, spans, options, semanticSpans, cancellationToken).ConfigureAwait(false)
+        await classificationService.AddSemanticClassificationsAsync(document, spans, options, semanticSpans, cancellationToken).ConfigureAwait(false);
+        await classificationService.AddEmbeddedLanguageClassificationsAsync(document, spans, options, semanticSpans, cancellationToken).ConfigureAwait(false);
 
         // MergeClassifiedSpans will ultimately filter multiple classifications for the same
         // span down to one. We know that additive classifications are there just to
@@ -85,17 +85,17 @@ internal static partial class ClassifierHelper
         // in classified spans. https://github.com/dotnet/roslyn/issues/32770
         // The exception to this is LSP, which expects the additive spans.
         if (!includeAdditiveSpans)
-            RemoveAdditiveSpans(syntaxSpans)
-            RemoveAdditiveSpans(semanticSpans)
+            RemoveAdditiveSpans(syntaxSpans);
+            RemoveAdditiveSpans(semanticSpans);
 
-        var widenedSpan = new TextSpan(spans[0].Start, spans[^1].End)
-        MergeClassifiedSpans(syntaxSpans, semanticSpans, widenedSpan, classifiedSpans)
+        var widenedSpan = new TextSpan(spans[0].Start, spans[^1].End);
+        MergeClassifiedSpans(syntaxSpans, semanticSpans, widenedSpan, classifiedSpans);
 
     private static void RemoveAdditiveSpans(SegmentedList<ClassifiedSpan> spans)
         for (var i = spans.Count - 1; i >= 0; i--)
-            var span = spans[i]
+            var span = spans[i];
             if (ClassificationTypeNames.AdditiveTypeNames.Contains(span.ClassificationType))
-                spans.RemoveAt(i)
+                spans.RemoveAt(i);
 
     private static void MergeClassifiedSpans(
         SegmentedList<ClassifiedSpan> syntaxSpans,
@@ -106,8 +106,8 @@ internal static partial class ClassifierHelper
         // (indeed, this happens with semantic classification as different
         // providers produce different results in an arbitrary order).  Order
         // them first before proceeding.
-        Order(syntaxSpans)
-        Order(semanticSpans)
+        Order(syntaxSpans);
+        Order(semanticSpans);
 
         // It's possible for us to get classified spans that occur *before*
         // or after the span we want to present. This happens because the calls to
@@ -120,22 +120,22 @@ internal static partial class ClassifierHelper
         //
         // To deal with that, we adjust all spans so that they don't go outside
         // of the range we care about.
-        AdjustSpans(syntaxSpans, widenedSpan)
-        AdjustSpans(semanticSpans, widenedSpan)
+        AdjustSpans(syntaxSpans, widenedSpan);
+        AdjustSpans(semanticSpans, widenedSpan);
 
-        using var _ = Classifier.GetPooledList(out var mergedSpans)
+        using var _ = Classifier.GetPooledList(out var mergedSpans);
 
-        MergeParts(syntaxSpans, semanticSpans, mergedSpans)
-        Order(mergedSpans)
+        MergeParts(syntaxSpans, semanticSpans, mergedSpans);
+        Order(mergedSpans);
 
         // The classification service will only produce classifications for things it knows about.  i.e. there will
         // be gaps in what it produces. Fill in those gaps so we have *all* parts of the span classified properly.
-        FillInClassifiedSpanGaps(widenedSpan.Start, mergedSpans, classifiedSpans)
+        FillInClassifiedSpanGaps(widenedSpan.Start, mergedSpans, classifiedSpans);
 
-    private static readonly Comparison<ClassifiedSpan> s_spanComparison = static (s1, s2) => s1.TextSpan.Start - s2.TextSpan.Start
+    private static readonly Comparison<ClassifiedSpan> s_spanComparison = static (s1, s2) => s1.TextSpan.Start - s2.TextSpan.Start;
 
     private static void Order(SegmentedList<ClassifiedSpan> syntaxSpans)
-        => syntaxSpans.Sort(s_spanComparison)
+        => syntaxSpans.Sort(s_spanComparison);
 
     /// <summary>
     /// Ensures that all spans in <paramref name="spans"/> do not go beyond the spans in <paramref
@@ -144,37 +144,37 @@ internal static partial class ClassifierHelper
     /// </summary>
     private static void AdjustSpans(SegmentedList<ClassifiedSpan> spans, TextSpan widenedSpan)
         for (var i = 0; i < spans.Count; i++)
-            var span = spans[i]
+            var span = spans[i];
 
             // Make sure the span actually intersects 'widenedSpan'.  If it
             // does not, just put in an empty length span.  It will get ignored later
             // when we walk through this list.
-            var intersection = span.TextSpan.Intersection(widenedSpan)
+            var intersection = span.TextSpan.Intersection(widenedSpan);
 
             if (i > 0 && intersection != null)
                 // The additiveType's may appear before or after their modifier due to sorting.
-                var previousSpan = spans[i - 1]
+                var previousSpan = spans[i - 1];
                 var isAdditiveClassification = previousSpan.TextSpan == span.TextSpan &&
                     ClassificationTypeNames.AdditiveTypeNames.Contains(span.ClassificationType) || ClassificationTypeNames.AdditiveTypeNames.Contains(previousSpan.ClassificationType)
 
                 // Additive classifications are intended to overlap so do not ignore it.
                 if (!isAdditiveClassification && previousSpan.TextSpan.End > intersection.Value.Start)
                     // This span isn't strictly after the previous span.  Ignore it.
-                    intersection = null
+                    intersection = null;
 
-            var newSpan = new ClassifiedSpan(span.ClassificationType, intersection.GetValueOrDefault())
-            spans[i] = newSpan
+            var newSpan = new ClassifiedSpan(span.ClassificationType, intersection.GetValueOrDefault());
+            spans[i] = newSpan;
 
     public static void FillInClassifiedSpanGaps(
         int startPosition, SegmentedList<ClassifiedSpan> classifiedSpans, SegmentedList<ClassifiedSpan> result)
         foreach (var span in classifiedSpans)
             // Should not get empty spans.  They are filtered out in MergeParts
-            Debug.Assert(!span.TextSpan.IsEmpty)
+            Debug.Assert(!span.TextSpan.IsEmpty);
 
             // Ignore empty spans.  We can get those when the classification service
             // returns spans outside of the range of the span we asked to classify.
             if (span.TextSpan.Length == 0)
-                continue
+                continue;
 
             // If there is space between this span and the last one, then add a space.
             if (startPosition < span.TextSpan.Start)
@@ -182,8 +182,8 @@ internal static partial class ClassifierHelper
                     TextSpan.FromBounds(
                         startPosition, span.TextSpan.Start)))
 
-            result.Add(span)
-            startPosition = span.TextSpan.End
+            result.Add(span);
+            startPosition = span.TextSpan.End;
 
     /// <summary>
     /// Adds all semantic parts to final parts, and adds all portions of <paramref name="syntaxParts"/> that do not
@@ -200,7 +200,7 @@ internal static partial class ClassifierHelper
             static (original, final) => new ClassifiedSpan(original.ClassificationType, final))
 
         // now that we've added all semantic parts and syntactic-portions, sort the final result.
-        finalParts.Sort(s_spanComparison)
+        finalParts.Sort(s_spanComparison);
 
     /// <inheritdoc cref="MergeParts(SegmentedList{ClassifiedSpan}, SegmentedList{ClassifiedSpan}, SegmentedList{ClassifiedSpan})"/>
     public static void MergeParts<TClassifiedSpan, TClassifiedSpanIntervalIntrospector>(
@@ -212,48 +212,48 @@ internal static partial class ClassifierHelper
         where TClassifiedSpanIntervalIntrospector : struct, IIntervalIntrospector<TClassifiedSpan>
         // Create an interval tree so we can easily determine which semantic parts intersect with the
         // syntactic parts we're looking at.
-        using var _1 = SegmentedListPool.GetPooledList<TClassifiedSpan>(out var semanticSpans)
+        using var _1 = SegmentedListPool.GetPooledList<TClassifiedSpan>(out var semanticSpans);
 
         // Add all the non-empty semantic parts to the tree.
         foreach (var part in semanticParts)
             if (!getSpan(part).IsEmpty)
-                semanticSpans.Add(part)
-                finalParts.Add(part)
+                semanticSpans.Add(part);
+                finalParts.Add(part);
 
         var semanticPartsTree = ImmutableIntervalTree<TClassifiedSpan>.CreateFromUnsorted(
             default(TClassifiedSpanIntervalIntrospector), semanticSpans)
 
-        using var tempBuffer = TemporaryArray<TClassifiedSpan>.Empty
+        using var tempBuffer = TemporaryArray<TClassifiedSpan>.Empty;
 
         foreach (var syntacticPart in syntaxParts)
             // ignore empty parts.
-            var syntacticPartSpan = getSpan(syntacticPart)
+            var syntacticPartSpan = getSpan(syntacticPart);
             if (syntacticPartSpan.IsEmpty)
-                continue
+                continue;
 
-            tempBuffer.Clear()
+            tempBuffer.Clear();
             semanticPartsTree.Algorithms.FillWithIntervalsThatOverlapWith(
                 syntacticPartSpan.Start, syntacticPartSpan.Length, ref tempBuffer.AsRef(),
                 default(TClassifiedSpanIntervalIntrospector))
 
             if (tempBuffer.Count == 0)
                 // semantic parts didn't overlap with this syntax part at all.  Just add in directly.
-                finalParts.Add(syntacticPart)
-                continue
+                finalParts.Add(syntacticPart);
+                continue;
 
             // One or Multiple semantic parts.
             // Add the syntactic portion before the first semantic part,
             // the syntactic pieces between the semantic parts,
             // and the syntactic portion after the last semantic part.
 
-            var firstSemanticPart = tempBuffer[0]
-            var lastSemanticPart = tempBuffer[tempBuffer.Count - 1]
+            var firstSemanticPart = tempBuffer[0];
+            var lastSemanticPart = tempBuffer[tempBuffer.Count - 1];
 
-            var firstSemanticPartSpan = getSpan(firstSemanticPart)
-            var lastSemanticPartSpan = getSpan(lastSemanticPart)
+            var firstSemanticPartSpan = getSpan(firstSemanticPart);
+            var lastSemanticPartSpan = getSpan(lastSemanticPart);
 
-            Debug.Assert(firstSemanticPartSpan.OverlapsWith(syntacticPartSpan))
-            Debug.Assert(lastSemanticPartSpan.OverlapsWith(syntacticPartSpan))
+            Debug.Assert(firstSemanticPartSpan.OverlapsWith(syntacticPartSpan));
+            Debug.Assert(lastSemanticPartSpan.OverlapsWith(syntacticPartSpan));
 
             if (syntacticPartSpan.Start < firstSemanticPartSpan.Start)
                 finalParts.Add(createSpan(syntacticPart, TextSpan.FromBounds(
@@ -261,14 +261,14 @@ internal static partial class ClassifierHelper
                     firstSemanticPartSpan.Start)))
 
             for (var i = 0; i < tempBuffer.Count - 1; i++)
-                var semanticPart1 = tempBuffer[i]
-                var semanticPart2 = tempBuffer[i + 1]
+                var semanticPart1 = tempBuffer[i];
+                var semanticPart2 = tempBuffer[i + 1];
 
-                var semanticPart1Span = getSpan(semanticPart1)
-                var semanticPart2Span = getSpan(semanticPart2)
+                var semanticPart1Span = getSpan(semanticPart1);
+                var semanticPart2Span = getSpan(semanticPart2);
 
-                Debug.Assert(semanticPart1Span.OverlapsWith(syntacticPartSpan))
-                Debug.Assert(semanticPart1Span.OverlapsWith(syntacticPartSpan))
+                Debug.Assert(semanticPart1Span.OverlapsWith(syntacticPartSpan));
+                Debug.Assert(semanticPart1Span.OverlapsWith(syntacticPartSpan));
 
                 if (semanticPart1Span.End < semanticPart2Span.Start)
                     finalParts.Add(createSpan(syntacticPart, TextSpan.FromBounds(

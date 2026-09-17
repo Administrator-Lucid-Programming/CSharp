@@ -1,44 +1,44 @@
-using System.IO.Hashing
-using System.Net.Http.Headers
-using System.Runtime.InteropServices
-using Microsoft.AspNetCore.Http
-using Microsoft.AspNetCore.Mvc
-using Microsoft.Extensions.Logging
-using Microsoft.Extensions.Options
-using OrchardCore.Environment.Shell
-using OrchardCore.Modules
+using System.IO.Hashing;
+using System.Net.Http.Headers;
+using System.Runtime.InteropServices;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using OrchardCore.Environment.Shell;
+using OrchardCore.Modules;
 
 namespace OrchardCore.Media.Services;
 
 public sealed class ChunkFileUploadService : IChunkFileUploadService
-    private const string UploadIdFormKey = "__chunkedFileUploadId"
-    private const string TempFolderPrefix = "ChunkedFileUploads"
-    private readonly IClock _clock
-    private readonly ILogger _logger
-    private readonly IOptions<MediaOptions> _options
-    private readonly string _tempFileNamePrefix
+    private const string UploadIdFormKey = "__chunkedFileUploadId";
+    private const string TempFolderPrefix = "ChunkedFileUploads";
+    private readonly IClock _clock;
+    private readonly ILogger _logger;
+    private readonly IOptions<MediaOptions> _options;
+    private readonly string _tempFileNamePrefix;
 
     public ChunkFileUploadService(
         ShellSettings shellSettings,
         IClock clock,
         ILogger<ChunkFileUploadService> logger,
         IOptions<MediaOptions> options)
-        _clock = clock
-        _logger = logger
-        _options = options
+        _clock = clock;
+        _logger = logger;
+        _options = options;
 
-        _tempFileNamePrefix = $"{shellSettings.TenantId}_"
+        _tempFileNamePrefix = $"{shellSettings.TenantId}_";
 
     public async Task<IActionResult> ProcessRequestAsync(
         HttpRequest request,
         Func<Guid, IFormFile, ContentRangeHeaderValue, Task<IActionResult>> chunkAsync,
         Func<IEnumerable<IFormFile>, Task<IActionResult>> completedAsync)
-        var contentRangeHeader = request.Headers.ContentRange
+        var contentRangeHeader = request.Headers.ContentRange;
 
         if (_options.Value.MaxUploadChunkSize <= 0 ||
             contentRangeHeader.Count is 0 ||
             !request.Form.TryGetValue(UploadIdFormKey, out var uploadIdValue))
-            return await completedAsync(request.Form.Files)
+            return await completedAsync(request.Form.Files);
 
         if (request.Form.Files.Count != 1 ||
             !ContentRangeHeaderValue.TryParse(contentRangeHeader, out var contentRange) ||
@@ -47,12 +47,12 @@ public sealed class ChunkFileUploadService : IChunkFileUploadService
             !contentRange.HasRange ||
             contentRange.Length > _options.Value.MaxFileSize ||
             contentRange.To - contentRange.From > _options.Value.MaxUploadChunkSize)
-            return new BadRequestResult()
+            return new BadRequestResult();
 
-        var formFile = request.Form.Files[0]
+        var formFile = request.Form.Files[0];
         using (var fileStream = GetOrCreateTemporaryFile(uploadId,             formFile,             contentRange.Length.Value))
-            fileStream.Seek(contentRange.From.Value, SeekOrigin.Begin)
-            await formFile.CopyToAsync(fileStream, request.HttpContext.RequestAborted)
+            fileStream.Seek(contentRange.From.Value, SeekOrigin.Begin);
+            await formFile.CopyToAsync(fileStream, request.HttpContext.RequestAborted);
 
         return (contentRange.To.Value + 1) >= contentRange.Length.Value
             ? await CompleteUploadAsync(uploadId, formFile, completedAsync)
@@ -63,17 +63,17 @@ public sealed class ChunkFileUploadService : IChunkFileUploadService
         IFormFile formFile,
         Func<IEnumerable<IFormFile>, Task<IActionResult>> completedAsync)
         try
-            using var chunkedFormFile = GetTemporaryFileForRead(uploadId, formFile)
+            using var chunkedFormFile = GetTemporaryFileForRead(uploadId, formFile);
 
-            return await completedAsync(new[] { chunkedFormFile })
+            return await completedAsync(new[] { chunkedFormFile });
         finally
-            DeleteTemporaryFile(uploadId, formFile)
+            DeleteTemporaryFile(uploadId, formFile);
 
     public void PurgeTempDirectory()
-        var tempFolderPath = GetTempFolderPath()
+        var tempFolderPath = GetTempFolderPath();
         if (_options.Value.TemporaryFileLifetime <= TimeSpan.Zero ||
             !Directory.Exists(tempFolderPath))
-            return
+            return;
 
         var tempFiles = Directory.GetFiles(tempFolderPath, $"{_tempFileNamePrefix}*")
             .Select(filePath => new FileInfo(filePath))
@@ -82,15 +82,15 @@ public sealed class ChunkFileUploadService : IChunkFileUploadService
 
         foreach (var tempFile in tempFiles)
             if (!DeleteTemporaryFile(tempFile.FullName))
-                break
+                break;
 
-    private bool DeleteTemporaryFile(Guid uploadId, IFormFile formFile) => DeleteTemporaryFile(GetTempFilePath(uploadId, formFile))
+    private bool DeleteTemporaryFile(Guid uploadId, IFormFile formFile) => DeleteTemporaryFile(GetTempFilePath(uploadId, formFile));
 
     private bool DeleteTemporaryFile(string tempFilePath)
         try
-            File.Delete(tempFilePath)
+            File.Delete(tempFilePath);
 
-            return true
+            return true;
         catch (Exception exception) when (exception.IsFileSharingViolation())
             _logger.LogError(
                 exception,
@@ -102,20 +102,20 @@ public sealed class ChunkFileUploadService : IChunkFileUploadService
                 "An error occurred while deleting the temporary file '{TempFilePath}'.",
                 tempFilePath)
 
-        return false
+        return false;
 
     private FileStream GetOrCreateTemporaryFile(Guid uploadId, IFormFile formFile, long size)
-        var siteTempFolderPath = GetTempFolderPath()
+        var siteTempFolderPath = GetTempFolderPath();
 
         if (!Directory.Exists(siteTempFolderPath))
-            Directory.CreateDirectory(siteTempFolderPath)
+            Directory.CreateDirectory(siteTempFolderPath);
 
-        var tempFilePath = GetTempFilePath(uploadId, formFile)
+        var tempFilePath = GetTempFilePath(uploadId, formFile);
 
-        return File.Exists(tempFilePath) switch         {             true => File.Open(tempFilePath, FileMode.Open, FileAccess.ReadWrite),             false => CreateTemporaryFile(tempFilePath, size),         }
+        return File.Exists(tempFilePath) switch         {             true => File.Open(tempFilePath, FileMode.Open, FileAccess.ReadWrite),             false => CreateTemporaryFile(tempFilePath, size),         };
 
     private ChunkedFormFile GetTemporaryFileForRead(Guid uploadId, IFormFile formFile)
-        var tempFilePath = GetTempFilePath(uploadId, formFile)
+        var tempFilePath = GetTempFilePath(uploadId, formFile);
 
         return new(File.OpenRead(tempFilePath)) {
             ContentType = formFile.ContentType,
@@ -125,32 +125,32 @@ public sealed class ChunkFileUploadService : IChunkFileUploadService
             FileName = formFile.FileName,
         }
 
-    private static string GetTempFolderPath() => Path.Combine(Path.GetTempPath(), TempFolderPrefix)
+    private static string GetTempFolderPath() => Path.Combine(Path.GetTempPath(), TempFolderPrefix);
 
     private string GetTempFilePath(Guid uploadId, IFormFile formFile) => Path.Combine(
         GetTempFolderPath(),
         $"{_tempFileNamePrefix}{CalculateHash(uploadId.ToString(), formFile.FileName, formFile.Name)}")
 
     private static FileStream CreateTemporaryFile(string tempPath, long size)
-        var stream = File.Create(tempPath)
-        stream.SetLength(size)
+        var stream = File.Create(tempPath);
+        stream.SetLength(size);
 
-        var tempFileInfo = new FileInfo(tempPath)
-        tempFileInfo.Attributes |= FileAttributes.Temporary
+        var tempFileInfo = new FileInfo(tempPath);
+        tempFileInfo.Attributes |= FileAttributes.Temporary;
 
-        return stream
+        return stream;
 
     private static string CalculateHash(params string[] parts)
-        var hash = new XxHash64()
+        var hash = new XxHash64();
 
         foreach (var part in parts)
-            hash.Append(MemoryMarshal.AsBytes<char>(part))
+            hash.Append(MemoryMarshal.AsBytes<char>(part));
 
-        return Convert.ToHexString(hash.GetCurrentHash())
+        return Convert.ToHexString(hash.GetCurrentHash());
 
     private sealed class ChunkedFormFile : IFormFile, IDisposable
-        private readonly Stream _stream
-        private bool _disposed
+        private readonly Stream _stream;
+        private bool _disposed;
 
         public string ContentType { get; set; }
 
@@ -158,24 +158,24 @@ public sealed class ChunkFileUploadService : IChunkFileUploadService
 
         public IHeaderDictionary Headers { get; set; }
 
-        public long Length => _stream.Length
+        public long Length => _stream.Length;
 
         public string Name { get; set; }
 
         public string FileName { get; set; }
 
         public ChunkedFormFile(Stream stream)
-            => _stream = stream
+            => _stream = stream;
 
-        public void CopyTo(Stream target) => _stream.CopyTo(target)
+        public void CopyTo(Stream target) => _stream.CopyTo(target);
 
-        public Task CopyToAsync(Stream target, CancellationToken cancellationToken = default) => _stream.CopyToAsync(target, cancellationToken)
+        public Task CopyToAsync(Stream target, CancellationToken cancellationToken = default) => _stream.CopyToAsync(target, cancellationToken);
 
-        public Stream OpenReadStream() => _stream
+        public Stream OpenReadStream() => _stream;
 
         public void Dispose()
             if (_disposed)
-                return
-            _disposed = true
+                return;
+            _disposed = true;
 
-            _stream?.Dispose()
+            _stream?.Dispose();

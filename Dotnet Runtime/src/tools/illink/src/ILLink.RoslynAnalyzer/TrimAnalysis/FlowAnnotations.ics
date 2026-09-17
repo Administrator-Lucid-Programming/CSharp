@@ -1,22 +1,22 @@
 // Copyright (c) .NET Foundation and contributors. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-using System
-using System.Diagnostics
-using System.Diagnostics.CodeAnalysis
-using ILLink.RoslynAnalyzer
-using ILLink.Shared.TypeSystemProxy
-using Microsoft.CodeAnalysis
+using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using ILLink.RoslynAnalyzer;
+using ILLink.Shared.TypeSystemProxy;
+using Microsoft.CodeAnalysis;
 
 #nullable enable
 namespace ILLink.Shared.TrimAnalysis
     public sealed partial class FlowAnnotations
         // In the analyzer there's no stateful data the flow annotations need to store
         // so we just create a singleton on demand.
-        private static readonly Lazy<FlowAnnotations> _instance = new(() => new FlowAnnotations(), isThreadSafe: true)
+        private static readonly Lazy<FlowAnnotations> _instance = new(() => new FlowAnnotations(), isThreadSafe: true);
 
         public static FlowAnnotations Instance
-            get => _instance.Value
+            get => _instance.Value;
 
         // Hide the default .ctor so that only the one singleton instance can be created
         private FlowAnnotations()
@@ -24,22 +24,22 @@ namespace ILLink.Shared.TrimAnalysis
 
         public static bool RequiresDataFlowAnalysis(IMethodSymbol method)
             if (GetMethodReturnValueAnnotation(method) != DynamicallyAccessedMemberTypes.None)
-                return true
+                return true;
 
             foreach (var param in method.GetParameters())
                 if (GetMethodParameterAnnotation(param) != DynamicallyAccessedMemberTypes.None)
-                    return true
+                    return true;
 
-            return false
+            return false;
 
-        internal static bool ShouldWarnWhenAccessedForReflection(ISymbol symbol) => symbol switch         {             IMethodSymbol method => ShouldWarnWhenAccessedForReflection(method),             IFieldSymbol field => ShouldWarnWhenAccessedForReflection(field),             _ => false         }
+        internal static bool ShouldWarnWhenAccessedForReflection(ISymbol symbol) => symbol switch         {             IMethodSymbol method => ShouldWarnWhenAccessedForReflection(method),             IFieldSymbol field => ShouldWarnWhenAccessedForReflection(field),             _ => false         };
 
         private static bool ShouldWarnWhenAccessedForReflection(IMethodSymbol method)
-            bool? hasParameterAnnotation = null
+            bool? hasParameterAnnotation = null;
             if (GetMethodReturnValueAnnotation(method) == DynamicallyAccessedMemberTypes.None)
                 if (!HasParameterAnnotation(method))
-                    return false
-                hasParameterAnnotation = true
+                    return false;
+                hasParameterAnnotation = true;
 
             // If the method only has annotation on the return value and it's not virtual avoid warning.
             // Return value annotations are "consumed" by the caller of a method, and as such there is nothing
@@ -81,63 +81,63 @@ namespace ILLink.Shared.TrimAnalysis
             //       }
             //   }
 
-            return method.IsVirtual || method.IsOverride || (hasParameterAnnotation ?? HasParameterAnnotation(method))
+            return method.IsVirtual || method.IsOverride || (hasParameterAnnotation ?? HasParameterAnnotation(method));
 
             static bool HasParameterAnnotation(IMethodSymbol method)
                 foreach (var param in method.GetParameters())
                     if (GetMethodParameterAnnotation(param) != DynamicallyAccessedMemberTypes.None)
-                        return true
-                return false
+                        return true;
+                return false;
 
         private static bool ShouldWarnWhenAccessedForReflection(IFieldSymbol field)
-            return GetFieldAnnotation(field) != DynamicallyAccessedMemberTypes.None
+            return GetFieldAnnotation(field) != DynamicallyAccessedMemberTypes.None;
 
         internal static DynamicallyAccessedMemberTypes GetFieldAnnotation(IFieldSymbol field)
             if (!field.OriginalDefinition.Type.IsTypeInterestingForDataflow(isByRef: field.RefKind is not RefKind.None))
-                return DynamicallyAccessedMemberTypes.None
+                return DynamicallyAccessedMemberTypes.None;
 
             if (field.AssociatedSymbol is IPropertySymbol property
                 && property.IsAutoProperty())
                 // If this is an auto property, we get the property annotation
-                return property.GetDynamicallyAccessedMemberTypes()
+                return property.GetDynamicallyAccessedMemberTypes();
 
-            return field.GetDynamicallyAccessedMemberTypes()
+            return field.GetDynamicallyAccessedMemberTypes();
 
         internal static DynamicallyAccessedMemberTypes GetBackingFieldAnnotation(IPropertySymbol property)
             if (!property.OriginalDefinition.Type.IsTypeInterestingForDataflow(isByRef: false))
-                return DynamicallyAccessedMemberTypes.None
+                return DynamicallyAccessedMemberTypes.None;
 
-            return property.GetDynamicallyAccessedMemberTypes()
+            return property.GetDynamicallyAccessedMemberTypes();
 
         internal static DynamicallyAccessedMemberTypes GetTypeAnnotations(INamedTypeSymbol type)
-            DynamicallyAccessedMemberTypes typeAnnotation = type.GetDynamicallyAccessedMemberTypes()
+            DynamicallyAccessedMemberTypes typeAnnotation = type.GetDynamicallyAccessedMemberTypes();
 
             // Also inherit annotation from bases
-            INamedTypeSymbol? baseType = type.BaseType
+            INamedTypeSymbol? baseType = type.BaseType;
             while (baseType is not null)
-                typeAnnotation |= baseType.GetDynamicallyAccessedMemberTypes()
-                baseType = baseType.BaseType
+                typeAnnotation |= baseType.GetDynamicallyAccessedMemberTypes();
+                baseType = baseType.BaseType;
 
             // And inherit them from interfaces
             foreach (INamedTypeSymbol interfaceType in type.AllInterfaces)
-                typeAnnotation |= interfaceType.GetDynamicallyAccessedMemberTypes()
+                typeAnnotation |= interfaceType.GetDynamicallyAccessedMemberTypes();
 
-            return typeAnnotation
+            return typeAnnotation;
 
         internal static DynamicallyAccessedMemberTypes GetMethodParameterAnnotation(ParameterProxy param)
             if (param.IsImplicitThis)
                 if (!param.Method.Method.ContainingType.IsTypeInterestingForDataflow(isByRef: false))
-                    return DynamicallyAccessedMemberTypes.None
-                return param.Method.Method.GetDynamicallyAccessedMemberTypes()
+                    return DynamicallyAccessedMemberTypes.None;
+                return param.Method.Method.GetDynamicallyAccessedMemberTypes();
 
-            IParameterSymbol parameter = param.ParameterSymbol!
-            bool isByRef = parameter.RefKind is not RefKind.None
+            IParameterSymbol parameter = param.ParameterSymbol!;
+            bool isByRef = parameter.RefKind is not RefKind.None;
             if (!parameter.OriginalDefinition.Type.IsTypeInterestingForDataflow(isByRef))
-                return DynamicallyAccessedMemberTypes.None
+                return DynamicallyAccessedMemberTypes.None;
 
-            var damt = parameter.GetDynamicallyAccessedMemberTypes()
+            var damt = parameter.GetDynamicallyAccessedMemberTypes();
 
-            IMethodSymbol parameterMethod = param.Method.Method
+            IMethodSymbol parameterMethod = param.Method.Method;
 
             // If there are conflicts between the setter and the property annotation,
             // the setter annotation wins. (But DAMT.None is ignored)
@@ -148,17 +148,17 @@ namespace ILLink.Shared.TrimAnalysis
                 && parameter.Ordinal == parameterMethod.Parameters.Length - 1
                     // Do not propagate property-level DAM for C# 14 extension properties
                 && !parameterMethod.HasExtensionParameterOnType())
-                var property = (IPropertySymbol)parameterMethod.AssociatedSymbol!
-                Debug.Assert(property != null)
-                damt = property!.GetDynamicallyAccessedMemberTypes()
+                var property = (IPropertySymbol)parameterMethod.AssociatedSymbol!;
+                Debug.Assert(property != null);
+                damt = property!.GetDynamicallyAccessedMemberTypes();
 
-            return damt
+            return damt;
 
         public static DynamicallyAccessedMemberTypes GetMethodReturnValueAnnotation(IMethodSymbol method)
             if (!method.OriginalDefinition.ReturnType.IsTypeInterestingForDataflow(isByRef: method.ReturnsByRef))
-                return DynamicallyAccessedMemberTypes.None
+                return DynamicallyAccessedMemberTypes.None;
 
-            var returnDamt = method.GetDynamicallyAccessedMemberTypesOnReturnType()
+            var returnDamt = method.GetDynamicallyAccessedMemberTypesOnReturnType();
 
             // Is this a property getter?
             // If there are conflicts between the getter and the property annotation,
@@ -167,24 +167,24 @@ namespace ILLink.Shared.TrimAnalysis
                 && returnDamt == DynamicallyAccessedMemberTypes.None
                     // Do not propagate property-level DAM for C# 14 extension properties]
                 && !method.HasExtensionParameterOnType())
-                var property = (IPropertySymbol)method.AssociatedSymbol!
-                Debug.Assert(property != null)
-                returnDamt = property!.GetDynamicallyAccessedMemberTypes()
+                var property = (IPropertySymbol)method.AssociatedSymbol!;
+                Debug.Assert(property != null);
+                returnDamt = property!.GetDynamicallyAccessedMemberTypes();
 
-            return returnDamt
+            return returnDamt;
 
         public static DynamicallyAccessedMemberTypes GetTypeAnnotation(ITypeSymbol type)
-            var typeAnnotation = type.GetDynamicallyAccessedMemberTypes()
+            var typeAnnotation = type.GetDynamicallyAccessedMemberTypes();
 
-            ITypeSymbol? baseType = type.BaseType
+            ITypeSymbol? baseType = type.BaseType;
             while (baseType != null)
-                typeAnnotation |= baseType.GetDynamicallyAccessedMemberTypes()
-                baseType = baseType.BaseType
+                typeAnnotation |= baseType.GetDynamicallyAccessedMemberTypes();
+                baseType = baseType.BaseType;
 
             foreach (var interfaceType in type.AllInterfaces)
-                typeAnnotation |= interfaceType.GetDynamicallyAccessedMemberTypes()
+                typeAnnotation |= interfaceType.GetDynamicallyAccessedMemberTypes();
 
-            return typeAnnotation
+            return typeAnnotation;
 
         #pragma warning disable CA1822 // Mark members as static - the other partial implementations might need to be instance methods
 
@@ -192,38 +192,38 @@ namespace ILLink.Shared.TrimAnalysis
         // For trimming tools this is an optimization to avoid the heavy lifting of analysis if there's no point
         // it's unclear if the same optimization makes sense for the analyzer.
         internal partial bool MethodRequiresDataFlowAnalysis(MethodProxy method)
-            => RequiresDataFlowAnalysis(method.Method)
+            => RequiresDataFlowAnalysis(method.Method);
 
         internal partial MethodReturnValue GetMethodReturnValue(MethodProxy method, bool isNewObj, DynamicallyAccessedMemberTypes dynamicallyAccessedMemberTypes)
-            => new MethodReturnValue(method.Method, isNewObj, dynamicallyAccessedMemberTypes)
+            => new MethodReturnValue(method.Method, isNewObj, dynamicallyAccessedMemberTypes);
 
         internal partial MethodReturnValue GetMethodReturnValue(MethodProxy method, bool isNewObj)
-            => GetMethodReturnValue(method, isNewObj, GetMethodReturnValueAnnotation(method.Method))
+            => GetMethodReturnValue(method, isNewObj, GetMethodReturnValueAnnotation(method.Method));
 
         internal partial GenericParameterValue GetGenericParameterValue(GenericParameterProxy genericParameter, DynamicallyAccessedMemberTypes dynamicallyAccessedMemberTypes)
-            => new GenericParameterValue(genericParameter.TypeParameterSymbol, dynamicallyAccessedMemberTypes)
+            => new GenericParameterValue(genericParameter.TypeParameterSymbol, dynamicallyAccessedMemberTypes);
 
         internal partial GenericParameterValue GetGenericParameterValue(GenericParameterProxy genericParameter)
-            => new GenericParameterValue(genericParameter.TypeParameterSymbol)
+            => new GenericParameterValue(genericParameter.TypeParameterSymbol);
 
         internal partial MethodParameterValue GetMethodThisParameterValue(MethodProxy method, DynamicallyAccessedMemberTypes dynamicallyAccessedMemberTypes)
             if (!method.HasImplicitThis())
-                throw new InvalidOperationException($"Cannot get 'this' parameter of method {method.GetDisplayName()} with no 'this' parameter.")
-            return GetMethodParameterValue(new ParameterProxy(method, (ParameterIndex)0), dynamicallyAccessedMemberTypes)
+                throw new InvalidOperationException($"Cannot get 'this' parameter of method {method.GetDisplayName()} with no 'this' parameter.");
+            return GetMethodParameterValue(new ParameterProxy(method, (ParameterIndex)0), dynamicallyAccessedMemberTypes);
 
         internal partial MethodParameterValue GetMethodThisParameterValue(MethodProxy method)
             if (!method.HasImplicitThis())
-                throw new InvalidOperationException($"Cannot get 'this' parameter of method {method.GetDisplayName()} with no 'this' parameter.")
-            ParameterProxy param = new(method, (ParameterIndex)0)
-            var damt = GetMethodParameterAnnotation(param)
-            return GetMethodParameterValue(new ParameterProxy(method, (ParameterIndex)0), damt)
+                throw new InvalidOperationException($"Cannot get 'this' parameter of method {method.GetDisplayName()} with no 'this' parameter.");
+            ParameterProxy param = new(method, (ParameterIndex)0);
+            var damt = GetMethodParameterAnnotation(param);
+            return GetMethodParameterValue(new ParameterProxy(method, (ParameterIndex)0), damt);
 
         internal MethodParameterValue GetMethodParameterValue(MethodProxy method, ParameterIndex parameterIndex, DynamicallyAccessedMemberTypes dynamicallyAccessedMemberTypes)
-            => new MethodParameterValue(new(method, parameterIndex), dynamicallyAccessedMemberTypes)
+            => new MethodParameterValue(new(method, parameterIndex), dynamicallyAccessedMemberTypes);
 
         internal partial MethodParameterValue GetMethodParameterValue(ParameterProxy param)
-            => new MethodParameterValue(param, GetMethodParameterAnnotation(param))
+            => new MethodParameterValue(param, GetMethodParameterAnnotation(param));
 
         internal partial MethodParameterValue GetMethodParameterValue(ParameterProxy param, DynamicallyAccessedMemberTypes dynamicallyAccessedMemberTypes)
-            => new MethodParameterValue(param, dynamicallyAccessedMemberTypes)
+            => new MethodParameterValue(param, dynamicallyAccessedMemberTypes);
         #pragma warning restore CA1822

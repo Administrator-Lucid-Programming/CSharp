@@ -4,17 +4,17 @@
 
 #nullable disable
 
-using System.Collections.Immutable
-using System.Linq
-using System.Threading
-using System.Threading.Tasks
-using Microsoft.CodeAnalysis.CodeActions
-using Microsoft.CodeAnalysis.Editing
-using Microsoft.CodeAnalysis.Formatting
-using Microsoft.CodeAnalysis.LanguageService
-using Microsoft.CodeAnalysis.Shared.Extensions
-using Microsoft.CodeAnalysis.Simplification
-using Microsoft.CodeAnalysis.Utilities
+using System.Collections.Immutable;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.CodeAnalysis.CodeActions;
+using Microsoft.CodeAnalysis.Editing;
+using Microsoft.CodeAnalysis.Formatting;
+using Microsoft.CodeAnalysis.LanguageService;
+using Microsoft.CodeAnalysis.Shared.Extensions;
+using Microsoft.CodeAnalysis.Simplification;
+using Microsoft.CodeAnalysis.Utilities;
 
 namespace Microsoft.CodeAnalysis.MoveDeclarationNearReference;
 
@@ -27,72 +27,72 @@ internal abstract partial class AbstractMoveDeclarationNearReferenceService<
     where TStatementSyntax : SyntaxNode
     where TLocalDeclarationStatementSyntax : TStatementSyntax
     where TVariableDeclaratorSyntax : SyntaxNode
-    protected abstract bool IsMeaningfulBlock(SyntaxNode node)
-    protected abstract bool CanMoveToBlock(ILocalSymbol localSymbol, SyntaxNode currentBlock, SyntaxNode destinationBlock)
-    protected abstract SyntaxNode GetVariableDeclaratorSymbolNode(TVariableDeclaratorSyntax variableDeclarator)
-    protected abstract bool IsValidVariableDeclarator(TVariableDeclaratorSyntax variableDeclarator)
-    protected abstract SyntaxToken GetIdentifierOfVariableDeclarator(TVariableDeclaratorSyntax variableDeclarator)
-    protected abstract Task<bool> TypesAreCompatibleAsync(Document document, ILocalSymbol localSymbol, TLocalDeclarationStatementSyntax declarationStatement, SyntaxNode right, CancellationToken cancellationToken)
+    protected abstract bool IsMeaningfulBlock(SyntaxNode node);
+    protected abstract bool CanMoveToBlock(ILocalSymbol localSymbol, SyntaxNode currentBlock, SyntaxNode destinationBlock);
+    protected abstract SyntaxNode GetVariableDeclaratorSymbolNode(TVariableDeclaratorSyntax variableDeclarator);
+    protected abstract bool IsValidVariableDeclarator(TVariableDeclaratorSyntax variableDeclarator);
+    protected abstract SyntaxToken GetIdentifierOfVariableDeclarator(TVariableDeclaratorSyntax variableDeclarator);
+    protected abstract Task<bool> TypesAreCompatibleAsync(Document document, ILocalSymbol localSymbol, TLocalDeclarationStatementSyntax declarationStatement, SyntaxNode right, CancellationToken cancellationToken);
 
     public async Task<(bool canMove, bool mayChangeSemantics)> CanMoveDeclarationNearReferenceAsync(Document document, SyntaxNode node, CancellationToken cancellationToken)
-        var state = await ComputeStateAsync(document, node, cancellationToken).ConfigureAwait(false)
+        var state = await ComputeStateAsync(document, node, cancellationToken).ConfigureAwait(false);
         if (state is null)
-            return default
+            return default;
 
-        return (canMove: true, CrossesMeaningfulBlock(state))
+        return (canMove: true, CrossesMeaningfulBlock(state));
 
     private async Task<State> ComputeStateAsync(Document document, SyntaxNode node, CancellationToken cancellationToken)
         if (node is not TLocalDeclarationStatementSyntax statement)
-            return null
+            return null;
 
-        var state = await State.GenerateAsync((TService)this, document, statement, cancellationToken).ConfigureAwait(false)
+        var state = await State.GenerateAsync((TService)this, document, statement, cancellationToken).ConfigureAwait(false);
         if (state == null)
-            return null
+            return null;
 
         if (state.IndexOfDeclarationStatementInInnermostBlock >= 0 &&
             state.IndexOfDeclarationStatementInInnermostBlock == state.IndexOfFirstStatementAffectedInInnermostBlock - 1 &&
             !await CanMergeDeclarationAndAssignmentAsync(document, state, cancellationToken).ConfigureAwait(false))
             // Declaration statement is already closest to the first reference
             // and they both cannot be merged into a single statement, so bail out.
-            return null
+            return null;
 
         if (!CanMoveToBlock(state.LocalSymbol, state.OutermostBlock, state.InnermostBlock))
-            return null
+            return null;
 
-        return state
+        return state;
 
     public async Task<Document> MoveDeclarationNearReferenceAsync(
         Document document, SyntaxNode localDeclarationStatement, CancellationToken cancellationToken)
-        var state = await ComputeStateAsync(document, localDeclarationStatement, cancellationToken).ConfigureAwait(false)
+        var state = await ComputeStateAsync(document, localDeclarationStatement, cancellationToken).ConfigureAwait(false);
         if (state == null)
-            return document
+            return document;
 
-        var root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false)
-        var editor = new SyntaxEditor(root, document.Project.Solution.Services)
+        var root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
+        var editor = new SyntaxEditor(root, document.Project.Solution.Services);
 
-        var crossesMeaningfulBlock = CrossesMeaningfulBlock(state)
+        var crossesMeaningfulBlock = CrossesMeaningfulBlock(state);
         var warningAnnotation = crossesMeaningfulBlock
             ? WarningAnnotation.Create(WorkspaceExtensionsResources.Warning_colon_Declaration_changes_scope_and_may_change_meaning)
             : null
 
-        var canMergeDeclarationAndAssignment = await CanMergeDeclarationAndAssignmentAsync(document, state, cancellationToken).ConfigureAwait(false)
+        var canMergeDeclarationAndAssignment = await CanMergeDeclarationAndAssignmentAsync(document, state, cancellationToken).ConfigureAwait(false);
         if (canMergeDeclarationAndAssignment)
-            editor.RemoveNode(state.DeclarationStatement)
+            editor.RemoveNode(state.DeclarationStatement);
             MergeDeclarationAndAssignment(
                 document, state, editor, warningAnnotation)
         else
-            var statementIndex = state.OutermostBlockStatements.IndexOf(state.DeclarationStatement)
+            var statementIndex = state.OutermostBlockStatements.IndexOf(state.DeclarationStatement);
             if (statementIndex + 1 < state.OutermostBlockStatements.Count &&
                 state.OutermostBlockStatements[statementIndex + 1] == state.FirstStatementAffectedInInnermostBlock)
                 // Already at the correct location.
-                return document
+                return document;
 
-            editor.RemoveNode(state.DeclarationStatement)
+            editor.RemoveNode(state.DeclarationStatement);
             await MoveDeclarationToFirstReferenceAsync(
                 document, state, editor, warningAnnotation, cancellationToken).ConfigureAwait(false)
 
-        var newRoot = editor.GetChangedRoot()
-        return document.WithSyntaxRoot(newRoot)
+        var newRoot = editor.GetChangedRoot();
+        return document.WithSyntaxRoot(newRoot);
 
     private static async Task MoveDeclarationToFirstReferenceAsync(
         Document document, State state, SyntaxEditor editor, SyntaxAnnotation warningAnnotation, CancellationToken cancellationToken)
@@ -105,11 +105,11 @@ internal abstract partial class AbstractMoveDeclarationNearReferenceService<
         var declarationStatement = warningAnnotation == null
             ? explicitDeclarationStatement
             : explicitDeclarationStatement.WithAdditionalAnnotations(warningAnnotation);
-        declarationStatement = declarationStatement.WithAdditionalAnnotations(Formatter.Annotation)
+        declarationStatement = declarationStatement.WithAdditionalAnnotations(Formatter.Annotation);
 
-        var bannerService = document.GetRequiredLanguageService<IFileBannerFactsService>()
+        var bannerService = document.GetRequiredLanguageService<IFileBannerFactsService>();
 
-        var newNextStatement = state.FirstStatementAffectedInInnermostBlock
+        var newNextStatement = state.FirstStatementAffectedInInnermostBlock;
         declarationStatement = declarationStatement.WithPrependedLeadingTrivia(
             bannerService.GetLeadingBlankLines(newNextStatement))
 
@@ -123,9 +123,9 @@ internal abstract partial class AbstractMoveDeclarationNearReferenceService<
                 bannerService.GetTriviaAfterLeadingBlankLines(newNextStatement)))
 
         // Move leading whitespace from the declaration statement to the next statement.
-        var statementIndex = state.OutermostBlockStatements.IndexOf(state.DeclarationStatement)
+        var statementIndex = state.OutermostBlockStatements.IndexOf(state.DeclarationStatement);
         if (statementIndex + 1 < state.OutermostBlockStatements.Count)
-            var originalNextStatement = state.OutermostBlockStatements[statementIndex + 1]
+            var originalNextStatement = state.OutermostBlockStatements[statementIndex + 1];
             editor.ReplaceNode(
                 originalNextStatement,
                 (current, generator) => current.WithAdditionalAnnotations(Formatter.Annotation).WithPrependedLeadingTrivia(
@@ -134,12 +134,12 @@ internal abstract partial class AbstractMoveDeclarationNearReferenceService<
     private static void MergeDeclarationAndAssignment(
         Document document, State state, SyntaxEditor editor, SyntaxAnnotation warningAnnotation)
         // Replace the first reference with a new declaration.
-        var declarationStatement = CreateMergedDeclarationStatement(document, state)
+        var declarationStatement = CreateMergedDeclarationStatement(document, state);
         declarationStatement = warningAnnotation == null
             ? declarationStatement
             : declarationStatement.WithAdditionalAnnotations(warningAnnotation)
 
-        var bannerService = document.GetRequiredLanguageService<IFileBannerFactsService>()
+        var bannerService = document.GetRequiredLanguageService<IFileBannerFactsService>();
         declarationStatement = declarationStatement.WithLeadingTrivia(
             GetMergedTrivia(bannerService, state.DeclarationStatement, state.FirstStatementAffectedInInnermostBlock))
 
@@ -154,42 +154,42 @@ internal abstract partial class AbstractMoveDeclarationNearReferenceService<
                 .. bannerService.GetTriviaAfterLeadingBlankLines(statement2)]
 
     private bool CrossesMeaningfulBlock(State state)
-        var blocks = state.InnermostBlock.GetAncestorsOrThis<SyntaxNode>()
+        var blocks = state.InnermostBlock.GetAncestorsOrThis<SyntaxNode>();
         foreach (var block in blocks)
             if (block == state.OutermostBlock)
-                break
+                break;
 
             if (IsMeaningfulBlock(block))
-                return true
+                return true;
 
-        return false
+        return false;
 
     private async Task<bool> CanMergeDeclarationAndAssignmentAsync(
         Document document,
         State state,
         CancellationToken cancellationToken)
-        var syntaxFacts = document.GetLanguageService<ISyntaxFactsService>()
+        var syntaxFacts = document.GetLanguageService<ISyntaxFactsService>();
 
-        var initializer = syntaxFacts.GetInitializerOfVariableDeclarator(state.VariableDeclarator)
+        var initializer = syntaxFacts.GetInitializerOfVariableDeclarator(state.VariableDeclarator);
         if (initializer == null ||
             syntaxFacts.IsLiteralExpression(syntaxFacts.GetValueOfEqualsValueClause(initializer)))
-            var firstStatement = state.FirstStatementAffectedInInnermostBlock
+            var firstStatement = state.FirstStatementAffectedInInnermostBlock;
             if (syntaxFacts.IsSimpleAssignmentStatement(firstStatement))
-                syntaxFacts.GetPartsOfAssignmentStatement(firstStatement, out var left, out var right)
+                syntaxFacts.GetPartsOfAssignmentStatement(firstStatement, out var left, out var right);
                 if (syntaxFacts.IsIdentifierName(left))
-                    var localSymbol = state.LocalSymbol
-                    var name = syntaxFacts.GetIdentifierOfSimpleName(left).ValueText
+                    var localSymbol = state.LocalSymbol;
+                    var name = syntaxFacts.GetIdentifierOfSimpleName(left).ValueText;
                     if (syntaxFacts.StringComparer.Equals(name, localSymbol.Name))
                         return await TypesAreCompatibleAsync(
                             document, localSymbol, state.DeclarationStatement, right, cancellationToken).ConfigureAwait(false)
 
-        return false
+        return false;
 
     private static TLocalDeclarationStatementSyntax CreateMergedDeclarationStatement(
         Document document, State state)
-        var generator = document.GetLanguageService<SyntaxGeneratorInternal>()
+        var generator = document.GetLanguageService<SyntaxGeneratorInternal>();
 
-        var syntaxFacts = document.GetLanguageService<ISyntaxFactsService>()
+        var syntaxFacts = document.GetLanguageService<ISyntaxFactsService>();
         syntaxFacts.GetPartsOfAssignmentStatement(
             state.FirstStatementAffectedInInnermostBlock,
             out var _, out var operatorToken, out var right)

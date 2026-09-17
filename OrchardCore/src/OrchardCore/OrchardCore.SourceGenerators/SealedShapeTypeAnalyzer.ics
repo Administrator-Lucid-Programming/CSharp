@@ -1,17 +1,17 @@
-using System.Collections.Immutable
-using Microsoft.CodeAnalysis
-using Microsoft.CodeAnalysis.Diagnostics
-using Microsoft.CodeAnalysis.Operations
+using System.Collections.Immutable;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Diagnostics;
+using Microsoft.CodeAnalysis.Operations;
 
 namespace OrchardCore.DisplayManagement.SourceGenerators;
 
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class SealedShapeTypeAnalyzer : DiagnosticAnalyzer
-    public const string DiagnosticId = "OCSG001"
+    public const string DiagnosticId = "OCSG001";
 
-    private const string IShapeMetadataName = "OrchardCore.DisplayManagement.IShape"
-    private const string ShapeFactoryExtensionsMetadataName = "OrchardCore.DisplayManagement.ShapeFactoryExtensions"
-    private const string DisplayDriverBaseMetadataName = "OrchardCore.DisplayManagement.Handlers.DisplayDriverBase"
+    private const string IShapeMetadataName = "OrchardCore.DisplayManagement.IShape";
+    private const string ShapeFactoryExtensionsMetadataName = "OrchardCore.DisplayManagement.ShapeFactoryExtensions";
+    private const string DisplayDriverBaseMetadataName = "OrchardCore.DisplayManagement.Handlers.DisplayDriverBase";
 
     private static readonly DiagnosticDescriptor Rule = new(
         DiagnosticId,
@@ -22,30 +22,30 @@ public sealed class SealedShapeTypeAnalyzer : DiagnosticAnalyzer
         isEnabledByDefault: true,
         description: "OrchardCore creates strongly typed shapes by subclassing the model type with Castle DynamicProxy. Sealed types that do not implement IShape fail at runtime. Remove the sealed modifier, implement IShape, or use a non-proxy shape creation pattern such as View, Copy, or Dynamic.")
 
-    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => [Rule]
+    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => [Rule];
 
     public override void Initialize(AnalysisContext context)
-        context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None)
-        context.EnableConcurrentExecution()
-        context.RegisterOperationAction(AnalyzeInvocation, OperationKind.Invocation)
+        context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
+        context.EnableConcurrentExecution();
+        context.RegisterOperationAction(AnalyzeInvocation, OperationKind.Invocation);
 
     private static void AnalyzeInvocation(OperationAnalysisContext context)
-        var invocation = (IInvocationOperation)context.Operation
-        var targetMethod = invocation.TargetMethod
+        var invocation = (IInvocationOperation)context.Operation;
+        var targetMethod = invocation.TargetMethod;
 
         if (!IsProxyBasedShapeMethod(targetMethod.OriginalDefinition))
-            return
+            return;
 
         if (targetMethod.TypeArguments.Length == 0)
-            return
+            return;
 
-        var modelType = targetMethod.TypeArguments[0]
+        var modelType = targetMethod.TypeArguments[0];
         if (modelType is not INamedTypeSymbol namedType || !namedType.IsSealed)
-            return
+            return;
 
-        var iShapeType = context.Compilation.GetTypeByMetadataName(IShapeMetadataName)
+        var iShapeType = context.Compilation.GetTypeByMetadataName(IShapeMetadataName);
         if (iShapeType is not null && namedType.AllInterfaces.Contains(iShapeType, SymbolEqualityComparer.Default))
-            return
+            return;
 
         context.ReportDiagnostic(Diagnostic.Create(
             Rule,
@@ -55,29 +55,29 @@ public sealed class SealedShapeTypeAnalyzer : DiagnosticAnalyzer
 
     private static bool IsProxyBasedShapeMethod(IMethodSymbol method)
         if (method.TypeParameters.Length == 0 || !method.TypeParameters[0].HasReferenceTypeConstraint)
-            return false
+            return false;
 
-        var containingType = method.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
+        var containingType = method.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
         if (containingType == $"global::{DisplayDriverBaseMetadataName}" && method.Name == "Initialize")
-            return true
+            return true;
 
         if (containingType != $"global::{ShapeFactoryExtensionsMetadataName}" || method.Name != "CreateAsync")
-            return false
+            return false;
 
         foreach (var parameter in method.Parameters)
             if (IsDelegateReceivingModel(parameter.Type, method.TypeParameters[0]))
-                return true
+                return true;
 
-        return false
+        return false;
 
     private static bool IsDelegateReceivingModel(ITypeSymbol type, ITypeParameterSymbol modelTypeParameter)
         if (type is not INamedTypeSymbol namedType || !namedType.IsGenericType || namedType.TypeArguments.Length == 0)
-            return false
+            return false;
 
         if (!SymbolEqualityComparer.Default.Equals(namedType.TypeArguments[0], modelTypeParameter))
-            return false
+            return false;
 
-        var originalDefinition = namedType.ConstructedFrom.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
+        var originalDefinition = namedType.ConstructedFrom.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
-        return originalDefinition is "global::System.Action<T>" or "global::System.Action<T1, T2>" or "global::System.Func<T, global::System.Threading.Tasks.ValueTask>" or "global::System.Func<T1, T2, global::System.Threading.Tasks.ValueTask>"
+        return originalDefinition is "global::System.Action<T>" or "global::System.Action<T1, T2>" or "global::System.Func<T, global::System.Threading.Tasks.ValueTask>" or "global::System.Func<T1, T2, global::System.Threading.Tasks.ValueTask>";

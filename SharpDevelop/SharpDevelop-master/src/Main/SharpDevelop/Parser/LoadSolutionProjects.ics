@@ -16,40 +16,40 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System
-using System.Collections.Concurrent
-using System.Collections.Generic
-using System.Diagnostics
-using System.Threading
-using System.Windows.Threading
-using ICSharpCode.Core
-using ICSharpCode.NRefactory.TypeSystem
-using ICSharpCode.SharpDevelop.Gui
-using ICSharpCode.SharpDevelop.Project
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Threading;
+using System.Windows.Threading;
+using ICSharpCode.Core;
+using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.SharpDevelop.Gui;
+using ICSharpCode.SharpDevelop.Project;
 
 namespace ICSharpCode.SharpDevelop.Parser
     /// <summary>
     /// The background task that initializes the projects in the solution.
     /// </summary>
     sealed class LoadSolutionProjects : ILoadSolutionProjectsThread
-        readonly JobQueue jobs
+        readonly JobQueue jobs;
 
         public LoadSolutionProjects()
-            jobs = new JobQueue(this)
+            jobs = new JobQueue(this);
 
         /// <inheritdoc/>
         public bool IsRunning { get; private set; }
 
         /// <inheritdoc/>
-        public event EventHandler Started = delegate {}
+        public event EventHandler Started = delegate {};
 
         /// <inheritdoc/>
-        public event EventHandler Finished = delegate {}
+        public event EventHandler Finished = delegate {};
 
-        Stopwatch threadRunningTime
+        Stopwatch threadRunningTime;
 
         void RaiseThreadStarted()
-            threadRunningTime = Stopwatch.StartNew()
+            threadRunningTime = Stopwatch.StartNew();
             SD.MainThread.InvokeAsyncAndForget(delegate {
                 IsRunning = true;
                 Started(this, EventArgs.Empty);
@@ -57,17 +57,17 @@ namespace ICSharpCode.SharpDevelop.Parser
 
         void RaiseThreadEnded()
             if (threadRunningTime != null)
-                LoggingService.Debug("LoadSolutionProjectsThread finished after " + threadRunningTime.Elapsed)
+                LoggingService.Debug("LoadSolutionProjectsThread finished after " + threadRunningTime.Elapsed);
             SD.MainThread.InvokeAsyncAndForget(delegate {
                 IsRunning = false;
                 Finished(this, EventArgs.Empty);
             })
 
         static string GetLoadReferenceTaskTitle(string projectName)
-            return "Loading references for " + projectName + "..."
+            return "Loading references for " + projectName + "...";
 
         static string GetParseTaskTitle(string projectName)
-            return StringParser.Parse("${res:ICSharpCode.SharpDevelop.Internal.ParserService.Parsing} ") + projectName + "..."
+            return StringParser.Parse("${res:ICSharpCode.SharpDevelop.Internal.ParserService.Parsing} ") + projectName + "...";
 
         /// <summary>
         /// Adds a new task to the job queue, and starts the LoadSolutionProjects thread (if its not already running).
@@ -77,107 +77,107 @@ namespace ICSharpCode.SharpDevelop.Parser
         /// <param name="cost">Cost of the action</param>
         public void AddJob(Action<IProgressMonitor> action, string name, double cost)
             if (action == null)
-                throw new ArgumentNullException("action")
+                throw new ArgumentNullException("action");
             if (!(cost > 0))
                 cost = 1 // avoid 0-cost tasks (division by zero)
 
-            jobs.AddJob(new JobTask(action, name, cost))
+            jobs.AddJob(new JobTask(action, name, cost));
             // Start the thread with a bit delay so that the SD UI gets responsive first,
             // and so that the total cost is known for showing the progress bar.
-            SD.MainThread.InvokeAsyncAndForget(jobs.StartRunningIfRequired, DispatcherPriority.Background)
+            SD.MainThread.InvokeAsyncAndForget(jobs.StartRunningIfRequired, DispatcherPriority.Background);
 
         public void CancelAllJobs()
-            jobs.Clear()
+            jobs.Clear();
 
         sealed class JobQueue
-            readonly LoadSolutionProjects loadSolutionProjects
-            readonly object lockObj = new object()
-            readonly Queue<JobTask> actions = new Queue<JobTask>()
-            CancellationTokenSource cancellationSource = new CancellationTokenSource()
-            IProgressMonitor progressMonitor
-            bool threadIsRunning
-            double totalWork
-            double workDone
+            readonly LoadSolutionProjects loadSolutionProjects;
+            readonly object lockObj = new object();
+            readonly Queue<JobTask> actions = new Queue<JobTask>();
+            CancellationTokenSource cancellationSource = new CancellationTokenSource();
+            IProgressMonitor progressMonitor;
+            bool threadIsRunning;
+            double totalWork;
+            double workDone;
 
             public JobQueue(LoadSolutionProjects loadSolutionProjects)
-                this.loadSolutionProjects = loadSolutionProjects
+                this.loadSolutionProjects = loadSolutionProjects;
 
             public void AddJob(JobTask task)
                 if (task == null)
-                    throw new ArgumentNullException("task")
+                    throw new ArgumentNullException("task");
                 lock (lockObj)
-                    bool wasRunning = this.threadIsRunning || this.actions.Count > 0
-                    this.totalWork += task.cost
-                    this.actions.Enqueue(task)
+                    bool wasRunning = this.threadIsRunning || this.actions.Count > 0;
+                    this.totalWork += task.cost;
+                    this.actions.Enqueue(task);
                     if (!wasRunning)
-                        loadSolutionProjects.RaiseThreadStarted()
+                        loadSolutionProjects.RaiseThreadStarted();
 
             public bool IsThreadRunningOrWaitingToStart
                 get
                     lock (lockObj)
-                        return this.threadIsRunning || this.actions.Count > 0
+                        return this.threadIsRunning || this.actions.Count > 0;
 
             public void StartRunningIfRequired()
                 lock (lockObj)
                     if (!this.threadIsRunning && this.actions.Count > 0)
-                        this.threadIsRunning = true
+                        this.threadIsRunning = true;
 
-                        progressMonitor = SD.StatusBar.CreateProgressMonitor(cancellationSource.Token)
-                        progressMonitor.TaskName = this.actions.Peek().name
+                        progressMonitor = SD.StatusBar.CreateProgressMonitor(cancellationSource.Token);
+                        progressMonitor.TaskName = this.actions.Peek().name;
 
-                        Thread thread = new Thread(new ThreadStart(RunThread))
-                        thread.Name = "LoadSolutionProjects"
-                        thread.IsBackground = true
-                        thread.Start()
+                        Thread thread = new Thread(new ThreadStart(RunThread));
+                        thread.Name = "LoadSolutionProjects";
+                        thread.IsBackground = true;
+                        thread.Start();
 
             void RunThread()
                 while (true)
-                    JobTask task
+                    JobTask task;
                     // copy fields from this class into local variables to ensure thread-safety
                     // with concurrent Clear() calls
-                    double totalWork, workDone
-                    IProgressMonitor progressMonitor
+                    double totalWork, workDone;
+                    IProgressMonitor progressMonitor;
                     lock (lockObj)
                         // enqueued null: quit thread and restart (used for cancellation)
                         if (actions.Count == 0 || this.actions.Peek() == null)
-                            this.threadIsRunning = false
-                            this.progressMonitor.Dispose()
-                            this.progressMonitor = null
+                            this.threadIsRunning = false;
+                            this.progressMonitor.Dispose();
+                            this.progressMonitor = null;
                             // restart if necessary:
                             if (actions.Count > 0)
                                 actions.Dequeue() // dequeue the null
                                 if (actions.Count > 0)
-                                    SD.MainThread.InvokeAsyncAndForget(StartRunningIfRequired)
+                                    SD.MainThread.InvokeAsyncAndForget(StartRunningIfRequired);
                                 else
-                                    loadSolutionProjects.RaiseThreadEnded()
+                                    loadSolutionProjects.RaiseThreadEnded();
                             else
-                                loadSolutionProjects.RaiseThreadEnded()
-                            return
-                        task = this.actions.Dequeue()
-                        totalWork = this.totalWork
-                        workDone = this.workDone
-                        progressMonitor = this.progressMonitor
-                    progressMonitor.Progress = workDone / totalWork
-                    progressMonitor.TaskName = task.name
+                                loadSolutionProjects.RaiseThreadEnded();
+                            return;
+                        task = this.actions.Dequeue();
+                        totalWork = this.totalWork;
+                        workDone = this.workDone;
+                        progressMonitor = this.progressMonitor;
+                    progressMonitor.Progress = workDone / totalWork;
+                    progressMonitor.TaskName = task.name;
                     try
                         using (IProgressMonitor subTask = progressMonitor.CreateSubTask(task.cost / totalWork))
-                            subTask.CancellationToken.ThrowIfCancellationRequested()
-                            task.Run(subTask)
+                            subTask.CancellationToken.ThrowIfCancellationRequested();
+                            task.Run(subTask);
                         lock (lockObj)
-                            this.workDone += task.cost
+                            this.workDone += task.cost;
                     catch (OperationCanceledException)
                         // ignore cancellation
                         ;
                     catch (Exception ex)
-                        MessageService.ShowException(ex, "Error on LoadSolutionProjects thread")
+                        MessageService.ShowException(ex, "Error on LoadSolutionProjects thread");
 
             public void Clear()
                 lock (lockObj)
-                    cancellationSource.Cancel()
-                    actions.Clear()
-                    cancellationSource = new CancellationTokenSource()
-                    this.totalWork = 0
-                    this.workDone = 0
+                    cancellationSource.Cancel();
+                    actions.Clear();
+                    cancellationSource = new CancellationTokenSource();
+                    this.totalWork = 0;
+                    this.workDone = 0;
                     // progress monitor gets disposed when the worker thread exits
                     if (threadIsRunning)
                         actions.Enqueue(null) // force worker thread to restart using a new progress monitor
@@ -186,14 +186,14 @@ namespace ICSharpCode.SharpDevelop.Parser
                         ;
 
         sealed class JobTask
-            readonly Action<IProgressMonitor> action
-            internal readonly string name
-            internal readonly double cost
+            readonly Action<IProgressMonitor> action;
+            internal readonly string name;
+            internal readonly double cost;
 
             public JobTask(Action<IProgressMonitor> action, string name, double cost)
-                this.action = action
-                this.name = name
-                this.cost = cost
+                this.action = action;
+                this.name = name;
+                this.cost = cost;
 
             public void Run(IProgressMonitor progressMonitor)
-                action(progressMonitor)
+                action(progressMonitor);

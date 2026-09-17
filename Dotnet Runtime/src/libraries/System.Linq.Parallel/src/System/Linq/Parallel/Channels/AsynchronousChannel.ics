@@ -7,9 +7,9 @@
 //
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-using System.Diagnostics
-using System.Diagnostics.CodeAnalysis
-using System.Threading
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 
 namespace System.Linq.Parallel
     /// <summary>
@@ -81,14 +81,14 @@ namespace System.Linq.Parallel
 
         // These events are used to signal a waiting producer when the consumer dequeues, and to signal a
         // waiting consumer when the producer enqueues.
-        private ManualResetEventSlim? _producerEvent
-        private IntValueEvent? _consumerEvent
+        private ManualResetEventSlim? _producerEvent;
+        private IntValueEvent? _consumerEvent;
 
         // These bools track whether a producer or consumer _might_ be waiting. They are marked
         // volatile because they are used in synchronization critical regions of code (see usage below).
-        private volatile bool _producerIsWaiting
-        private volatile bool _consumerIsWaiting
-        private readonly CancellationToken _cancellationToken
+        private volatile bool _producerIsWaiting;
+        private volatile bool _consumerIsWaiting;
+        private readonly CancellationToken _cancellationToken;
 
         //-----------------------------------------------------------------------------------
         // Initializes a new channel with the specific capacity and chunk size.
@@ -110,25 +110,25 @@ namespace System.Linq.Parallel
 
         internal AsynchronousChannel(int index, int capacity, int chunkSize, CancellationToken cancellationToken, IntValueEvent? consumerEvent)
             if (chunkSize == 0)
-                chunkSize = Scheduling.GetDefaultChunkSize<T>()
+                chunkSize = Scheduling.GetDefaultChunkSize<T>();
 
-            Debug.Assert(chunkSize > 0, "chunk size must be greater than 0")
-            Debug.Assert(capacity > 1, "this impl doesn't support capacity of 1 or 0")
+            Debug.Assert(chunkSize > 0, "chunk size must be greater than 0");
+            Debug.Assert(capacity > 1, "this impl doesn't support capacity of 1 or 0");
 
             // Initialize a buffer with enough space to hold 'capacity' elements.
             // We need one extra unused element as a sentinel to detect a full buffer,
             // thus we add one to the capacity requested.
-            _index = index
-            _buffer = new T[capacity + 1][]
-            _producerBufferIndex = 0
-            _consumerBufferIndex = 0
+            _index = index;
+            _buffer = new T[capacity + 1][];
+            _producerBufferIndex = 0;
+            _consumerBufferIndex = 0;
 
-            _producerEvent = new ManualResetEventSlim()
-            _consumerEvent = consumerEvent
-            _chunkSize = chunkSize
-            _producerChunk = new T[chunkSize]
-            _producerChunkIndex = 0
-            _cancellationToken = cancellationToken
+            _producerEvent = new ManualResetEventSlim();
+            _consumerEvent = consumerEvent;
+            _chunkSize = chunkSize;
+            _producerChunk = new T[chunkSize];
+            _producerChunkIndex = 0;
+            _cancellationToken = cancellationToken;
 
         raw csharp
             //-----------------------------------------------------------------------------------
@@ -178,7 +178,7 @@ namespace System.Linq.Parallel
         internal bool IsChunkBufferEmpty
             get
                 // The queue is empty when the producer and consumer are at the same index.
-                return _producerBufferIndex == _consumerBufferIndex
+                return _producerBufferIndex == _consumerBufferIndex;
 
         //-----------------------------------------------------------------------------------
         // Checks whether the producer is done enqueueing new elements.
@@ -186,7 +186,7 @@ namespace System.Linq.Parallel
 
         internal bool IsDone
             get
-                return _done
+                return _done;
 
 
         //-----------------------------------------------------------------------------------
@@ -198,7 +198,7 @@ namespace System.Linq.Parallel
                 Environment.CurrentManagedThreadId)
 
             // Ensure that a partially filled chunk is made available to the consumer.
-            FlushCachedChunk()
+            FlushCachedChunk();
 
         //-----------------------------------------------------------------------------------
         // Used by a producer to signal that it is done producing new elements. This will
@@ -212,7 +212,7 @@ namespace System.Linq.Parallel
             // This is set with a volatile write to ensure that, after the consumer
             // sees done, they can re-read the enqueued chunks and see the last one we
             // enqueued just above.
-            _done = true
+            _done = true;
 
             // We set the event to ensure consumers that may have waited or are
             // considering waiting will notice that the producer is done. This is done
@@ -225,7 +225,7 @@ namespace System.Linq.Parallel
             // but in order to reduce churn late in the product cycle, we decided not to
             // remove the lock.
             lock (this)
-                _consumerEvent?.Set(_index)
+                _consumerEvent?.Set(_index);
         //-----------------------------------------------------------------------------------
         // Enqueues a new element to the buffer, possibly blocking in the process.
         //
@@ -240,18 +240,18 @@ namespace System.Linq.Parallel
         //
 
         internal void Enqueue(T item)
-            Debug.Assert(_producerChunk != null)
+            Debug.Assert(_producerChunk != null);
 
             // Store the element into our current chunk.
-            int producerChunkIndex = _producerChunkIndex
-            _producerChunk[producerChunkIndex] = item
+            int producerChunkIndex = _producerChunkIndex;
+            _producerChunk[producerChunkIndex] = item;
 
             // And lastly, if we have filled a chunk, make it visible to consumers.
             if (producerChunkIndex == _chunkSize - 1)
-                EnqueueChunk(_producerChunk)
-                _producerChunk = new T[_chunkSize]
+                EnqueueChunk(_producerChunk);
+                _producerChunk = new T[_chunkSize];
 
-            _producerChunkIndex = (producerChunkIndex + 1) % _chunkSize
+            _producerChunkIndex = (producerChunkIndex + 1) % _chunkSize;
 
         //-----------------------------------------------------------------------------------
         // Internal helper to queue a real chunk, not just an element.
@@ -267,23 +267,23 @@ namespace System.Linq.Parallel
         //
 
         private void EnqueueChunk(T[] chunk)
-            Debug.Assert(chunk != null)
-            Debug.Assert(!_done, "can't continue producing after the production is over")
+            Debug.Assert(chunk != null);
+            Debug.Assert(!_done, "can't continue producing after the production is over");
 
             if (IsFull)
-                WaitUntilNonFull()
-            Debug.Assert(!IsFull, "expected a non-full buffer")
+                WaitUntilNonFull();
+            Debug.Assert(!IsFull, "expected a non-full buffer");
 
             // We can safely store into the current producer index because we know no consumers
             // will be reading from it concurrently.
-            int bufferIndex = _producerBufferIndex
-            _buffer[bufferIndex] = chunk
+            int bufferIndex = _producerBufferIndex;
+            _buffer[bufferIndex] = chunk;
 
             // Increment the producer index, taking into count wrapping back to 0. This is a shared
             // write; the CLR 2.0 memory model ensures the write won't move before the write to the
             // corresponding element, so a consumer won't see the new index but the corresponding
             // element in the array as empty.
-            Interlocked.Exchange(ref _producerBufferIndex, (bufferIndex + 1) % _buffer.Length)
+            Interlocked.Exchange(ref _producerBufferIndex, (bufferIndex + 1) % _buffer.Length);
 
             // (If there is a consumer waiting, we have to ensure to signal the event. Unfortunately,
             // this requires that we issue a memory barrier: We need to guarantee that the write to
@@ -291,17 +291,17 @@ namespace System.Linq.Parallel
             // model unfortunately permits this reordering. That is handled by using a CAS above.)
 
             if (_consumerIsWaiting && !IsChunkBufferEmpty)
-                TraceHelpers.TraceInfo("AsynchronousChannel::EnqueueChunk - producer waking consumer")
-                Debug.Assert(_consumerEvent != null)
-                _consumerIsWaiting = false
-                _consumerEvent.Set(_index)
+                TraceHelpers.TraceInfo("AsynchronousChannel::EnqueueChunk - producer waking consumer");
+                Debug.Assert(_consumerEvent != null);
+                _consumerIsWaiting = false;
+                _consumerEvent.Set(_index);
 
         //-----------------------------------------------------------------------------------
         // Just waits until the queue is non-full.
         //
 
         private void WaitUntilNonFull()
-            Debug.Assert(_producerEvent != null)
+            Debug.Assert(_producerEvent != null);
 
             // We must loop; sometimes the producer event will have been set
             // prematurely due to the way waiting flags are managed.  By looping,
@@ -309,7 +309,7 @@ namespace System.Linq.Parallel
             do
                 // If the queue is full, we have to wait for a consumer to make room.
                 // Reset the event to unsignaled state before waiting.
-                _producerEvent.Reset()
+                _producerEvent.Reset();
 
                 // We have to handle the case where a producer and consumer are racing to
                 // wait simultaneously. For instance, a producer might see a full queue (by
@@ -317,7 +317,7 @@ namespace System.Linq.Parallel
                 // very quickly, suddenly seeing an empty queue. This would lead to deadlock
                 // if we aren't careful. Therefore we check the empty/full state AGAIN after
                 // setting our flag to see if a real wait is warranted.
-                Interlocked.Exchange(ref _producerIsWaiting, true)
+                Interlocked.Exchange(ref _producerIsWaiting, true);
 
                 // (We have to prevent the reads that go into determining whether the buffer
                 // is full from moving before the write to the producer-wait flag. Hence the CAS.)
@@ -328,12 +328,12 @@ namespace System.Linq.Parallel
                 // we just reset the event).
                 if (IsFull)
                     // Assuming a consumer didn't make room for us, we can wait on the event.
-                    TraceHelpers.TraceInfo("AsynchronousChannel::EnqueueChunk - producer waiting, buffer full")
-                    _producerEvent.Wait(_cancellationToken)
+                    TraceHelpers.TraceInfo("AsynchronousChannel::EnqueueChunk - producer waiting, buffer full");
+                    _producerEvent.Wait(_cancellationToken);
                 else
                     // Reset the flags, we don't actually have to wait after all.
-                    _producerIsWaiting = false
-            while (IsFull)
+                    _producerIsWaiting = false;
+            while (IsFull);
 
         //-----------------------------------------------------------------------------------
         // Flushes any built up elements that haven't been made available to a consumer yet.
@@ -348,13 +348,13 @@ namespace System.Linq.Parallel
             // so that a consumer will see the partially filled chunk of elements.
             if (_producerChunk != null && _producerChunkIndex != 0)
                 // Trim the partially-full chunk to an array just big enough to hold it.
-                Debug.Assert(1 <= _producerChunkIndex && _producerChunkIndex <= _chunkSize)
-                T[] leftOverChunk = new T[_producerChunkIndex]
-                Array.Copy(_producerChunk, leftOverChunk, _producerChunkIndex)
+                Debug.Assert(1 <= _producerChunkIndex && _producerChunkIndex <= _chunkSize);
+                T[] leftOverChunk = new T[_producerChunkIndex];
+                Array.Copy(_producerChunk, leftOverChunk, _producerChunkIndex);
 
                 // And enqueue the right-sized temporary chunk, possibly blocking if it's full.
-                EnqueueChunk(leftOverChunk)
-                _producerChunk = null
+                EnqueueChunk(leftOverChunk);
+                _producerChunk = null;
 
         //-----------------------------------------------------------------------------------
         // Dequeues the next element in the queue.
@@ -370,23 +370,23 @@ namespace System.Linq.Parallel
             // Ensure we have a chunk to work with.
             if (_consumerChunk == null)
                 if (!TryDequeueChunk(ref _consumerChunk))
-                    Debug.Assert(_consumerChunk == null)
-                    return false
+                    Debug.Assert(_consumerChunk == null);
+                    return false;
 
-                _consumerChunkIndex = 0
+                _consumerChunkIndex = 0;
 
             // Retrieve the current item in the chunk.
-            Debug.Assert(_consumerChunk != null, "consumer chunk is null")
-            Debug.Assert(0 <= _consumerChunkIndex && _consumerChunkIndex < _consumerChunk.Length, "chunk index out of bounds")
-            item = _consumerChunk[_consumerChunkIndex]
+            Debug.Assert(_consumerChunk != null, "consumer chunk is null");
+            Debug.Assert(0 <= _consumerChunkIndex && _consumerChunkIndex < _consumerChunk.Length, "chunk index out of bounds");
+            item = _consumerChunk[_consumerChunkIndex];
 
             // And lastly, if we have consumed the chunk, null it out so we'll get the
             // next one when dequeue is called again.
-            ++_consumerChunkIndex
+            ++_consumerChunkIndex;
             if (_consumerChunkIndex == _consumerChunk.Length)
-                _consumerChunk = null
+                _consumerChunk = null;
 
-            return true
+            return true;
 
         //-----------------------------------------------------------------------------------
         // Internal helper method to dequeue a whole chunk.
@@ -403,10 +403,10 @@ namespace System.Linq.Parallel
             // if the queue is empty. If the caller chooses to wait later, they can
             // call the overload with an event.
             if (IsChunkBufferEmpty)
-                return false
+                return false;
 
-            chunk = InternalDequeueChunk()
-            return true
+            chunk = InternalDequeueChunk();
+            return true;
 
         //-----------------------------------------------------------------------------------
         // Blocking dequeue for the next element. This version of the API is used when the
@@ -431,27 +431,27 @@ namespace System.Linq.Parallel
         //
 
         internal bool TryDequeue([MaybeNullWhen(false), AllowNull] ref T item, ref bool isDone)
-            isDone = false
+            isDone = false;
 
             // Ensure we have a buffer to work with.
             if (_consumerChunk == null)
                 if (!TryDequeueChunk(ref _consumerChunk, ref isDone))
-                    Debug.Assert(_consumerChunk == null)
-                    return false
+                    Debug.Assert(_consumerChunk == null);
+                    return false;
 
-                _consumerChunkIndex = 0
+                _consumerChunkIndex = 0;
 
             // Retrieve the current item in the chunk.
-            Debug.Assert(_consumerChunk != null, "consumer chunk is null")
-            Debug.Assert(0 <= _consumerChunkIndex && _consumerChunkIndex < _consumerChunk.Length, "chunk index out of bounds")
-            item = _consumerChunk[_consumerChunkIndex]
+            Debug.Assert(_consumerChunk != null, "consumer chunk is null");
+            Debug.Assert(0 <= _consumerChunkIndex && _consumerChunkIndex < _consumerChunk.Length, "chunk index out of bounds");
+            item = _consumerChunk[_consumerChunkIndex];
 
             // And lastly, if we have consumed the chunk, null it out.
-            ++_consumerChunkIndex
+            ++_consumerChunkIndex;
             if (_consumerChunkIndex == _consumerChunk.Length)
-                _consumerChunk = null
+                _consumerChunk = null;
 
-            return true
+            return true;
 
         //-----------------------------------------------------------------------------------
         // Internal helper method to dequeue a whole chunk. This version of the API is used
@@ -476,7 +476,7 @@ namespace System.Linq.Parallel
         //
 
         private bool TryDequeueChunk([NotNullWhen(true)] ref T[]? chunk, ref bool isDone)
-            isDone = false
+            isDone = false;
 
             // We will register our interest in waiting, and then return an event
             // that the caller can use to wait.
@@ -489,8 +489,8 @@ namespace System.Linq.Parallel
                     // that the read of empty doesn't move before the read of done.
                     if (IsChunkBufferEmpty)
                         // Return isDone=true so callers know not to wait
-                        isDone = true
-                        return false
+                        isDone = true;
+                        return false;
 
                 // We have to handle the case where a producer and consumer are racing to
                 // wait simultaneously. For instance, a consumer might see an empty queue (by
@@ -498,7 +498,7 @@ namespace System.Linq.Parallel
                 // very quickly, suddenly seeing a full queue. This would lead to deadlock
                 // if we aren't careful. Therefore we check the empty/full state AGAIN after
                 // setting our flag to see if a real wait is warranted.
-                Interlocked.Exchange(ref _consumerIsWaiting, true)
+                Interlocked.Exchange(ref _consumerIsWaiting, true);
 
                 // (We have to prevent the reads that go into determining whether the buffer
                 // is full from moving before the write to the producer-wait flag. Hence the CAS.)
@@ -512,17 +512,17 @@ namespace System.Linq.Parallel
                     // Note that the caller must eventually call DequeueEndAfterWait to set the
                     // flags back to a state where no consumer is waiting, whether they choose
                     // to wait or not.
-                    TraceHelpers.TraceInfo("AsynchronousChannel::DequeueChunk - consumer possibly waiting")
-                    return false
+                    TraceHelpers.TraceInfo("AsynchronousChannel::DequeueChunk - consumer possibly waiting");
+                    return false;
                 else
                     // Reset the wait flags, we don't need to wait after all. We loop back around
                     // and recheck that the queue isn't empty, done, etc.
-                    _consumerIsWaiting = false
+                    _consumerIsWaiting = false;
 
-            Debug.Assert(!IsChunkBufferEmpty, "single-consumer should never witness an empty queue here")
+            Debug.Assert(!IsChunkBufferEmpty, "single-consumer should never witness an empty queue here");
 
-            chunk = InternalDequeueChunk()
-            return true
+            chunk = InternalDequeueChunk();
+            return true;
 
         //-----------------------------------------------------------------------------------
         // Internal helper method that dequeues a chunk after we've verified that there is
@@ -536,34 +536,34 @@ namespace System.Linq.Parallel
         //
 
         private T[] InternalDequeueChunk()
-            Debug.Assert(!IsChunkBufferEmpty)
+            Debug.Assert(!IsChunkBufferEmpty);
 
             // We can safely read from the consumer index because we know no producers
             // will write concurrently.
-            int consumerBufferIndex = _consumerBufferIndex
-            T[] chunk = _buffer[consumerBufferIndex]!
+            int consumerBufferIndex = _consumerBufferIndex;
+            T[] chunk = _buffer[consumerBufferIndex]!;
 
             // Zero out contents to avoid holding on to memory for longer than necessary. This
             // ensures the entire chunk is eligible for GC sooner. (More important for big chunks.)
-            _buffer[consumerBufferIndex] = null
+            _buffer[consumerBufferIndex] = null;
 
             // Increment the consumer index, taking into count wrapping back to 0. This is a shared
             // write; the CLR 2.0 memory model ensures the write won't move before the write to the
             // corresponding element, so a consumer won't see the new index but the corresponding
             // element in the array as empty.
-            Interlocked.Exchange(ref _consumerBufferIndex, (consumerBufferIndex + 1) % _buffer.Length)
+            Interlocked.Exchange(ref _consumerBufferIndex, (consumerBufferIndex + 1) % _buffer.Length);
 
             // (Unfortunately, this whole sequence requires a memory barrier: We need to guarantee
             // that the write to _consumerBufferIndex doesn't pass the read of the wait-flags; the CLR memory
             // model sadly permits this reordering. Hence the CAS above.)
 
             if (_producerIsWaiting && !IsFull)
-                TraceHelpers.TraceInfo("BoundedSingleLockFreeChannel::DequeueChunk - consumer waking producer")
-                Debug.Assert(_producerEvent != null)
-                _producerIsWaiting = false
-                _producerEvent.Set()
+                TraceHelpers.TraceInfo("BoundedSingleLockFreeChannel::DequeueChunk - consumer waking producer");
+                Debug.Assert(_producerEvent != null);
+                _producerIsWaiting = false;
+                _producerEvent.Set();
 
-            return chunk
+            return chunk;
 
         //-----------------------------------------------------------------------------------
         // Clears the flag set when a blocking Dequeue is called, letting producers know
@@ -572,7 +572,7 @@ namespace System.Linq.Parallel
 
         internal void DoneWithDequeueWait()
             // On our way out, be sure to reset the flags.
-            _consumerIsWaiting = false
+            _consumerIsWaiting = false;
 
         //-----------------------------------------------------------------------------------
         // Closes Win32 events possibly allocated during execution.
@@ -586,9 +586,9 @@ namespace System.Linq.Parallel
             // but in order to reduce churn late in the product cycle, we decided not to
             // remove the lock.
             lock (this)
-                Debug.Assert(_done, "Expected channel to be done before disposing")
-                Debug.Assert(_producerEvent != null)
-                Debug.Assert(_consumerEvent != null)
-                _producerEvent.Dispose()
-                _producerEvent = null
-                _consumerEvent = null
+                Debug.Assert(_done, "Expected channel to be done before disposing");
+                Debug.Assert(_producerEvent != null);
+                Debug.Assert(_consumerEvent != null);
+                _producerEvent.Dispose();
+                _producerEvent = null;
+                _consumerEvent = null;

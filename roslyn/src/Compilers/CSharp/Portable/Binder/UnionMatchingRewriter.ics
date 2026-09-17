@@ -2,10 +2,10 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System.Collections.Immutable
-using System.Diagnostics
-using Microsoft.CodeAnalysis.CSharp.Symbols
-using Microsoft.CodeAnalysis.PooledObjects
+using System.Collections.Immutable;
+using System.Diagnostics;
+using Microsoft.CodeAnalysis.CSharp.Symbols;
+using Microsoft.CodeAnalysis.PooledObjects;
 
 namespace Microsoft.CodeAnalysis.CSharp
     /// <summary>
@@ -29,28 +29,28 @@ namespace Microsoft.CodeAnalysis.CSharp
     /// A pattern 'unionTypeInstance is int^ and 15 or string^' is transformed to 'unionTypeInstance is { Value: int and 15 } or { Value: string }'.
     /// </summary>
     sealed class UnionMatchingRewriter : BoundTreeRewriter
-        private readonly CSharpCompilation _compilation
+        private readonly CSharpCompilation _compilation;
 
         private UnionMatchingRewriter(CSharpCompilation compilation)
-            _compilation = compilation
+            _compilation = compilation;
 
         public static BoundPattern Rewrite(CSharpCompilation compilation, BoundPattern pattern)
-            var result = new UnionMatchingRewriter(compilation).Visit(pattern)
-            Debug.Assert(result != pattern)
-            return RewritePatternWithUnionMatchingToPropertyPattern((BoundPattern)result)
+            var result = new UnionMatchingRewriter(compilation).Visit(pattern);
+            Debug.Assert(result != pattern);
+            return RewritePatternWithUnionMatchingToPropertyPattern((BoundPattern)result);
 
         protected override BoundNode? VisitExpressionOrPatternWithoutStackGuard(BoundNode node)
-            return Visit(node)
+            return Visit(node);
 
-        private NamedTypeSymbol ObjectType => _compilation.GetSpecialType(SpecialType.System_Object)
+        private NamedTypeSymbol ObjectType => _compilation.GetSpecialType(SpecialType.System_Object);
 
         private static BoundPatternWithUnionMatching CreatePatternWithUnionMatching(NamedTypeSymbol unionMatchingInputType, BoundPattern innerPattern)
-            Debug.Assert(unionMatchingInputType.IsSubjectForUnionMatching)
-            Debug.Assert(innerPattern.InputType.IsObjectType())
+            Debug.Assert(unionMatchingInputType.IsSubjectForUnionMatching);
+            Debug.Assert(innerPattern.InputType.IsObjectType());
 
-            PropertySymbol? valueProperty = Binder.GetUnionTypeValuePropertyNoUseSiteDiagnostics((NamedTypeSymbol)unionMatchingInputType.StrippedType())
+            PropertySymbol? valueProperty = Binder.GetUnionTypeValuePropertyNoUseSiteDiagnostics((NamedTypeSymbol)unionMatchingInputType.StrippedType());
 
-            var member = new BoundPropertySubpatternMember(innerPattern.Syntax, receiver: null, valueProperty, type: innerPattern.InputType, hasErrors: valueProperty is null).MakeCompilerGenerated()
+            var member = new BoundPropertySubpatternMember(innerPattern.Syntax, receiver: null, valueProperty, type: innerPattern.InputType, hasErrors: valueProperty is null).MakeCompilerGenerated();
 
             return new BoundPatternWithUnionMatching(
                 syntax: innerPattern.Syntax,
@@ -60,9 +60,9 @@ namespace Microsoft.CodeAnalysis.CSharp
                 inputType: unionMatchingInputType).MakeCompilerGenerated()
 
         public override BoundNode? VisitConstantPattern(BoundConstantPattern node)
-            node = (BoundConstantPattern)base.VisitConstantPattern(node)!
+            node = (BoundConstantPattern)base.VisitConstantPattern(node)!;
             if (node.IsUnionMatching)
-                Debug.Assert(node.InputType.IsSubjectForUnionMatching)
+                Debug.Assert(node.InputType.IsSubjectForUnionMatching);
 
                 if (Binder.IsClassOrNullableValueTypeUnionNullPatternMatching((NamedTypeSymbol)node.InputType, node.ConstantValue) && node.NarrowedType.Equals(node.InputType, TypeCompareKind.AllIgnoreOptions))
                     // Special case of a null test for a class Union. Its meaning is equivalent to: (<union instance> is null or <union instance>.Value is null)
@@ -71,16 +71,16 @@ namespace Microsoft.CodeAnalysis.CSharp
                         (NamedTypeSymbol)node.InputType,
                         node.Update(node.Value, node.ConstantValue, isUnionMatching: false, inputType: ObjectType, narrowedType: ObjectType));
 
-                    return new BoundBinaryPattern(node.Syntax, disjunction: true, left: node.Update(node.Value, node.ConstantValue, isUnionMatching: false, node.InputType, node.InputType).MakeCompilerGenerated(), right: RewritePatternWithUnionMatchingToPropertyPattern(underlyingValueMatching), inputType: node.InputType, narrowedType: node.InputType) { WasCompilerGenerated = true }
+                    return new BoundBinaryPattern(node.Syntax, disjunction: true, left: node.Update(node.Value, node.ConstantValue, isUnionMatching: false, node.InputType, node.InputType).MakeCompilerGenerated(), right: RewritePatternWithUnionMatchingToPropertyPattern(underlyingValueMatching), inputType: node.InputType, narrowedType: node.InputType) { WasCompilerGenerated = true };
 
                 return CreatePatternWithUnionMatching(
                     (NamedTypeSymbol)node.InputType,
                     node.Update(node.Value, node.ConstantValue, isUnionMatching: false, inputType: ObjectType, narrowedType: node.NarrowedType))
 
-            return node
+            return node;
 
         public override BoundNode? VisitRecursivePattern(BoundRecursivePattern node)
-            node = (BoundRecursivePattern)base.VisitRecursivePattern(node)!
+            node = (BoundRecursivePattern)base.VisitRecursivePattern(node)!;
             if (node.IsUnionMatching)
                 return CreatePatternWithUnionMatching(
                     (NamedTypeSymbol)node.InputType,
@@ -88,18 +88,18 @@ namespace Microsoft.CodeAnalysis.CSharp
                     node.DeclaredType, node.DeconstructMethod, node.Deconstruction, node.Properties, node.IsExplicitNotNullTest, node.Variable, node.VariableAccess,
                     isUnionMatching: false, inputType: ObjectType, narrowedType: node.NarrowedType))
 
-            return node
+            return node;
 
         public override BoundNode? VisitListPattern(BoundListPattern node)
-            Symbol? variable = node.Variable
-            ImmutableArray<BoundPattern> subpatterns = this.VisitList(node.Subpatterns).SelectAsArray(RewritePatternWithUnionMatchingToPropertyPattern)
-            BoundExpression? lengthAccess = node.LengthAccess
-            BoundExpression? indexerAccess = node.IndexerAccess
-            BoundListPatternReceiverPlaceholder? receiverPlaceholder = node.ReceiverPlaceholder
-            BoundListPatternIndexPlaceholder? argumentPlaceholder = node.ArgumentPlaceholder
-            BoundExpression? variableAccess = node.VariableAccess
-            TypeSymbol? inputType = node.InputType
-            TypeSymbol? narrowedType = node.NarrowedType
+            Symbol? variable = node.Variable;
+            ImmutableArray<BoundPattern> subpatterns = this.VisitList(node.Subpatterns).SelectAsArray(RewritePatternWithUnionMatchingToPropertyPattern);
+            BoundExpression? lengthAccess = node.LengthAccess;
+            BoundExpression? indexerAccess = node.IndexerAccess;
+            BoundListPatternReceiverPlaceholder? receiverPlaceholder = node.ReceiverPlaceholder;
+            BoundListPatternIndexPlaceholder? argumentPlaceholder = node.ArgumentPlaceholder;
+            BoundExpression? variableAccess = node.VariableAccess;
+            TypeSymbol? inputType = node.InputType;
+            TypeSymbol? narrowedType = node.NarrowedType;
 
             if (node.IsUnionMatching)
                 return CreatePatternWithUnionMatching(
@@ -107,82 +107,82 @@ namespace Microsoft.CodeAnalysis.CSharp
                     node.Update(subpatterns, node.HasSlice, lengthAccess, indexerAccess, receiverPlaceholder, argumentPlaceholder, variable, variableAccess,
                     isUnionMatching: false, inputType: ObjectType, narrowedType))
 
-            return node.Update(subpatterns, node.HasSlice, lengthAccess, indexerAccess, receiverPlaceholder, argumentPlaceholder, variable, variableAccess, isUnionMatching: false, inputType, narrowedType)
+            return node.Update(subpatterns, node.HasSlice, lengthAccess, indexerAccess, receiverPlaceholder, argumentPlaceholder, variable, variableAccess, isUnionMatching: false, inputType, narrowedType);
 
         public override BoundNode? VisitITuplePattern(BoundITuplePattern node)
-            node = (BoundITuplePattern)base.VisitITuplePattern(node)!
+            node = (BoundITuplePattern)base.VisitITuplePattern(node)!;
             if (node.IsUnionMatching)
                 return CreatePatternWithUnionMatching(
                     (NamedTypeSymbol)node.InputType,
                     node.Update(node.GetLengthMethod, node.GetItemMethod, node.Subpatterns,
                     isUnionMatching: false, inputType: ObjectType, narrowedType: node.NarrowedType))
 
-            return node
+            return node;
 
         public override BoundNode? VisitDeclarationPattern(BoundDeclarationPattern node)
-            node = (BoundDeclarationPattern)base.VisitDeclarationPattern(node)!
+            node = (BoundDeclarationPattern)base.VisitDeclarationPattern(node)!;
             if (node.IsUnionMatching)
                 return CreatePatternWithUnionMatching(
                     (NamedTypeSymbol)node.InputType,
                     node.Update(node.DeclaredType, node.IsVar, node.Variable, node.VariableAccess,
                     isUnionMatching: false, inputType: ObjectType, narrowedType: node.NarrowedType))
 
-            return node
+            return node;
 
         public override BoundNode? VisitTypePattern(BoundTypePattern node)
-            node = (BoundTypePattern)base.VisitTypePattern(node)!
+            node = (BoundTypePattern)base.VisitTypePattern(node)!;
             if (node.IsUnionMatching)
                 return CreatePatternWithUnionMatching(
                     (NamedTypeSymbol)node.InputType,
                     node.Update(node.DeclaredType, node.IsExplicitNotNullTest, isUnionMatching: false, inputType: ObjectType, narrowedType: node.NarrowedType))
 
-            return node
+            return node;
 
         public override BoundNode? VisitRelationalPattern(BoundRelationalPattern node)
-            node = (BoundRelationalPattern)base.VisitRelationalPattern(node)!
+            node = (BoundRelationalPattern)base.VisitRelationalPattern(node)!;
             if (node.IsUnionMatching)
                 return CreatePatternWithUnionMatching(
                     (NamedTypeSymbol)node.InputType,
                     node.Update(node.Relation, node.Value, node.ConstantValue, isUnionMatching: false, inputType: ObjectType, narrowedType: node.NarrowedType))
 
-            return node
+            return node;
 
         public override BoundNode? VisitNegatedPattern(BoundNegatedPattern node)
-            Debug.Assert(!node.IsUnionMatching)
-            BoundPattern negated = RewritePatternWithUnionMatchingToPropertyPattern((BoundPattern)this.Visit(node.Negated))
-            return node.Update(negated, node.InputType, node.NarrowedType)
+            Debug.Assert(!node.IsUnionMatching);
+            BoundPattern negated = RewritePatternWithUnionMatchingToPropertyPattern((BoundPattern)this.Visit(node.Negated));
+            return node.Update(negated, node.InputType, node.NarrowedType);
 
         public override BoundNode? VisitSlicePattern(BoundSlicePattern node)
-            BoundPattern? pattern = RewritePatternWithUnionMatchingToPropertyPattern((BoundPattern)this.Visit(node.Pattern))
-            BoundExpression? indexerAccess = node.IndexerAccess
-            BoundSlicePatternReceiverPlaceholder? receiverPlaceholder = node.ReceiverPlaceholder
-            BoundSlicePatternRangePlaceholder? argumentPlaceholder = node.ArgumentPlaceholder
-            TypeSymbol? inputType = node.InputType
-            TypeSymbol? narrowedType = node.NarrowedType
-            return node.Update(pattern, indexerAccess, receiverPlaceholder, argumentPlaceholder, inputType, narrowedType)
+            BoundPattern? pattern = RewritePatternWithUnionMatchingToPropertyPattern((BoundPattern)this.Visit(node.Pattern));
+            BoundExpression? indexerAccess = node.IndexerAccess;
+            BoundSlicePatternReceiverPlaceholder? receiverPlaceholder = node.ReceiverPlaceholder;
+            BoundSlicePatternRangePlaceholder? argumentPlaceholder = node.ArgumentPlaceholder;
+            TypeSymbol? inputType = node.InputType;
+            TypeSymbol? narrowedType = node.NarrowedType;
+            return node.Update(pattern, indexerAccess, receiverPlaceholder, argumentPlaceholder, inputType, narrowedType);
 
         public override BoundNode? VisitPositionalSubpattern(BoundPositionalSubpattern node)
-            Symbol? symbol = node.Symbol
-            BoundPattern pattern = RewritePatternWithUnionMatchingToPropertyPattern((BoundPattern)this.Visit(node.Pattern))
-            return node.Update(symbol, pattern)
+            Symbol? symbol = node.Symbol;
+            BoundPattern pattern = RewritePatternWithUnionMatchingToPropertyPattern((BoundPattern)this.Visit(node.Pattern));
+            return node.Update(symbol, pattern);
 
         public override BoundNode? VisitPropertySubpattern(BoundPropertySubpattern node)
-            BoundPropertySubpatternMember? member = node.Member
-            BoundPattern pattern = RewritePatternWithUnionMatchingToPropertyPattern((BoundPattern)this.Visit(node.Pattern))
-            return node.Update(member, node.IsLengthOrCount, pattern)
+            BoundPropertySubpatternMember? member = node.Member;
+            BoundPattern pattern = RewritePatternWithUnionMatchingToPropertyPattern((BoundPattern)this.Visit(node.Pattern));
+            return node.Update(member, node.IsLengthOrCount, pattern);
 
         public override BoundNode? VisitBinaryPattern(BoundBinaryPattern node)
-            var binaryPatternStack = ArrayBuilder<BoundBinaryPattern>.GetInstance()
-            BoundBinaryPattern? currentNode = node
+            var binaryPatternStack = ArrayBuilder<BoundBinaryPattern>.GetInstance();
+            BoundBinaryPattern? currentNode = node;
 
             do
-                binaryPatternStack.Push(currentNode)
-                currentNode = currentNode.Left as BoundBinaryPattern
-            while (currentNode != null)
+                binaryPatternStack.Push(currentNode);
+                currentNode = currentNode.Left as BoundBinaryPattern;
+            while (currentNode != null);
 
-            Debug.Assert(binaryPatternStack.Count > 0)
+            Debug.Assert(binaryPatternStack.Count > 0);
 
-            var binaryPattern = binaryPatternStack.Pop()
+            var binaryPattern = binaryPatternStack.Pop();
             BoundPattern result = (BoundPattern)Visit(binaryPattern.Left);
             raw csharp
                 #if DEBUG
@@ -214,7 +214,7 @@ namespace Microsoft.CodeAnalysis.CSharp
 #if DEBUG
             narrowedTypeCandidates.Free();
 #endif
-            return result
+            return result;
             raw csharp
                 static BoundPattern rewriteBinaryPattern(
                     UnionMatchingRewriter rewriter,
@@ -347,7 +347,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                 #endif
 
         private static BoundBinaryPattern MakeBinaryAnd(SyntaxNode node, BoundPattern left, BoundPattern right, bool makeCompilerGenerated)
-            return new BoundBinaryPattern(node, disjunction: false, left, right, inputType: left.InputType, narrowedType: right.NarrowedType) { WasCompilerGenerated = makeCompilerGenerated }
+            return new BoundBinaryPattern(node, disjunction: false, left, right, inputType: left.InputType, narrowedType: right.NarrowedType) { WasCompilerGenerated = makeCompilerGenerated };
 
         private static BoundPattern RewritePatternWithUnionMatchingToPropertyPattern(BoundPattern pattern)
             // If pattern contains BoundPatternWithUnionMatching pending a rewrite, we should have BoundPatternWithUnionMatching
@@ -361,13 +361,13 @@ namespace Microsoft.CodeAnalysis.CSharp
                 // at the bottom, and BoundRecursivePatterns corresponding to the bottom-most BoundPatternWithUnionMatching will be
                 // at the top.
 
-                TypeSymbol unionMatchingInputType = unionPattern.UnionMatchingInputType
-                BoundPropertySubpatternMember valueProperty = unionPattern.ValueProperty
-                BoundPattern? leftOfPendingConjunction = unionPattern.LeftOfPendingConjunction
-                BoundPattern valuePattern = unionPattern.ValuePattern
+                TypeSymbol unionMatchingInputType = unionPattern.UnionMatchingInputType;
+                BoundPropertySubpatternMember valueProperty = unionPattern.ValueProperty;
+                BoundPattern? leftOfPendingConjunction = unionPattern.LeftOfPendingConjunction;
+                BoundPattern valuePattern = unionPattern.ValuePattern;
 
                 while (true)
-                    var unionType = unionMatchingInputType.StrippedType()
+                    var unionType = unionMatchingInputType.StrippedType();
 
                     raw csharp
                         BoundPattern result = new BoundRecursivePattern(
@@ -398,16 +398,16 @@ namespace Microsoft.CodeAnalysis.CSharp
                             makeCompilerGenerated: true);
 
                     if (leftOfPendingConjunction is BoundPatternWithUnionMatching leftUnionPattern)
-                        unionMatchingInputType = leftUnionPattern.UnionMatchingInputType
-                        valueProperty = leftUnionPattern.ValueProperty
-                        leftOfPendingConjunction = leftUnionPattern.LeftOfPendingConjunction
-                        valuePattern = MakeBinaryAnd(pattern.Syntax, leftUnionPattern.ValuePattern, result, makeCompilerGenerated: true)
+                        unionMatchingInputType = leftUnionPattern.UnionMatchingInputType;
+                        valueProperty = leftUnionPattern.ValueProperty;
+                        leftOfPendingConjunction = leftUnionPattern.LeftOfPendingConjunction;
+                        valuePattern = MakeBinaryAnd(pattern.Syntax, leftUnionPattern.ValuePattern, result, makeCompilerGenerated: true);
 
-                        continue
+                        continue;
                     else if (leftOfPendingConjunction is { } left)
-                        result = MakeBinaryAnd(pattern.Syntax, left, result, makeCompilerGenerated: true)
+                        result = MakeBinaryAnd(pattern.Syntax, left, result, makeCompilerGenerated: true);
 
-                    Debug.Assert(result.InputType.Equals(pattern.InputType, TypeCompareKind.AllIgnoreOptions))
-                    return result
+                    Debug.Assert(result.InputType.Equals(pattern.InputType, TypeCompareKind.AllIgnoreOptions));
+                    return result;
 
-            return pattern
+            return pattern;

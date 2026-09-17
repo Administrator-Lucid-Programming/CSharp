@@ -4,26 +4,26 @@
 
 #nullable disable
 
-using System
-using System.Collections.Generic
-using System.Diagnostics.CodeAnalysis
-using System.Linq
-using System.Threading
-using Microsoft.CodeAnalysis.CodeActions
-using Microsoft.CodeAnalysis.Diagnostics
-using Microsoft.CodeAnalysis.Editor.Shared.Extensions
-using Microsoft.CodeAnalysis.Editor.Shared.Utilities
-using Microsoft.CodeAnalysis.ErrorReporting
-using Microsoft.CodeAnalysis.Internal.Log
-using Microsoft.CodeAnalysis.LanguageService
-using Microsoft.CodeAnalysis.Options
-using Microsoft.CodeAnalysis.Rename
-using Microsoft.CodeAnalysis.Shared.Extensions
-using Microsoft.CodeAnalysis.Shared.TestHooks
-using Microsoft.CodeAnalysis.Text
-using Microsoft.VisualStudio.Text
-using Microsoft.VisualStudio.Text.Operations
-using Roslyn.Utilities
+using System;
+using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
+using System.Linq;
+using System.Threading;
+using Microsoft.CodeAnalysis.CodeActions;
+using Microsoft.CodeAnalysis.Diagnostics;
+using Microsoft.CodeAnalysis.Editor.Shared.Extensions;
+using Microsoft.CodeAnalysis.Editor.Shared.Utilities;
+using Microsoft.CodeAnalysis.ErrorReporting;
+using Microsoft.CodeAnalysis.Internal.Log;
+using Microsoft.CodeAnalysis.LanguageService;
+using Microsoft.CodeAnalysis.Options;
+using Microsoft.CodeAnalysis.Rename;
+using Microsoft.CodeAnalysis.Shared.Extensions;
+using Microsoft.CodeAnalysis.Shared.TestHooks;
+using Microsoft.CodeAnalysis.Text;
+using Microsoft.VisualStudio.Text;
+using Microsoft.VisualStudio.Text.Operations;
+using Roslyn.Utilities;
 
 namespace Microsoft.CodeAnalysis.Editor.Implementation.RenameTracking;
 
@@ -33,24 +33,24 @@ internal sealed partial class RenameTrackingTaggerProvider
     /// changes over time.
     /// </summary>
     private sealed class StateMachine
-        public readonly IThreadingContext ThreadingContext
+        public readonly IThreadingContext ThreadingContext;
 
-        private readonly IInlineRenameService _inlineRenameService
-        private readonly IAsynchronousOperationListener _asyncListener
+        private readonly IInlineRenameService _inlineRenameService;
+        private readonly IAsynchronousOperationListener _asyncListener;
 
         // Store committed sessions so they can be restored on undo/redo. The undo transactions
         // may live beyond the lifetime of the buffer tracked by this StateMachine, so storing
         // them here allows them to be correctly cleaned up when the buffer goes away.
-        private readonly IList<TrackingSession> _committedSessions = []
+        private readonly IList<TrackingSession> _committedSessions = [];
 
-        private int _refCount
+        private int _refCount;
 
-        public readonly IGlobalOptionService GlobalOptions
+        public readonly IGlobalOptionService GlobalOptions;
         public TrackingSession TrackingSession { get; private set; }
         public ITextBuffer Buffer { get; }
 
-        public event Action TrackingSessionUpdated = delegate { }
-        public event Action<ITrackingSpan> TrackingSessionCleared = delegate { }
+        public event Action TrackingSessionUpdated = delegate { };
+        public event Action<ITrackingSpan> TrackingSessionCleared = delegate { };
 
         public StateMachine(
             IThreadingContext threadingContext,
@@ -58,19 +58,19 @@ internal sealed partial class RenameTrackingTaggerProvider
             IInlineRenameService inlineRenameService,
             IGlobalOptionService globalOptions,
             IAsynchronousOperationListener asyncListener)
-            ThreadingContext = threadingContext
-            Buffer = buffer
-            Buffer.Changed += Buffer_Changed
-            _inlineRenameService = inlineRenameService
-            _asyncListener = asyncListener
-            GlobalOptions = globalOptions
+            ThreadingContext = threadingContext;
+            Buffer = buffer;
+            Buffer.Changed += Buffer_Changed;
+            _inlineRenameService = inlineRenameService;
+            _asyncListener = asyncListener;
+            GlobalOptions = globalOptions;
 
         private void Buffer_Changed(object sender, TextContentChangedEventArgs e)
-            ThreadingContext.ThrowIfNotOnUIThread()
+            ThreadingContext.ThrowIfNotOnUIThread();
 
             if (!GlobalOptions.GetOption(RenameTrackingOptionsStorage.RenameTracking))
                 // When disabled, ignore all text buffer changes and do not trigger retagging
-                return
+                return;
 
             using (Logger.LogBlock(FunctionId.Rename_Tracking_BufferChanged, CancellationToken.None))
                 // When the buffer changes, several things might be happening:
@@ -83,142 +83,142 @@ internal sealed partial class RenameTrackingTaggerProvider
                 //    original word was a renameable identifier or not.
 
                 if (e.Changes.Count != 1 || ShouldClearTrackingSession(e.Changes.Single()))
-                    ClearTrackingSession()
-                    return
+                    ClearTrackingSession();
+                    return;
 
                 // The change is trackable. Figure out whether we should continue an existing
                 // session
 
-                var change = e.Changes.Single()
+                var change = e.Changes.Single();
 
                 if (this.TrackingSession == null)
-                    StartTrackingSession(e)
-                    return
+                    StartTrackingSession(e);
+                    return;
 
                 // There's an existing session. Continue that session if the current change is
                 // contained inside the tracking span.
 
-                var trackingSpanInNewSnapshot = this.TrackingSession.TrackingSpan.GetSpan(e.After)
+                var trackingSpanInNewSnapshot = this.TrackingSession.TrackingSpan.GetSpan(e.After);
                 if (trackingSpanInNewSnapshot.Contains(change.NewSpan))
                     // Continuing an existing tracking session. If there may have been a tag
                     // showing, then update the tags.
-                    UpdateTrackingSessionIfRenamable()
+                    UpdateTrackingSessionIfRenamable();
                 else
-                    StartTrackingSession(e)
+                    StartTrackingSession(e);
 
         public void UpdateTrackingSessionIfRenamable()
-            ThreadingContext.ThrowIfNotOnUIThread()
+            ThreadingContext.ThrowIfNotOnUIThread();
             if (this.TrackingSession.IsDefinitelyRenamableIdentifierFastCheck())
-                this.TrackingSession.CheckNewIdentifier(this, Buffer.CurrentSnapshot)
-                TrackingSessionUpdated()
+                this.TrackingSession.CheckNewIdentifier(this, Buffer.CurrentSnapshot);
+                TrackingSessionUpdated();
 
         private bool ShouldClearTrackingSession(ITextChange change)
-            ThreadingContext.ThrowIfNotOnUIThread()
+            ThreadingContext.ThrowIfNotOnUIThread();
             if (!TryGetSyntaxFactsService(out var syntaxFactsService))
-                return true
+                return true;
 
             // The editor will replace virtual space with spaces and/or tabs when typing on a
             // previously blank line. Trim these characters from the start of change.NewText. If
             // the resulting change is empty (the user just typed a <space>), clear the session.
-            var changedText = change.OldText + change.NewText.TrimStart(' ', '\t')
+            var changedText = change.OldText + change.NewText.TrimStart(' ', '\t');
             if (changedText.IsEmpty())
-                return true
+                return true;
 
-            return changedText.Any(c => !IsTrackableCharacter(syntaxFactsService, c))
+            return changedText.Any(c => !IsTrackableCharacter(syntaxFactsService, c));
 
         private void StartTrackingSession(TextContentChangedEventArgs eventArgs)
-            ThreadingContext.ThrowIfNotOnUIThread()
-            ClearTrackingSession()
+            ThreadingContext.ThrowIfNotOnUIThread();
+            ClearTrackingSession();
 
             if (_inlineRenameService.ActiveSession != null)
-                return
+                return;
 
             // Synchronously find the tracking span in the old document.
 
-            var change = eventArgs.Changes.Single()
-            var beforeText = eventArgs.Before.AsText()
+            var change = eventArgs.Changes.Single();
+            var beforeText = eventArgs.Before.AsText();
             if (!TryGetSyntaxFactsService(out var syntaxFactsService))
-                return
+                return;
 
-            var leftSidePosition = change.OldPosition
-            var rightSidePosition = change.OldPosition + change.OldText.Length
+            var leftSidePosition = change.OldPosition;
+            var rightSidePosition = change.OldPosition + change.OldText.Length;
 
             while (leftSidePosition > 0 && IsTrackableCharacter(syntaxFactsService, beforeText[leftSidePosition - 1]))
-                leftSidePosition--
+                leftSidePosition--;
 
             while (rightSidePosition < beforeText.Length && IsTrackableCharacter(syntaxFactsService, beforeText[rightSidePosition]))
-                rightSidePosition++
+                rightSidePosition++;
 
-            var originalSpan = new Span(leftSidePosition, rightSidePosition - leftSidePosition)
-            this.TrackingSession = new TrackingSession(this, new SnapshotSpan(eventArgs.Before, originalSpan), _asyncListener)
+            var originalSpan = new Span(leftSidePosition, rightSidePosition - leftSidePosition);
+            this.TrackingSession = new TrackingSession(this, new SnapshotSpan(eventArgs.Before, originalSpan), _asyncListener);
 
         private static bool IsTrackableCharacter(ISyntaxFactsService syntaxFactsService, char c)
             // Allow identifier part characters at the beginning of strings (even if they are
             // not identifier start characters). If an intermediate name is not valid, the smart
             // tag will not be shown due to later checks. Also allow escape chars anywhere as
             // they might be in the middle of a complex edit.
-            return syntaxFactsService.IsIdentifierPartCharacter(c) || syntaxFactsService.IsIdentifierEscapeCharacter(c)
+            return syntaxFactsService.IsIdentifierPartCharacter(c) || syntaxFactsService.IsIdentifierEscapeCharacter(c);
 
         public bool ClearTrackingSession()
-            ThreadingContext.ThrowIfNotOnUIThread()
+            ThreadingContext.ThrowIfNotOnUIThread();
 
             if (this.TrackingSession != null)
                 // Disallow the existing TrackingSession from triggering IdentifierFound.
-                var previousTrackingSession = this.TrackingSession
-                this.TrackingSession = null
+                var previousTrackingSession = this.TrackingSession;
+                this.TrackingSession = null;
 
-                previousTrackingSession.Cancel()
+                previousTrackingSession.Cancel();
 
                 // If there may have been a tag showing, then actually clear the tags.
                 if (previousTrackingSession.IsDefinitelyRenamableIdentifierFastCheck())
-                    TrackingSessionCleared(previousTrackingSession.TrackingSpan)
+                    TrackingSessionCleared(previousTrackingSession.TrackingSpan);
 
-                return true
+                return true;
 
-            return false
+            return false;
 
         public bool ClearVisibleTrackingSession()
-            ThreadingContext.ThrowIfNotOnUIThread()
+            ThreadingContext.ThrowIfNotOnUIThread();
 
             if (this.TrackingSession != null && this.TrackingSession.IsDefinitelyRenamableIdentifierFastCheck())
-                var document = Buffer.CurrentSnapshot.GetOpenDocumentInCurrentContextWithChanges()
+                var document = Buffer.CurrentSnapshot.GetOpenDocumentInCurrentContextWithChanges();
                 if (document != null)
                     // When rename tracking is dismissed via escape, we no longer wish to
                     // provide a diagnostic/codefix, but nothing has changed in the workspace
                     // to trigger the diagnostic system to reanalyze, so we trigger it
                     // manually.
-                    var service = document.Project.Solution.Services.GetRequiredService<IDiagnosticAnalyzerService>()
-                    service.RequestDiagnosticRefresh()
+                    var service = document.Project.Solution.Services.GetRequiredService<IDiagnosticAnalyzerService>();
+                    service.RequestDiagnosticRefresh();
 
                 // Disallow the existing TrackingSession from triggering IdentifierFound.
-                var previousTrackingSession = this.TrackingSession
-                this.TrackingSession = null
+                var previousTrackingSession = this.TrackingSession;
+                this.TrackingSession = null;
 
-                previousTrackingSession.Cancel()
-                TrackingSessionCleared(previousTrackingSession.TrackingSpan)
-                return true
+                previousTrackingSession.Cancel();
+                TrackingSessionCleared(previousTrackingSession.TrackingSpan);
+                return true;
 
-            return false
+            return false;
 
         internal int StoreCurrentTrackingSessionAndGenerateId()
-            ThreadingContext.ThrowIfNotOnUIThread()
+            ThreadingContext.ThrowIfNotOnUIThread();
 
-            var existingIndex = _committedSessions.IndexOf(TrackingSession)
+            var existingIndex = _committedSessions.IndexOf(TrackingSession);
             if (existingIndex >= 0)
-                return existingIndex
+                return existingIndex;
 
-            var index = _committedSessions.Count
-            _committedSessions.Insert(index, TrackingSession)
-            return index
+            var index = _committedSessions.Count;
+            _committedSessions.Insert(index, TrackingSession);
+            return index;
 
         public bool CanInvokeRename(
             [NotNullWhen(true)] out TrackingSession trackingSession,
             bool isSmartTagCheck = false)
             // This needs to be able to run on a background thread for the diagnostic.
 
-            trackingSession = this.TrackingSession
+            trackingSession = this.TrackingSession;
             if (trackingSession == null)
-                return false
+                return false;
 
             return TryGetSyntaxFactsService(out var syntaxFactsService) && TryGetLanguageHeuristicsService(out var languageHeuristicsService) &&
                 trackingSession.CanInvokeRename(syntaxFactsService, languageHeuristicsService, isSmartTagCheck)
@@ -239,7 +239,7 @@ internal sealed partial class RenameTrackingTaggerProvider
 
                 if (Buffer.AsTextContainer().CurrentText == text &&
                     CanInvokeRename(out var trackingSession))
-                    var snapshotSpan = trackingSession.TrackingSpan.GetSpan(Buffer.CurrentSnapshot)
+                    var snapshotSpan = trackingSession.TrackingSpan.GetSpan(Buffer.CurrentSnapshot);
 
                     // user needs to be on the same line as the diagnostic location.
                     if (text.AreOnSameLine(userSpan.Start, snapshotSpan.Start))
@@ -251,52 +251,52 @@ internal sealed partial class RenameTrackingTaggerProvider
                         return (new RenameTrackingCodeAction(ThreadingContext, document, title, refactorNotifyServices, undoHistoryRegistry, GlobalOptions),
                             snapshotSpan.Span.ToTextSpan())
 
-                return default
+                return default;
             catch (Exception e) when (FatalError.ReportAndPropagateUnlessCanceled(e))
-                throw ExceptionUtilities.Unreachable()
+                throw ExceptionUtilities.Unreachable();
 
         public void RestoreTrackingSession(int trackingSessionId)
-            ThreadingContext.ThrowIfNotOnUIThread()
-            ClearTrackingSession()
+            ThreadingContext.ThrowIfNotOnUIThread();
+            ClearTrackingSession();
 
-            this.TrackingSession = _committedSessions[trackingSessionId]
-            TrackingSessionUpdated()
+            this.TrackingSession = _committedSessions[trackingSessionId];
+            TrackingSessionUpdated();
 
         public void OnTrackingSessionUpdated(TrackingSession trackingSession)
-            ThreadingContext.ThrowIfNotOnUIThread()
+            ThreadingContext.ThrowIfNotOnUIThread();
 
             if (this.TrackingSession == trackingSession)
-                TrackingSessionUpdated()
+                TrackingSessionUpdated();
 
         private bool TryGetSyntaxFactsService(out ISyntaxFactsService syntaxFactsService)
             // Can be called on a background thread
 
-            syntaxFactsService = null
-            var document = Buffer.CurrentSnapshot.GetOpenDocumentInCurrentContextWithChanges()
+            syntaxFactsService = null;
+            var document = Buffer.CurrentSnapshot.GetOpenDocumentInCurrentContextWithChanges();
             if (document != null)
-                syntaxFactsService = document.GetLanguageService<ISyntaxFactsService>()
+                syntaxFactsService = document.GetLanguageService<ISyntaxFactsService>();
 
-            return syntaxFactsService != null
+            return syntaxFactsService != null;
 
         private bool TryGetLanguageHeuristicsService(out IRenameTrackingLanguageHeuristicsService languageHeuristicsService)
             // Can be called on a background thread
 
-            languageHeuristicsService = null
-            var document = Buffer.CurrentSnapshot.GetOpenDocumentInCurrentContextWithChanges()
+            languageHeuristicsService = null;
+            var document = Buffer.CurrentSnapshot.GetOpenDocumentInCurrentContextWithChanges();
             if (document != null)
-                languageHeuristicsService = document.GetLanguageService<IRenameTrackingLanguageHeuristicsService>()
+                languageHeuristicsService = document.GetLanguageService<IRenameTrackingLanguageHeuristicsService>();
 
-            return languageHeuristicsService != null
+            return languageHeuristicsService != null;
 
         public void Connect()
-            ThreadingContext.ThrowIfNotOnUIThread()
-            _refCount++
+            ThreadingContext.ThrowIfNotOnUIThread();
+            _refCount++;
 
         public void Disconnect()
-            ThreadingContext.ThrowIfNotOnUIThread()
-            _refCount--
-            Contract.ThrowIfFalse(_refCount >= 0)
+            ThreadingContext.ThrowIfNotOnUIThread();
+            _refCount--;
+            Contract.ThrowIfFalse(_refCount >= 0);
 
             if (_refCount == 0)
-                this.Buffer.Properties.RemoveProperty(typeof(StateMachine))
-                this.Buffer.Changed -= Buffer_Changed
+                this.Buffer.Properties.RemoveProperty(typeof(StateMachine));
+                this.Buffer.Changed -= Buffer_Changed;

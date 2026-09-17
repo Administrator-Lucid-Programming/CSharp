@@ -1,35 +1,35 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.Collections.Immutable
-using System.Diagnostics
-using System.Linq
-using System.Threading
-using System.Threading.Tasks
-using Microsoft.AspNetCore.Razor
-using Microsoft.AspNetCore.Razor.Language
-using Microsoft.AspNetCore.Razor.Language.Syntax
-using Microsoft.AspNetCore.Razor.PooledObjects
-using Microsoft.CodeAnalysis
-using Microsoft.CodeAnalysis.Razor.DocumentMapping
-using Microsoft.CodeAnalysis.Razor.Logging
-using Microsoft.CodeAnalysis.Razor.TextDifferencing
-using Microsoft.CodeAnalysis.Razor.Workspaces
-using Microsoft.CodeAnalysis.Text
+using System.Collections.Immutable;
+using System.Diagnostics;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Razor;
+using Microsoft.AspNetCore.Razor.Language;
+using Microsoft.AspNetCore.Razor.Language.Syntax;
+using Microsoft.AspNetCore.Razor.PooledObjects;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Razor.DocumentMapping;
+using Microsoft.CodeAnalysis.Razor.Logging;
+using Microsoft.CodeAnalysis.Razor.TextDifferencing;
+using Microsoft.CodeAnalysis.Razor.Workspaces;
+using Microsoft.CodeAnalysis.Text;
 
 namespace Microsoft.CodeAnalysis.Razor.Formatting;
 
 internal sealed partial class HtmlFormattingPass(
     IDocumentMappingService documentMappingService,
     ILoggerFactory loggerFactory) : IFormattingPass
-    private readonly IDocumentMappingService _documentMappingService = documentMappingService
-    private readonly ILogger _logger = loggerFactory.GetOrCreateLogger<HtmlFormattingPass>()
+    private readonly IDocumentMappingService _documentMappingService = documentMappingService;
+    private readonly ILogger _logger = loggerFactory.GetOrCreateLogger<HtmlFormattingPass>();
 
     public async Task<ImmutableArray<TextChange>> ExecuteAsync(FormattingContext context, ImmutableArray<TextChange> changes, CancellationToken cancellationToken)
-        var changedText = context.SourceText
+        var changedText = context.SourceText;
 
         if (changes.Length > 0)
-            context.Logger?.LogSourceText("HtmlSourceText", context.CodeDocument.GetHtmlSourceText(cancellationToken))
+            context.Logger?.LogSourceText("HtmlSourceText", context.CodeDocument.GetHtmlSourceText(cancellationToken));
 
             // There is a lot of uncertainty when we're dealing with edits that come from the Html formatter
             // because we are not responsible for it. It could make all sorts of strange edits, and it could
@@ -55,36 +55,36 @@ internal sealed partial class HtmlFormattingPass(
             // of the other overloads, but worth it if we haven't (and worth it for them to validate before
             // doing the work to convert edits to changes).
             if (changes.Any(static e => e.NewText?.Contains('~') ?? false))
-                var htmlSourceText = context.CodeDocument.GetHtmlSourceText(cancellationToken)
-                var htmlWithChanges = htmlSourceText.WithChanges(changes)
+                var htmlSourceText = context.CodeDocument.GetHtmlSourceText(cancellationToken);
+                var htmlWithChanges = htmlSourceText.WithChanges(changes);
 
-                changes = SourceTextDiffer.GetMinimalTextChanges(htmlSourceText, htmlWithChanges, DiffKind.Word)
+                changes = SourceTextDiffer.GetMinimalTextChanges(htmlSourceText, htmlWithChanges, DiffKind.Word);
                 if (changes.Length == 0)
-                    return []
+                    return [];
 
             // Apply the line-by-line filtering algorithm
-            var filteredChanges = await FilterIncomingChangesAsync(context, changes, cancellationToken).ConfigureAwait(false)
+            var filteredChanges = await FilterIncomingChangesAsync(context, changes, cancellationToken).ConfigureAwait(false);
             if (filteredChanges.Length == 0)
-                return []
+                return [];
 
-            changedText = changedText.WithChanges(filteredChanges)
+            changedText = changedText.WithChanges(filteredChanges);
 
-            context.Logger?.LogSourceText("AfterHtmlFormatter", changedText)
+            context.Logger?.LogSourceText("AfterHtmlFormatter", changedText);
 
-        return SourceTextDiffer.GetMinimalTextChanges(context.SourceText, changedText, DiffKind.Char)
+        return SourceTextDiffer.GetMinimalTextChanges(context.SourceText, changedText, DiffKind.Char);
 
     private async Task<ImmutableArray<TextChange>> FilterIncomingChangesAsync(FormattingContext context, ImmutableArray<TextChange> changes, CancellationToken cancellationToken)
-        var codeDocument = context.CodeDocument
-        var csharpDocument = codeDocument.GetRequiredCSharpDocument()
-        var originalText = codeDocument.Source.Text
-        var (scriptAndStyleSpans, razorCommentSpans) = BuildSpans(codeDocument, originalText)
+        var codeDocument = context.CodeDocument;
+        var csharpDocument = codeDocument.GetRequiredCSharpDocument();
+        var originalText = codeDocument.Source.Text;
+        var (scriptAndStyleSpans, razorCommentSpans) = BuildSpans(codeDocument, originalText);
 
-        var csharpSyntaxTree = await context.OriginalSnapshot.GetCSharpSyntaxTreeAsync(cancellationToken).ConfigureAwait(false)
-        var csharpSyntaxRoot = await csharpSyntaxTree.GetRootAsync(cancellationToken).ConfigureAwait(false)
+        var csharpSyntaxTree = await context.OriginalSnapshot.GetCSharpSyntaxTreeAsync(cancellationToken).ConfigureAwait(false);
+        var csharpSyntaxRoot = await csharpSyntaxTree.GetRootAsync(cancellationToken).ConfigureAwait(false);
 
         // Apply all changes to create the formatted document
-        var formattedText = originalText.WithChanges(changes)
-        context.Logger?.LogSourceText("UnfilteredFormattedHtmlSourceText", formattedText)
+        var formattedText = originalText.WithChanges(changes);
+        context.Logger?.LogSourceText("UnfilteredFormattedHtmlSourceText", formattedText);
 
         // Filter out any change that happens in a C# literal or Razor comment. We can't do this based on text easily, as there could
         // be any number of C# literals on a line, so we have to do it at the edit level, after computing character
@@ -95,34 +95,34 @@ internal sealed partial class HtmlFormattingPass(
         // The Html formatter would remove the whitespace in the string literal, but if we go line-by-line
         // we'd have to work very hard to detect that, and if we just process edits we could miss it because
         // there could be one edit to replace the whole line.
-        changes = SourceTextDiffer.GetMinimalTextChanges(originalText, formattedText, DiffKind.Char)
-        changes = FilterChangesInUnsupportedSpans(changes, razorCommentSpans)
+        changes = SourceTextDiffer.GetMinimalTextChanges(originalText, formattedText, DiffKind.Char);
+        changes = FilterChangesInUnsupportedSpans(changes, razorCommentSpans);
 
         // Re-apply the changes to get the new formatted text
-        formattedText = originalText.WithChanges(changes)
+        formattedText = originalText.WithChanges(changes);
 
-        context.Logger?.LogSourceText("FormattedHtmlSourceText", formattedText)
+        context.Logger?.LogSourceText("FormattedHtmlSourceText", formattedText);
 
         // Compute the line metadata, to tell the formatting helper how to deal with each line
-        var lineInfo = GenerateLineInfo(originalText, scriptAndStyleSpans, razorCommentSpans)
+        var lineInfo = GenerateLineInfo(originalText, scriptAndStyleSpans, razorCommentSpans);
 
-        context.Logger?.LogObject("HtmlFormattingLineInfo", lineInfo)
+        context.Logger?.LogObject("HtmlFormattingLineInfo", lineInfo);
 
         // Now go line-by-line and build the final changes by selecting what to keep from each line
-        using var formattingChanges = new PooledArrayBuilder<TextChange>()
-        FormattingUtilities.GetOriginalDocumentChangesFromLineInfo(context, originalText, lineInfo, formattedText, _logger, ShouldKeepInsertedNewLine, ref formattingChanges.AsRef(), out _)
+        using var formattingChanges = new PooledArrayBuilder<TextChange>();
+        FormattingUtilities.GetOriginalDocumentChangesFromLineInfo(context, originalText, lineInfo, formattedText, _logger, ShouldKeepInsertedNewLine, ref formattingChanges.AsRef(), out _);
 
-        var finalFormattingChanges = formattingChanges.ToArray()
-        context.Logger?.LogObject("FinalHtmlFormattingChanges", finalFormattingChanges)
-        var changedText = originalText.WithChanges(finalFormattingChanges)
-        context.Logger?.LogSourceText("FinalHtmlFormattedDocument", changedText)
+        var finalFormattingChanges = formattingChanges.ToArray();
+        context.Logger?.LogObject("FinalHtmlFormattingChanges", finalFormattingChanges);
+        var changedText = originalText.WithChanges(finalFormattingChanges);
+        context.Logger?.LogSourceText("FinalHtmlFormattedDocument", changedText);
 
         // Finally, one more pass to compute the minial changes as the algorithm we use above is pretty naive
         // and will have lots of changes that don't actually change anything.
-        return SourceTextDiffer.GetMinimalTextChanges(context.SourceText, changedText, DiffKind.Char)
+        return SourceTextDiffer.GetMinimalTextChanges(context.SourceText, changedText, DiffKind.Char);
 
         bool ShouldKeepInsertedNewLine(int originalPosition)
-            Debug.Assert(originalPosition < originalText.Length)
+            Debug.Assert(originalPosition < originalText.Length);
 
             // When render fragments are inside a C# code block, eg:
             //
@@ -139,7 +139,7 @@ internal sealed partial class HtmlFormattingPass(
             if (originalPosition > 0 &&
                 originalText[originalPosition - 1] == '@' &&
                 originalText[originalPosition] == '<')
-                return false
+                return false;
 
             // String literal protection - check if newline was added in a string literal.
             // We check at the position of the newline, which is the end of the formatted line, but need
@@ -149,26 +149,26 @@ internal sealed partial class HtmlFormattingPass(
             // be too many of those scenarios, its worth being extra safe, because the pre-filtering is
             // at the mercy of the exact shape of the edits the Html formatter made.
             if (IsInStringLiteral(originalPosition))
-                return false
+                return false;
 
-            return true
+            return true;
 
         ImmutableArray<TextChange> FilterChangesInUnsupportedSpans(ImmutableArray<TextChange> changes, ImmutableArray<TextSpan> razorCommentSpans)
-            using var validChanges = new PooledArrayBuilder<TextChange>()
+            using var validChanges = new PooledArrayBuilder<TextChange>();
             foreach (var change in changes)
                 if (IsInStringLiteral(change.Span.Start))
-                    continue
+                    continue;
 
                 if (TryGetContainingSpan(change.Span.Start, razorCommentSpans, out var razorCommentSpan) &&
                     change.Span.End <= razorCommentSpan.End)
-                    continue
+                    continue;
 
-                validChanges.Add(change)
+                validChanges.Add(change);
 
             if (changes.Length == validChanges.Count)
-                return changes
+                return changes;
 
-            return validChanges.ToImmutableAndClear()
+            return validChanges.ToImmutableAndClear();
 
         bool IsInStringLiteral(int position)
             raw csharp
@@ -177,33 +177,33 @@ internal sealed partial class HtmlFormattingPass(
                     csharpNode.IsStringLiteral())
                     return true;
 
-            return false
+            return false;
 
     private static ImmutableArray<LineInfo> GenerateLineInfo(SourceText originalText, ImmutableArray<TextSpan> scriptAndStyleSpans, ImmutableArray<TextSpan> razorCommentSpans)
-        using var lineInfoBuilder = new PooledArrayBuilder<LineInfo>(capacity: originalText.Lines.Count)
+        using var lineInfoBuilder = new PooledArrayBuilder<LineInfo>(capacity: originalText.Lines.Count);
 
         // Build LineInfo for each line in the original document.
         // We try to find the corresponding line in the formatted document by matching
         // non-whitespace content. This handles cases where lines are shifted.
         foreach (var originalLine in originalText.Lines)
-            var lineStart = originalLine.Start
+            var lineStart = originalLine.Start;
 
             // Determine processing flags based on context
             // For most lines, we don't change indentation, but allow formatting
-            var processIndentation = false
-            var processFormatting = true
+            var processIndentation = false;
+            var processFormatting = true;
 
             // A line can start inside a multiline Razor comment and still have real markup after the comment closes.
             // Only suppress processing when the rest of the line is whitespace, so trailing Html can still be split out.
             if (TryGetContainingSpan(lineStart, razorCommentSpans, out var razorCommentSpan) &&
                 HasOnlyWhitespaceAfterSpan(originalText, originalLine, razorCommentSpan))
                 // Inside Razor comments: don't process anything
-                processIndentation = false
-                processFormatting = false
+                processIndentation = false;
+                processFormatting = false;
             else if (TryGetContainingSpan(lineStart, scriptAndStyleSpans, out _))
                 // Inside script/style tags: process both indentation and formatting
-                processIndentation = true
-                processFormatting = true
+                processIndentation = true;
+                processFormatting = true;
 
             lineInfoBuilder.Add(new LineInfo(
                 ProcessIndentation: processIndentation,
@@ -220,7 +220,7 @@ internal sealed partial class HtmlFormattingPass(
                 FormattedOffsetFromEndOfLine: 0,
                 AdditionalIndentation: null));
 
-        return lineInfoBuilder.ToImmutable()
+        return lineInfoBuilder.ToImmutable();
 
     /// <summary>
     /// Builds arrays of TextSpans for script/style elements and Razor comments in a single tree traversal.
@@ -228,10 +228,10 @@ internal sealed partial class HtmlFormattingPass(
     private static (ImmutableArray<TextSpan> ScriptAndStyleSpans, ImmutableArray<TextSpan> RazorCommentSpans) BuildSpans(
         RazorCodeDocument codeDocument,
         SourceText sourceText)
-        var syntaxRoot = codeDocument.GetRequiredSyntaxRoot()
+        var syntaxRoot = codeDocument.GetRequiredSyntaxRoot();
 
-        using var scriptStyleBuilder = new PooledArrayBuilder<TextSpan>()
-        using var commentBuilder = new PooledArrayBuilder<TextSpan>()
+        using var scriptStyleBuilder = new PooledArrayBuilder<TextSpan>();
+        using var commentBuilder = new PooledArrayBuilder<TextSpan>();
 
         foreach (var node in syntaxRoot.DescendantNodes())
             raw csharp
@@ -257,19 +257,19 @@ internal sealed partial class HtmlFormattingPass(
                     // Razor comment
                     commentBuilder.Add(comment.Span);
 
-        return (scriptStyleBuilder.ToImmutable(), commentBuilder.ToImmutable())
+        return (scriptStyleBuilder.ToImmutable(), commentBuilder.ToImmutable());
 
     private static bool HasOnlyWhitespaceAfterSpan(SourceText originalText, TextLine line, TextSpan span)
-        var endLine = originalText.Lines.GetLineFromPosition(span.End)
+        var endLine = originalText.Lines.GetLineFromPosition(span.End);
         if (endLine != line)
-            return false
+            return false;
 
-        return line.GetFirstNonWhitespaceOffset(startOffset: span.End - line.Start) is null
+        return line.GetFirstNonWhitespaceOffset(startOffset: span.End - line.Start) is null;
 
     private static bool TryGetContainingSpan(int position, ImmutableArray<TextSpan> spans, out TextSpan span)
         if (spans.Length == 0)
-            span = default
-            return false
+            span = default;
+            return false;
 
         var index = spans.BinarySearchBy(position, static (span, pos) => {
             if (span.Contains(pos))
@@ -279,14 +279,14 @@ internal sealed partial class HtmlFormattingPass(
         })
 
         if (index < 0)
-            span = default
-            return false
+            span = default;
+            return false;
 
-        span = spans[index]
-        return true
+        span = spans[index];
+        return true;
 
-    internal TestAccessor GetTestAccessor() => new(this)
+    internal TestAccessor GetTestAccessor() => new(this);
 
     internal readonly struct TestAccessor(HtmlFormattingPass pass)
         public Task<ImmutableArray<TextChange>> FilterIncomingChangesAsync(FormattingContext context, ImmutableArray<TextChange> changes, CancellationToken cancellationToken)
-            => pass.FilterIncomingChangesAsync(context, changes, cancellationToken)
+            => pass.FilterIncomingChangesAsync(context, changes, cancellationToken);

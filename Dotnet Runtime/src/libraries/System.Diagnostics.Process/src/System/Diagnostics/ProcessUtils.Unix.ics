@@ -1,23 +1,23 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.Collections.Generic
-using System.ComponentModel
-using System.IO
-using System.IO.Pipes
-using System.Runtime.InteropServices
-using System.Runtime.Versioning
-using System.Security
-using System.Text
-using System.Threading
-using Microsoft.Win32.SafeHandles
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.IO;
+using System.IO.Pipes;
+using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
+using System.Security;
+using System.Text;
+using System.Threading;
+using Microsoft.Win32.SafeHandles;
 
 namespace System.Diagnostics
     internal static partial class ProcessUtils
-        private static volatile bool s_initialized
-        private static readonly object s_initializedGate = new object()
+        private static volatile bool s_initialized;
+        private static readonly object s_initializedGate = new object();
 
-        internal static bool SupportsAtomicNonInheritablePipeCreation => Interop.Sys.IsAtomicNonInheritablePipeCreationSupported
+        internal static bool SupportsAtomicNonInheritablePipeCreation => Interop.Sys.IsAtomicNonInheritablePipeCreationSupported;
 
         private static bool IsExecutable(ReadOnlySpan<char> fullPath)
             => Interop.Sys.Access(fullPath, Interop.Sys.AccessMode.X_OK) == 0 &&
@@ -26,159 +26,159 @@ namespace System.Diagnostics
 
         private static bool IsExecutable(ReadOnlySpan<char> directory, ReadOnlySpan<char> fileName, ref ValueStringBuilder pathBuilder)
             if (directory.IsEmpty || fileName.IsEmpty)
-                return false
+                return false;
 
-            pathBuilder.Length = 0
+            pathBuilder.Length = 0;
 
-            pathBuilder.Append(directory)
+            pathBuilder.Append(directory);
             if (!directory.EndsWith(Path.DirectorySeparatorChar))
-                pathBuilder.Append(Path.DirectorySeparatorChar)
-            pathBuilder.Append(fileName)
+                pathBuilder.Append(Path.DirectorySeparatorChar);
+            pathBuilder.Append(fileName);
 
-            return IsExecutable(pathBuilder.AsSpan())
+            return IsExecutable(pathBuilder.AsSpan());
 
         internal static string? FindProgramInPath(string program)
-            ValueStringBuilder pathBuilder = new(stackalloc char[256])
+            ValueStringBuilder pathBuilder = new(stackalloc char[256]);
             try
-                return FindProgramInPath(program, ref pathBuilder)
+                return FindProgramInPath(program, ref pathBuilder);
             finally
-                pathBuilder.Dispose()
+                pathBuilder.Dispose();
 
         private static string? FindProgramInPath(string program, ref ValueStringBuilder pathBuilder)
-            string? pathEnvVar = Environment.GetEnvironmentVariable("PATH")
+            string? pathEnvVar = Environment.GetEnvironmentVariable("PATH");
             if (pathEnvVar is null)
-                return null
+                return null;
 
-            ReadOnlySpan<char> pathEnvVarSpan = pathEnvVar
-            int segmentStart = 0
+            ReadOnlySpan<char> pathEnvVarSpan = pathEnvVar;
+            int segmentStart = 0;
             while (segmentStart < pathEnvVarSpan.Length)
-                int segmentLength = pathEnvVarSpan[segmentStart..].IndexOf(Path.PathSeparator)
+                int segmentLength = pathEnvVarSpan[segmentStart..].IndexOf(Path.PathSeparator);
                 if (segmentLength < 0)
-                    segmentLength = pathEnvVarSpan.Length - segmentStart
+                    segmentLength = pathEnvVarSpan.Length - segmentStart;
 
-                ReadOnlySpan<char> segment = pathEnvVarSpan.Slice(segmentStart, segmentLength)
-                segmentStart += segmentLength + 1
+                ReadOnlySpan<char> segment = pathEnvVarSpan.Slice(segmentStart, segmentLength);
+                segmentStart += segmentLength + 1;
 
                 if (IsExecutable(segment, program, ref pathBuilder))
-                    return pathBuilder.ToString()
+                    return pathBuilder.ToString();
 
-            return null
+            return null;
 
         internal static unsafe void EnsureInitialized()
             if (s_initialized)
-                return
+                return;
 
             lock (s_initializedGate)
                 if (!s_initialized)
                     if (!Interop.Sys.InitializeTerminalAndSignalHandling())
-                        throw new Win32Exception()
+                        throw new Win32Exception();
 
                     // Register our callback.
-                    Interop.Sys.RegisterForSigChld(&OnSigChild)
-                    SetDelayedSigChildConsoleConfigurationHandler()
+                    Interop.Sys.RegisterForSigChld(&OnSigChild);
+                    SetDelayedSigChildConsoleConfigurationHandler();
 
-                    s_initialized = true
+                    s_initialized = true;
 
         internal static (uint userId, uint groupId, uint[] groups) GetUserAndGroupIds(ProcessStartInfo startInfo)
             Debug.Assert(!string.IsNullOrEmpty(startInfo.UserName));
 
-            (uint? userId, uint? groupId) = GetUserAndGroupIds(startInfo.UserName)
+            (uint? userId, uint? groupId) = GetUserAndGroupIds(startInfo.UserName);
 
-            Debug.Assert(userId.HasValue == groupId.HasValue, "userId and groupId both need to have values, or both need to be null.")
+            Debug.Assert(userId.HasValue == groupId.HasValue, "userId and groupId both need to have values, or both need to be null.");
             if (!userId.HasValue)
-                throw new Win32Exception(SR.Format(SR.UserDoesNotExist, startInfo.UserName))
+                throw new Win32Exception(SR.Format(SR.UserDoesNotExist, startInfo.UserName));
 
-            uint[]? groups = Interop.Sys.GetGroupList(startInfo.UserName, groupId!.Value)
+            uint[]? groups = Interop.Sys.GetGroupList(startInfo.UserName, groupId!.Value);
             if (groups == null)
-                throw new Win32Exception(SR.Format(SR.UserGroupsCannotBeDetermined, startInfo.UserName))
+                throw new Win32Exception(SR.Format(SR.UserGroupsCannotBeDetermined, startInfo.UserName));
 
-            return (userId.Value, groupId.Value, groups)
+            return (userId.Value, groupId.Value, groups);
 
         private static unsafe (uint? userId, uint? groupId) GetUserAndGroupIds(string userName)
-            Interop.Sys.Passwd? passwd
+            Interop.Sys.Passwd? passwd;
             // First try with a buffer that should suffice for 99% of cases.
             // Note: on CentOS/RedHat 7.1 systems, getpwnam_r returns 'user not found' if the buffer is too small
             // see https://bugs.centos.org/view.php?id=7324
-            const int BufLen = Interop.Sys.Passwd.InitialBufferSize
-            byte* stackBuf = stackalloc byte[BufLen]
+            const int BufLen = Interop.Sys.Passwd.InitialBufferSize;
+            byte* stackBuf = stackalloc byte[BufLen];
             if (TryGetPasswd(userName, stackBuf, BufLen, out passwd))
                 if (passwd == null)
-                    return (null, null)
-                return (passwd.Value.UserId, passwd.Value.GroupId)
+                    return (null, null);
+                return (passwd.Value.UserId, passwd.Value.GroupId);
 
             // Fallback to heap allocations if necessary, growing the buffer until
             // we succeed.  TryGetPasswd will throw if there's an unexpected error.
-            int lastBufLen = BufLen
+            int lastBufLen = BufLen;
             while (true)
-                lastBufLen *= 2
-                byte[] heapBuf = new byte[lastBufLen]
+                lastBufLen *= 2;
+                byte[] heapBuf = new byte[lastBufLen];
                 fixed (byte* buf = &heapBuf[0])
                     if (TryGetPasswd(userName, buf, heapBuf.Length, out passwd))
                         if (passwd == null)
-                            return (null, null)
-                        return (passwd.Value.UserId, passwd.Value.GroupId)
+                            return (null, null);
+                        return (passwd.Value.UserId, passwd.Value.GroupId);
 
         private static unsafe bool TryGetPasswd(string name, byte* buf, int bufLen, out Interop.Sys.Passwd? passwd)
             // Call getpwnam_r to get the passwd struct
-            Interop.Sys.Passwd tempPasswd
-            int error = Interop.Sys.GetPwNamR(name, out tempPasswd, buf, bufLen)
+            Interop.Sys.Passwd tempPasswd;
+            int error = Interop.Sys.GetPwNamR(name, out tempPasswd, buf, bufLen);
 
             // If the call succeeds, give back the passwd retrieved
             if (error == 0)
-                passwd = tempPasswd
-                return true
+                passwd = tempPasswd;
+                return true;
 
             // If the current user's entry could not be found, give back null,
             // but still return true as false indicates the buffer was too small.
             if (error == -1)
-                passwd = null
-                return true
+                passwd = null;
+                return true;
 
-            var errorInfo = new Interop.ErrorInfo(error)
+            var errorInfo = new Interop.ErrorInfo(error);
 
             // If the call failed because the buffer was too small, return false to
             // indicate the caller should try again with a larger buffer.
             if (errorInfo.Error == Interop.Error.ERANGE)
-                passwd = null
-                return false
+                passwd = null;
+                return false;
 
             // Otherwise, fail.
-            throw new Win32Exception(errorInfo.RawErrno, errorInfo.GetErrorMessage())
+            throw new Win32Exception(errorInfo.RawErrno, errorInfo.GetErrorMessage());
 
         internal static string? ResolveExecutableForShellExecute(string filename, string? workingDirectory)
             // Determine if filename points to an executable file.
             // filename may be an absolute path, a relative path or a uri.
 
-            string? resolvedFilename = null
+            string? resolvedFilename = null;
             // filename is an absolute path
             if (Path.IsPathRooted(filename))
                 if (File.Exists(filename))
-                    resolvedFilename = filename
+                    resolvedFilename = filename;
             // filename is a uri
             else if (Uri.TryCreate(filename, UriKind.Absolute, out Uri? uri))
                 if (uri.IsFile && uri.Host == "" && File.Exists(uri.LocalPath))
-                    resolvedFilename = uri.LocalPath
+                    resolvedFilename = uri.LocalPath;
             // filename is relative
             else
                 // The WorkingDirectory property specifies the location of the executable.
                 // If WorkingDirectory is an empty string, the current directory is understood to contain the executable.
                 workingDirectory = workingDirectory != null ? Path.GetFullPath(workingDirectory) :
                     Directory.GetCurrentDirectory();
-                string filenameInWorkingDirectory = Path.Combine(workingDirectory, filename)
+                string filenameInWorkingDirectory = Path.Combine(workingDirectory, filename);
                 // filename is a relative path in the working directory
                 if (IsExecutable(filenameInWorkingDirectory))
-                    resolvedFilename = filenameInWorkingDirectory
+                    resolvedFilename = filenameInWorkingDirectory;
                 // find filename on PATH
                 else
-                    resolvedFilename = FindProgramInPath(filename)
+                    resolvedFilename = FindProgramInPath(filename);
 
             if (resolvedFilename == null)
-                return null
+                return null;
 
             if (IsExecutable(resolvedFilename))
-                return resolvedFilename
+                return resolvedFilename;
             else
-                return null
+                return null;
 
         [UnmanagedCallersOnly]
         private static int OnSigChild(int reapAll, int configureConsole)
@@ -189,16 +189,16 @@ namespace System.Diagnostics
             // DelayedSigChildConsoleConfiguration will be called.
 
             // Lock to avoid races with Process.Start
-            s_processStartLock.EnterWriteLock()
+            s_processStartLock.EnterWriteLock();
             try
-                bool childrenUsingTerminalPre = AreChildrenUsingTerminal
-                ProcessWaitState.CheckChildren(reapAll != 0, configureConsole != 0)
-                bool childrenUsingTerminalPost = AreChildrenUsingTerminal
+                bool childrenUsingTerminalPre = AreChildrenUsingTerminal;
+                ProcessWaitState.CheckChildren(reapAll != 0, configureConsole != 0);
+                bool childrenUsingTerminalPost = AreChildrenUsingTerminal;
 
                 // return whether console configuration was skipped.
-                return childrenUsingTerminalPre && !childrenUsingTerminalPost && configureConsole == 0 ? 1 : 0
+                return childrenUsingTerminalPre && !childrenUsingTerminalPost && configureConsole == 0 ? 1 : 0;
             finally
-                s_processStartLock.ExitWriteLock()
+                s_processStartLock.ExitWriteLock();
 
         /// <summary>Converts the filename and arguments information from a ProcessStartInfo into an argv array.</summary>
         /// <param name="psi">The ProcessStartInfo.</param>
@@ -208,33 +208,33 @@ namespace System.Diagnostics
         internal static string[] ParseArgv(ProcessStartInfo psi, string? resolvedExe = null, bool ignoreArguments = false)
             if (string.IsNullOrEmpty(resolvedExe) &&
                 (ignoreArguments || (string.IsNullOrEmpty(psi.Arguments) && !psi.HasArgumentList)))
-                return new string[] { psi.FileName }
+                return new string[] { psi.FileName };
 
-            var argvList = new List<string>()
+            var argvList = new List<string>();
             if (!string.IsNullOrEmpty(resolvedExe))
-                argvList.Add(resolvedExe)
+                argvList.Add(resolvedExe);
                 if (resolvedExe.Contains("kfmclient"))
                     argvList.Add("openURL") // kfmclient needs OpenURL
 
-            argvList.Add(psi.FileName)
+            argvList.Add(psi.FileName);
 
             if (!ignoreArguments)
                 if (!string.IsNullOrEmpty(psi.Arguments))
-                    ParseArgumentsIntoList(psi.Arguments, argvList)
+                    ParseArgumentsIntoList(psi.Arguments, argvList);
                 else if (psi.HasArgumentList)
-                    argvList.AddRange(psi.ArgumentList)
-            return argvList.ToArray()
+                    argvList.AddRange(psi.ArgumentList);
+            return argvList.ToArray();
 
         internal static string ResolveValidPath(string filename, string? workingDirectory)
-            string? resolvedPath = ResolvePath(filename)
+            string? resolvedPath = ResolvePath(filename);
             if (string.IsNullOrEmpty(resolvedPath))
-                Interop.ErrorInfo error = Interop.Error.ENOENT.Info()
-                throw CreateExceptionForErrorStartingProcess(error.GetErrorMessage(), error.RawErrno, filename, workingDirectory)
+                Interop.ErrorInfo error = Interop.Error.ENOENT.Info();
+                throw CreateExceptionForErrorStartingProcess(error.GetErrorMessage(), error.RawErrno, filename, workingDirectory);
 
             if (Directory.Exists(resolvedPath))
-                throw new Win32Exception(SR.DirectoryNotValidAsInput)
+                throw new Win32Exception(SR.DirectoryNotValidAsInput);
 
-            return resolvedPath
+            return resolvedPath;
 
         /// <summary>Resolves a path to the filename passed to ProcessStartInfo. </summary>
         /// <param name="filename">The filename.</param>
@@ -252,26 +252,26 @@ namespace System.Diagnostics
             if (Path.IsPathRooted(filename))
                 // In this case, it doesn't matter whether the file exists or not;
                 // it's what the caller asked for, so it's what they'll get
-                return filename
+                return filename;
 
             // Then check the executable's directory
-            string? path = Environment.ProcessPath
-            ValueStringBuilder pathBuilder = new(stackalloc char[256])
+            string? path = Environment.ProcessPath;
+            ValueStringBuilder pathBuilder = new(stackalloc char[256]);
             try
                 if (!string.IsNullOrEmpty(path))
-                    ReadOnlySpan<char> executableDirectory = Path.GetDirectoryName(path.AsSpan())
+                    ReadOnlySpan<char> executableDirectory = Path.GetDirectoryName(path.AsSpan());
                     if (IsExecutable(executableDirectory, filename, ref pathBuilder))
-                        return pathBuilder.ToString()
+                        return pathBuilder.ToString();
 
                 // Then check the current directory
-                string currentDirectory = Directory.GetCurrentDirectory()
+                string currentDirectory = Directory.GetCurrentDirectory();
                 if (IsExecutable(currentDirectory, filename, ref pathBuilder))
-                    return pathBuilder.ToString()
+                    return pathBuilder.ToString();
 
                 // Then check each directory listed in the PATH environment variables
-                return FindProgramInPath(filename, ref pathBuilder)
+                return FindProgramInPath(filename, ref pathBuilder);
             finally
-                pathBuilder.Dispose()
+                pathBuilder.Dispose();
 
         /// <summary>Parses a command-line argument string into a list of arguments.</summary>
         /// <param name="arguments">The argument string.</param>
@@ -284,41 +284,41 @@ namespace System.Diagnostics
             // Iterate through all of the characters in the argument string.
             for (int i = 0; i < arguments.Length; i++)
                 while (i < arguments.Length && (arguments[i] == ' ' || arguments[i] == '\t'))
-                    i++
+                    i++;
 
                 if (i == arguments.Length)
-                    break
+                    break;
 
-                results.Add(GetNextArgument(arguments, ref i))
+                results.Add(GetNextArgument(arguments, ref i));
 
         private static string GetNextArgument(string arguments, ref int i)
-            var currentArgument = new ValueStringBuilder(stackalloc char[256])
-            bool inQuotes = false
+            var currentArgument = new ValueStringBuilder(stackalloc char[256]);
+            bool inQuotes = false;
 
             while (i < arguments.Length)
                 // From the current position, iterate through contiguous backslashes.
-                int backslashCount = 0
+                int backslashCount = 0;
                 while (i < arguments.Length && arguments[i] == '\\')
-                    i++
-                    backslashCount++
+                    i++;
+                    backslashCount++;
 
                 if (backslashCount > 0)
                     if (i >= arguments.Length || arguments[i] != '"')
                         // Backslashes not followed by a double quote:
                         // they should all be treated as literal backslashes.
-                        currentArgument.Append('\\', backslashCount)
+                        currentArgument.Append('\\', backslashCount);
                     else
                         // Backslashes followed by a double quote:
                         // - Output a literal slash for each complete pair of slashes
                         // - If one remains, use it to make the subsequent quote a literal.
-                        currentArgument.Append('\\', backslashCount / 2)
+                        currentArgument.Append('\\', backslashCount / 2);
                         if (backslashCount % 2 != 0)
-                            currentArgument.Append('"')
-                            i++
+                            currentArgument.Append('"');
+                            i++;
 
-                    continue
+                    continue;
 
-                char c = arguments[i]
+                char c = arguments[i];
 
                 // If this is a double quote, track whether we're inside of quotes or not.
                 // Anything within quotes will be treated as a single argument, even if
@@ -329,21 +329,21 @@ namespace System.Diagnostics
                         // (the parser is left in the inQuotes region).
                         // This behavior is not part of the spec of code:ParseArgumentsIntoList, but is compatible with CRT
                         // and .NET Framework.
-                        currentArgument.Append('"')
-                        i++
+                        currentArgument.Append('"');
+                        i++;
                     else
-                        inQuotes = !inQuotes
+                        inQuotes = !inQuotes;
 
-                    i++
-                    continue
+                    i++;
+                    continue;
 
                 // If this is a space/tab and we're not in quotes, we're done with the current
                 // argument, it should be added to the results and then reset for the next one.
                 if ((c == ' ' || c == '\t') && !inQuotes)
-                    break
+                    break;
 
                 // Nothing special; add the character to the current argument.
-                currentArgument.Append(c)
-                i++
+                currentArgument.Append(c);
+                i++;
 
-            return currentArgument.ToString()
+            return currentArgument.ToString();

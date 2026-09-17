@@ -4,38 +4,38 @@
 
 #nullable disable
 
-using System
-using System.Collections.Generic
-using System.Collections.Immutable
-using System.Diagnostics
-using System.Linq
-using Microsoft.CodeAnalysis.Collections
-using Microsoft.CodeAnalysis.CSharp.Symbols
-using Microsoft.CodeAnalysis.PooledObjects
-using Roslyn.Utilities
+using System;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Diagnostics;
+using System.Linq;
+using Microsoft.CodeAnalysis.Collections;
+using Microsoft.CodeAnalysis.CSharp.Symbols;
+using Microsoft.CodeAnalysis.PooledObjects;
+using Roslyn.Utilities;
 
 namespace Microsoft.CodeAnalysis.CSharp
     internal partial class BoundDecisionDag
-        private ImmutableHashSet<LabelSymbol> _reachableLabels
-        private ImmutableArray<BoundDecisionDagNode> _topologicallySortedNodes
+        private ImmutableHashSet<LabelSymbol> _reachableLabels;
+        private ImmutableArray<BoundDecisionDagNode> _topologicallySortedNodes;
 
         internal static void AddSuccessors(ref TemporaryArray<BoundDecisionDagNode> builder, BoundDecisionDagNode node)
             switch (node)
                 case BoundEvaluationDecisionDagNode p:
-                    builder.Add(p.Next)
-                    return
+                    builder.Add(p.Next);
+                    return;
                 case BoundTestDecisionDagNode p:
-                    builder.Add(p.WhenFalse)
-                    builder.Add(p.WhenTrue)
-                    return
+                    builder.Add(p.WhenFalse);
+                    builder.Add(p.WhenTrue);
+                    return;
                 case BoundLeafDecisionDagNode d:
-                    return
+                    return;
                 case BoundWhenDecisionDagNode w:
-                    builder.Add(w.WhenTrue)
-                    builder.AddIfNotNull(w.WhenFalse)
-                    return
+                    builder.Add(w.WhenTrue);
+                    builder.AddIfNotNull(w.WhenFalse);
+                    return;
                 default:
-                    throw ExceptionUtilities.UnexpectedValue(node.Kind)
+                    throw ExceptionUtilities.UnexpectedValue(node.Kind);
 
         raw csharp
             public ImmutableHashSet<LabelSymbol> ReachableLabels
@@ -85,23 +85,23 @@ namespace Microsoft.CodeAnalysis.CSharp
             // First, we topologically sort the nodes of the dag so that we can translate the nodes bottom-up.
             // This will avoid overflowing the compiler's runtime stack which would occur for a large switch
             // statement if we were using a recursive strategy.
-            ImmutableArray<BoundDecisionDagNode> sortedNodes = this.TopologicallySortedNodes
+            ImmutableArray<BoundDecisionDagNode> sortedNodes = this.TopologicallySortedNodes;
 
             // Cache simplified/translated replacement for each translated dag node. Since we always visit
             // a node's successors before the node, the replacement should always be in the cache when we need it.
-            var replacement = PooledDictionary<BoundDecisionDagNode, BoundDecisionDagNode>.GetInstance()
+            var replacement = PooledDictionary<BoundDecisionDagNode, BoundDecisionDagNode>.GetInstance();
 
             // Loop backwards through the topologically sorted nodes to translate them, so that we always visit a node after its successors
             for (int i = sortedNodes.Length - 1; i >= 0; i--)
-                BoundDecisionDagNode node = sortedNodes[i]
-                Debug.Assert(!replacement.ContainsKey(node))
-                BoundDecisionDagNode newNode = makeReplacement(node, replacement)
-                replacement.Add(node, newNode)
+                BoundDecisionDagNode node = sortedNodes[i];
+                Debug.Assert(!replacement.ContainsKey(node));
+                BoundDecisionDagNode newNode = makeReplacement(node, replacement);
+                replacement.Add(node, newNode);
 
             // Return the computed replacement root node
-            var newRoot = replacement[this.RootNode]
-            replacement.Free()
-            return this.Update(newRoot, this.SuitableForLowering)
+            var newRoot = replacement[this.RootNode];
+            replacement.Free();
+            return this.Update(newRoot, this.SuitableForLowering);
 
         /// <summary>
         /// A trivial node replacement function for use with <see cref="Rewrite(Func{BoundDecisionDagNode, IReadOnlyDictionary{BoundDecisionDagNode, BoundDecisionDagNode}, BoundDecisionDagNode})"/>.
@@ -109,15 +109,15 @@ namespace Microsoft.CodeAnalysis.CSharp
         public static BoundDecisionDagNode TrivialReplacement(BoundDecisionDagNode dag, IReadOnlyDictionary<BoundDecisionDagNode, BoundDecisionDagNode> replacement)
             switch (dag)
                 case BoundEvaluationDecisionDagNode p:
-                    return p.Update(p.Evaluation, replacement[p.Next])
+                    return p.Update(p.Evaluation, replacement[p.Next]);
                 case BoundTestDecisionDagNode p:
-                    return p.Update(p.Test, replacement[p.WhenTrue], replacement[p.WhenFalse])
+                    return p.Update(p.Test, replacement[p.WhenTrue], replacement[p.WhenFalse]);
                 case BoundWhenDecisionDagNode p:
-                    return p.Update(p.Bindings, p.WhenExpression, replacement[p.WhenTrue], (p.WhenFalse != null) ? replacement[p.WhenFalse] : null)
+                    return p.Update(p.Bindings, p.WhenExpression, replacement[p.WhenTrue], (p.WhenFalse != null) ? replacement[p.WhenFalse] : null);
                 case BoundLeafDecisionDagNode p:
-                    return p
+                    return p;
                 default:
-                    throw ExceptionUtilities.UnexpectedValue(dag)
+                    throw ExceptionUtilities.UnexpectedValue(dag);
 
         /// <summary>
         /// Given a decision dag and a constant-valued input, produce a simplified decision dag that has removed all the
@@ -126,10 +126,10 @@ namespace Microsoft.CodeAnalysis.CSharp
         /// </summary>
         public BoundDecisionDag SimplifyDecisionDagIfConstantInput(BoundExpression input)
             if (input.ConstantValueOpt == null)
-                return this
+                return this;
             else
-                ConstantValue inputConstant = input.ConstantValueOpt
-                return Rewrite(makeReplacement)
+                ConstantValue inputConstant = input.ConstantValueOpt;
+                return Rewrite(makeReplacement);
 
                 // Make a replacement for a given node, using the precomputed replacements for its successors.
                 BoundDecisionDagNode makeReplacement(BoundDecisionDagNode dag, IReadOnlyDictionary<BoundDecisionDagNode, BoundDecisionDagNode> replacement)
@@ -137,34 +137,34 @@ namespace Microsoft.CodeAnalysis.CSharp
                         // This is the key to the optimization. The result of a top-level test might be known if the input is constant.
                         switch (knownResult(p.Test))
                             case true:
-                                return replacement[p.WhenTrue]
+                                return replacement[p.WhenTrue];
                             case false:
-                                return replacement[p.WhenFalse]
+                                return replacement[p.WhenFalse];
 
-                    return TrivialReplacement(dag, replacement)
+                    return TrivialReplacement(dag, replacement);
 
                 // Is the decision's result known because the input is a constant?
                 bool? knownResult(BoundDagTest choice)
                     if (!choice.Input.IsOriginalInput)
                         // This is a test of something other than the main input; result unknown
-                        return null
+                        return null;
 
                     switch (choice)
                         case BoundDagExplicitNullTest d:
-                            return inputConstant.IsNull
+                            return inputConstant.IsNull;
                         case BoundDagNonNullTest d:
-                            return !inputConstant.IsNull
+                            return !inputConstant.IsNull;
                         case BoundDagValueTest d:
-                            return d.Value == inputConstant
+                            return d.Value == inputConstant;
                         case BoundDagTypeTest d:
-                            return inputConstant.IsNull ? (bool?)false : null
+                            return inputConstant.IsNull ? (bool?)false : null;
                         case BoundDagRelationalTest d:
-                            var f = ValueSetFactory.ForType(input.Type)
+                            var f = ValueSetFactory.ForType(input.Type);
                             if (f is null)
-                                return null
-                            return f.Related(d.Relation.Operator(), inputConstant, d.Value)
+                                return null;
+                            return f.Related(d.Relation.Operator(), inputConstant, d.Value);
                         default:
-                            throw ExceptionUtilities.UnexpectedValue(choice)
+                            throw ExceptionUtilities.UnexpectedValue(choice);
         raw csharp
             #if DEBUG
             /// <summary>

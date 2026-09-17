@@ -1,16 +1,16 @@
-using System
-using System.Collections.Generic
-using System.IO.Pipes
-using System.Threading.Tasks
-using Avalonia.Input
-using Avalonia.Input.Platform
-using Avalonia.Threading
-using Avalonia.Wayland.Server
-using Avalonia.Wayland.Server.Interop
-using Avalonia.Wayland.Server.Persistent
-using Avalonia.Wayland.Server.Transient
-using Avalonia.Wayland.Server.Transient.Clipboard
-using NWayland.Protocols.Wayland
+using System;
+using System.Collections.Generic;
+using System.IO.Pipes;
+using System.Threading.Tasks;
+using Avalonia.Input;
+using Avalonia.Input.Platform;
+using Avalonia.Threading;
+using Avalonia.Wayland.Server;
+using Avalonia.Wayland.Server.Interop;
+using Avalonia.Wayland.Server.Persistent;
+using Avalonia.Wayland.Server.Transient;
+using Avalonia.Wayland.Server.Transient.Clipboard;
+using NWayland.Protocols.Wayland;
 
 namespace Avalonia.Wayland.Clipboard;
 
@@ -24,18 +24,18 @@ namespace Avalonia.Wayland.Clipboard;
 /// </para>
 /// </summary>
 class WaylandOutgoingTransfer
-    private const string InProcessMimePrefix = "application/x-avalonia-inproc-dnd-"
+    private const string InProcessMimePrefix = "application/x-avalonia-inproc-dnd-";
 
     /// <summary>
     /// Unique identifier for this application instance, used as part of the sentinel MIME type
     /// to distinguish our own drags from drags originating in other Avalonia processes.
     /// </summary>
-    private static readonly string s_instanceId = Guid.NewGuid().ToString("N")
+    private static readonly string s_instanceId = Guid.NewGuid().ToString("N");
 
     /// <summary>
     /// Full MIME prefix for this app instance: <c>application/x-avalonia-inproc-dnd-{instance}-</c>.
     /// </summary>
-    private static readonly string s_instancePrefix = InProcessMimePrefix + s_instanceId + "-"
+    private static readonly string s_instancePrefix = InProcessMimePrefix + s_instanceId + "-";
 
     /// <summary>
     /// Maps in-process DnD operation keys to the original <see cref="IDataTransfer"/>.
@@ -44,10 +44,10 @@ class WaylandOutgoingTransfer
     /// it uses the original transfer directly instead of reading through Wayland pipes,
     /// which would deadlock (the source's <c>send</c> handler dispatches to the UI thread).
     /// </summary>
-    private static readonly Dictionary<string, IDataTransfer> s_inProcessDrags = new()
+    private static readonly Dictionary<string, IDataTransfer> s_inProcessDrags = new();
 
-    private readonly IAsyncDataTransfer _transfer
-    private readonly List<string> _mimeTypes
+    private readonly IAsyncDataTransfer _transfer;
+    private readonly List<string> _mimeTypes;
 
     /// <summary>
     /// Called on the UI thread when the data source is cancelled (lost ownership or DnD ended).
@@ -55,15 +55,15 @@ class WaylandOutgoingTransfer
     public Action? Cancelled { get; set; }
 
     public WaylandOutgoingTransfer(IAsyncDataTransfer transfer)
-        _transfer = transfer
-        _mimeTypes = new List<string>()
+        _transfer = transfer;
+        _mimeTypes = new List<string>();
         foreach (var format in transfer.Formats)
             // In-process formats are only meaningful within this process and must never be
             // advertised to (or serialized for) other Wayland clients.
             if (format.Kind == DataFormatKind.InProcess)
-                continue
+                continue;
             foreach (var mime in WaylandMimeMapper.ToMimeTypes(format))
-                _mimeTypes.Add(mime)
+                _mimeTypes.Add(mime);
 
     /// <summary>
     /// Creates a <see cref="WaylandDataSource"/> on the Wayland thread, configures it,
@@ -99,8 +99,8 @@ class WaylandOutgoingTransfer
     /// the DnD operation completes (finished, cancelled, or failed to start).
     /// </summary>
     public Task<DragDropEffects> SetAsDrag(WaylandInputEventCookie inputCookie, DragDropEffects allowedEffects)
-        var tcs = new TaskCompletionSource<DragDropEffects>()
-        DragDropEffects negotiatedEffects = DragDropEffects.None
+        var tcs = new TaskCompletionSource<DragDropEffects>();
+        DragDropEffects negotiatedEffects = DragDropEffects.None;
 
         inputCookie.PostOob(globals => {
             var device = globals.InputDispatcher.GetDataDevice();
@@ -165,35 +165,35 @@ class WaylandOutgoingTransfer
         }
         );
 
-        return tcs.Task
+        return tcs.Task;
 
     /// <summary>
     /// Creates and configures a <see cref="WaylandDataSource"/> with MIME type offers
     /// and a send handler that dispatches to the UI thread.
     /// </summary>
     private WaylandDataSource? CreateSource(WaylandGlobals globals)
-        var manager = globals.DataDeviceManager
+        var manager = globals.DataDeviceManager;
         if (manager == null)
-            return null
+            return null;
 
-        var sourceListener = new WaylandDataSourceListener()
-        var wlSource = manager.CreateDataSource(sourceListener)
-        var source = new WaylandDataSource(wlSource)
-        sourceListener.SetWrapper(source)
+        var sourceListener = new WaylandDataSourceListener();
+        var wlSource = manager.CreateDataSource(sourceListener);
+        var source = new WaylandDataSource(wlSource);
+        sourceListener.SetWrapper(source);
 
         foreach (var mime in _mimeTypes)
-            source.Offer(mime)
+            source.Offer(mime);
 
-        source.OnSend = HandleSend
+        source.OnSend = HandleSend;
 
-        return source
+        return source;
 
     /// <summary>
     /// Called on the Wayland thread when the compositor requests data.
     /// Dispatches to the UI thread to read from the user's data transfer and write to the pipe fd.
     /// </summary>
     private void HandleSend(string mime, int fd)
-        var transfer = _transfer
+        var transfer = _transfer;
         Dispatcher.UIThread.Post(async () => {
             await using var stream = new Pipe2Stream(fd, PipeDirection.Out);
             try {
@@ -217,11 +217,11 @@ class WaylandOutgoingTransfer
     internal static IDataTransfer? TryGetInProcessTransfer(string[] mimeTypes)
         foreach (var mime in mimeTypes)
             if (!mime.StartsWith(s_instancePrefix, StringComparison.Ordinal))
-                continue
+                continue;
 
-            var operationKey = mime.Substring(s_instancePrefix.Length)
+            var operationKey = mime.Substring(s_instancePrefix.Length);
             // Found our instance prefix — either return the real transfer or a safe dummy
             return s_inProcessDrags.TryGetValue(operationKey, out var transfer)
                 ? transfer
                 : new DataTransfer();
-        return null
+        return null;

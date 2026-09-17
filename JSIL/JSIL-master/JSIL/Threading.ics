@@ -1,74 +1,74 @@
 #pragma warning disable 0420
 
-using System
-using System.Collections.Concurrent
-using System.Collections.Generic
-using System.Linq
-using System.Text
-using System.Threading
-using JSIL.Internal
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading;
+using JSIL.Internal;
 
 #if TARGETTING_FX_4_5 && false
     using WeakTrackedLockReference = System.WeakReference<TrackedLock>;
 #else
-using WeakTrackedLockReference = System.WeakReference
+using WeakTrackedLockReference = System.WeakReference;
 #endif
 
 namespace JSIL.Threading
     public class TrackedLockCollection : IDisposable
         public class DeadlockInfo
-            public readonly TrackedLock A, B
+            public readonly TrackedLock A, B;
 
             public DeadlockInfo(TrackedLock a, TrackedLock b)
-                A = a
-                B = b
+                A = a;
+                B = b;
 
             public override string ToString()
-                return String.Format("[{0}, {1}]", A, B)
+                return String.Format("[{0}, {1}]", A, B);
 
         public class Wait : IDisposable
-            private readonly ManualResetEventSlim Signal = new ManualResetEventSlim(false)
-            private readonly TrackedLockCollection Collection
+            private readonly ManualResetEventSlim Signal = new ManualResetEventSlim(false);
+            private readonly TrackedLockCollection Collection;
 
-            public readonly TrackedLock Lock
-            public readonly Thread Thread
+            public readonly TrackedLock Lock;
+            public readonly Thread Thread;
 
             public Wait(TrackedLockCollection collection, TrackedLock lck, Thread thread)
-                Collection = collection
-                Lock = lck
-                Thread = thread
+                Collection = collection;
+                Lock = lck;
+                Thread = thread;
 
                 if (!Collection.WaitsByThread.TryAdd(thread, this))
-                    throw new ThreadStateException()
+                    throw new ThreadStateException();
 
             internal bool IsSignaled
                 get
-                    return Signal.IsSet
+                    return Signal.IsSet;
 
             public bool Block(int timeoutMs = -1)
                 if (timeoutMs >= 0)
-                    return Signal.Wait(timeoutMs)
+                    return Signal.Wait(timeoutMs);
                 else
-                    Signal.Wait()
-                    return true
+                    Signal.Wait();
+                    return true;
 
             public void Wake()
-                Signal.Set()
+                Signal.Set();
 
             public void Dispose()
-                Signal.Dispose()
+                Signal.Dispose();
 
-                OrderedDictionary<Wait, bool> waits
+                OrderedDictionary<Wait, bool> waits;
 
                 if (!Collection.Waits.TryGet(Lock, out waits))
-                    throw new ThreadStateException()
+                    throw new ThreadStateException();
 
                 lock (waits)
-                    waits.Remove(this)
+                    waits.Remove(this);
 
-                Wait temp
+                Wait temp;
                 if (!Collection.WaitsByThread.TryRemove(Thread, out temp))
-                    throw new ThreadStateException()
+                    throw new ThreadStateException();
 
         protected readonly ConcurrentDictionary<WeakTrackedLockReference, bool> Locks = new ConcurrentDictionary<WeakTrackedLockReference, bool>(
             new ReferenceComparer<WeakTrackedLockReference>()
@@ -80,82 +80,82 @@ namespace JSIL.Threading
             new ReferenceComparer<TrackedLock>()
         )
 
-        private static readonly ConcurrentCache<TrackedLock, OrderedDictionary<Wait, bool>>.CreatorFunction MakeWaitList
+        private static readonly ConcurrentCache<TrackedLock, OrderedDictionary<Wait, bool>>.CreatorFunction MakeWaitList;
 
         static TrackedLockCollection()
-            MakeWaitList = (lck) => new OrderedDictionary<Wait, bool>()
+            MakeWaitList = (lck) => new OrderedDictionary<Wait, bool>();
 
         internal void Track(WeakTrackedLockReference weakLock)
-            var lck = (TrackedLock)weakLock.Target
+            var lck = (TrackedLock)weakLock.Target;
 
             if (!Locks.TryAdd(weakLock, false))
-                throw new ThreadStateException()
+                throw new ThreadStateException();
 
         internal void Untrack(WeakTrackedLockReference weakLock)
-            var lck = (TrackedLock)weakLock.Target
+            var lck = (TrackedLock)weakLock.Target;
             if (lck == null)
-                return
+                return;
 
-            bool temp
+            bool temp;
 
             if (!Locks.TryRemove(weakLock, out temp))
-                throw new ThreadStateException()
+                throw new ThreadStateException();
 
-            OrderedDictionary<Wait, bool> waits
+            OrderedDictionary<Wait, bool> waits;
             if (Waits.TryGet(lck, out waits))
                 lock (waits)
                     foreach (var w in waits)
-                        w.Key.Dispose()
+                        w.Key.Dispose();
 
-                    waits.Clear()
+                    waits.Clear();
 
                 if (!Waits.TryRemove(lck))
-                    throw new ThreadStateException()
+                    throw new ThreadStateException();
 
         public DeadlockInfo DetectDeadlock(Wait wait)
-            var seenLocks = new HashSet<TrackedLock>(new Internal.ReferenceComparer<TrackedLock>())
-            var waitToExamine = wait
+            var seenLocks = new HashSet<TrackedLock>(new Internal.ReferenceComparer<TrackedLock>());
+            var waitToExamine = wait;
 
             while (waitToExamine != null)
-                seenLocks.Add(waitToExamine.Lock)
+                seenLocks.Add(waitToExamine.Lock);
 
-                var ownerThread = waitToExamine.Lock.HeldBy
+                var ownerThread = waitToExamine.Lock.HeldBy;
                 if (ownerThread == null)
-                    break
+                    break;
 
-                Wait nextWaitToExamine
+                Wait nextWaitToExamine;
                 if (!WaitsByThread.TryGetValue(ownerThread, out nextWaitToExamine))
-                    break
+                    break;
 
                 if (seenLocks.Contains(nextWaitToExamine.Lock))
-                    return new DeadlockInfo(waitToExamine.Lock, nextWaitToExamine.Lock)
-                waitToExamine = nextWaitToExamine
+                    return new DeadlockInfo(waitToExamine.Lock, nextWaitToExamine.Lock);
+                waitToExamine = nextWaitToExamine;
 
-            return null
+            return null;
 
         internal bool TryCreateWait(WeakTrackedLockReference weakLock, out DeadlockInfo deadlock, out Wait wait)
-            var lck = (TrackedLock)weakLock.Target
+            var lck = (TrackedLock)weakLock.Target;
             if (lck == null)
-                wait = default(Wait)
-                deadlock = default(DeadlockInfo)
-                return false
+                wait = default(Wait);
+                deadlock = default(DeadlockInfo);
+                return false;
 
-            var currentThread = Thread.CurrentThread
-            var waits = Waits.GetOrCreate(lck, MakeWaitList)
-            wait = new Wait(this, lck, currentThread)
+            var currentThread = Thread.CurrentThread;
+            var waits = Waits.GetOrCreate(lck, MakeWaitList);
+            wait = new Wait(this, lck, currentThread);
 
             lock (waits)
-                waits.Enqueue(wait, false)
+                waits.Enqueue(wait, false);
 
-            deadlock = DetectDeadlock(wait)
+            deadlock = DetectDeadlock(wait);
             if (deadlock != null)
                 lock (waits)
-                    waits.Remove(wait)
+                    waits.Remove(wait);
 
-                var wasSignaled = wait.IsSignaled
+                var wasSignaled = wait.IsSignaled;
 
-                wait.Dispose()
-                wait = null
+                wait.Dispose();
+                wait = null;
 
                 // It's possible, albeit incredibly unlikely, for someone to call Wake on our wait
                 //  before we do the deadlock check.
@@ -163,100 +163,100 @@ namespace JSIL.Threading
                 // This can probably still break, though...
                 if (wasSignaled)
                     if (TryDequeueOneWait(lck, out wait))
-                        wait.Wake()
+                        wait.Wake();
 
-                return false
+                return false;
 
-            return true
+            return true;
 
         internal bool TryDequeueOneWait(TrackedLock lck, out Wait wait)
-            wait = null
+            wait = null;
 
-            OrderedDictionary<Wait, bool> waits
+            OrderedDictionary<Wait, bool> waits;
             if (!Waits.TryGet(lck, out waits))
-                return false
+                return false;
 
-            bool temp
+            bool temp;
             lock (waits)
-                return waits.TryDequeueFirst(out wait, out temp)
+                return waits.TryDequeueFirst(out wait, out temp);
 
         public void Dispose()
-            Locks.Clear()
-            Waits.Clear()
+            Locks.Clear();
+            Waits.Clear();
 
         internal int GetWaitingThreadCount(WeakTrackedLockReference weakLock)
-            var lck = (TrackedLock)weakLock.Target
+            var lck = (TrackedLock)weakLock.Target;
             if (lck == null)
-                return 0
+                return 0;
 
-            OrderedDictionary<Wait, bool> waits
+            OrderedDictionary<Wait, bool> waits;
             if (!Waits.TryGet(lck, out waits))
-                return 0
+                return 0;
 
             lock (waits)
-                return waits.Count
+                return waits.Count;
 
     public class TrackedLock : IDisposable
-        public readonly WeakTrackedLockReference WeakSelf
+        public readonly WeakTrackedLockReference WeakSelf;
 
-        public readonly TrackedLockCollection Collection
-        public readonly Func<string> GetName
+        public readonly TrackedLockCollection Collection;
+        public readonly Func<string> GetName;
 
-        private volatile bool _IsTracked = false
-        private volatile int _RecursionCount = 0
-        private volatile Thread _HeldBy = null
+        private volatile bool _IsTracked = false;
+        private volatile int _RecursionCount = 0;
+        private volatile Thread _HeldBy = null;
 
         public TrackedLock(TrackedLockCollection collection, string name)
             : this(collection, () => name)
             ;
 
         public TrackedLock(TrackedLockCollection collection, Func<string> getName = null)
-            Collection = collection
-            GetName = getName
-            WeakSelf = new WeakTrackedLockReference(this)
+            Collection = collection;
+            GetName = getName;
+            WeakSelf = new WeakTrackedLockReference(this);
 
         public void Dispose()
             if (IsDisposed)
-                return
+                return;
 
             // FIXME
-            _HeldBy = null
-            IsDisposed = true
+            _HeldBy = null;
+            IsDisposed = true;
 
             if (_IsTracked)
-                Collection.Untrack(WeakSelf)
+                Collection.Untrack(WeakSelf);
 
         public bool IsDisposed { get; private set; }
 
         public Thread HeldBy
             get
-                return _HeldBy
+                return _HeldBy;
 
         public bool IsHeld
             get
-                return _HeldBy != null
+                return _HeldBy != null;
 
         public int RecursionDepth
             get
-                return _RecursionCount
+                return _RecursionCount;
 
         public int WaitingThreadCount
             get
-                return Collection.GetWaitingThreadCount(WeakSelf)
+                return Collection.GetWaitingThreadCount(WeakSelf);
 
         private void EnsureTracked()
             if (!_IsTracked)
                 lock (this)
                     if (!_IsTracked)
-                        Collection.Track(WeakSelf)
-                        _IsTracked = true
+                        Collection.Track(WeakSelf);
+                        _IsTracked = true;
 
         public TrackedLockResult TryEnter(out Thread previousOwner, bool recursive = false)
-            var currentThread = Thread.CurrentThread
-            previousOwner = Interlocked.CompareExchange(ref _HeldBy, currentThread, null)
-            var acquired = previousOwner == null
+            var currentThread = Thread.CurrentThread;
+            previousOwner = Interlocked.CompareExchange(ref _HeldBy, currentThread, null);
+            var acquired = previousOwner == null;
 
-            TrackedLockFailureReason? failureReason = null
+            TrackedLockFailureReason? failureReason = null;
 
             if (!acquired)
                 failureReason = (previousOwner == currentThread)
@@ -264,8 +264,8 @@ namespace JSIL.Threading
                     : TrackedLockFailureReason.HeldByOtherThread
 
             if (recursive && (failureReason == TrackedLockFailureReason.HeldByCurrentThread))
-                _RecursionCount += 1
-                return new TrackedLockResult()
+                _RecursionCount += 1;
+                return new TrackedLockResult();
 
             var result = new TrackedLockResult(failureReason);
 
@@ -278,60 +278,60 @@ namespace JSIL.Threading
             );
 #endif
 
-            return result
+            return result;
 
         public TrackedLockResult TryEnter(bool recursive = false)
-            Thread temp
-            return TryEnter(out temp, recursive)
+            Thread temp;
+            return TryEnter(out temp, recursive);
 
         public TrackedLockResult TryBlockingEnter(bool recursive = false, int timeoutMs = -1)
-            TrackedLockCollection.DeadlockInfo temp
-            return TryBlockingEnter(out temp, recursive, timeoutMs)
+            TrackedLockCollection.DeadlockInfo temp;
+            return TryBlockingEnter(out temp, recursive, timeoutMs);
 
         public TrackedLockResult TryBlockingEnter(out TrackedLockCollection.DeadlockInfo deadlock, bool recursive = false, int timeoutMs = -1)
-            bool iterating = true
-            TrackedLockCollection.Wait wait
-            deadlock = null
+            bool iterating = true;
+            TrackedLockCollection.Wait wait;
+            deadlock = null;
 
             while (iterating)
-                var result = TryEnter(recursive)
+                var result = TryEnter(recursive);
                 if (result.FailureReason != TrackedLockFailureReason.HeldByOtherThread)
-                    return result
+                    return result;
 
-                EnsureTracked()
+                EnsureTracked();
 
                 if (Collection.TryCreateWait(WeakSelf, out deadlock, out wait))
                     using (wait)
-                        result = TryEnter(recursive)
+                        result = TryEnter(recursive);
 
                         if (result.FailureReason == TrackedLockFailureReason.HeldByOtherThread)
-                            var finishedWaiting = wait.Block(timeoutMs)
+                            var finishedWaiting = wait.Block(timeoutMs);
 
                             if (!finishedWaiting)
-                                iterating = false
+                                iterating = false;
                         else
-                            return result
+                            return result;
                 else
-                    return new TrackedLockResult(TrackedLockFailureReason.Deadlock)
+                    return new TrackedLockResult(TrackedLockFailureReason.Deadlock);
 
-            return new TrackedLockResult(TrackedLockFailureReason.HeldByOtherThread)
+            return new TrackedLockResult(TrackedLockFailureReason.HeldByOtherThread);
 
         public void BlockingEnter(bool recursive = false, int timeoutMs = -1)
-            EnsureTracked()
+            EnsureTracked();
 
-            TrackedLockCollection.DeadlockInfo deadlock
-            var result = TryBlockingEnter(out deadlock, recursive, timeoutMs)
+            TrackedLockCollection.DeadlockInfo deadlock;
+            var result = TryBlockingEnter(out deadlock, recursive, timeoutMs);
 
             if (!result.Success)
                 switch (result.FailureReason)
                     case TrackedLockFailureReason.HeldByCurrentThread:
-                        throw new LockAlreadyHeldException()
+                        throw new LockAlreadyHeldException();
                     case TrackedLockFailureReason.Deadlock:
-                        throw new DeadlockAvertedException(deadlock.A, deadlock.B)
+                        throw new DeadlockAvertedException(deadlock.A, deadlock.B);
 
         public void Exit()
-            var currentThread = Thread.CurrentThread
-            bool released = false
+            var currentThread = Thread.CurrentThread;
+            bool released = false;
 
             raw csharp
                 if (_HeldBy == currentThread)
@@ -372,7 +372,7 @@ namespace JSIL.Threading
                     throw new InvalidOperationException("Lock held by other thread or not held");
 
         public override string ToString()
-            var hby = _HeldBy
+            var hby = _HeldBy;
             return String.Format(
                 "<TrackedLock '{0}' held by {1}>",
                 (GetName != null)
@@ -389,23 +389,23 @@ namespace JSIL.Threading
         Deadlock
 
     public struct TrackedLockResult
-        public readonly TrackedLockFailureReason? FailureReason
+        public readonly TrackedLockFailureReason? FailureReason;
 
         public TrackedLockResult(TrackedLockFailureReason? failureReason)
-            FailureReason = failureReason
+            FailureReason = failureReason;
 
         public bool Success
             get
-                return !FailureReason.HasValue
+                return !FailureReason.HasValue;
 
         public static explicit operator bool (TrackedLockResult result)
-            return result.Success
+            return result.Success;
 
         public override string ToString()
             if (FailureReason.HasValue)
-                return FailureReason.Value.ToString()
+                return FailureReason.Value.ToString();
             else
-                return "Success"
+                return "Success";
 
     public class LockAlreadyHeldException : Exception
         public LockAlreadyHeldException()
@@ -413,9 +413,9 @@ namespace JSIL.Threading
             ;
 
     public class DeadlockAvertedException : Exception
-        public TrackedLock Lock1, Lock2
+        public TrackedLock Lock1, Lock2;
 
         public DeadlockAvertedException(TrackedLock lock1, TrackedLock lock2)
             : base("The operation would have caused a deadlock.")
-            Lock1 = lock1
-            Lock2 = lock2
+            Lock1 = lock1;
+            Lock2 = lock2;

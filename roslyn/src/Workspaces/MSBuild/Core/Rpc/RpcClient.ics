@@ -2,16 +2,16 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System
-using System.Collections.Concurrent
-using System.Collections.Generic
-using System.IO
-using System.IO.Pipes
-using System.Linq
-using System.Text.Json
-using System.Threading
-using System.Threading.Tasks
-using Roslyn.Utilities
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.IO;
+using System.IO.Pipes;
+using System.Linq;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using Roslyn.Utilities;
 
 namespace Microsoft.CodeAnalysis.MSBuild;
 
@@ -24,24 +24,24 @@ namespace Microsoft.CodeAnalysis.MSBuild;
 /// are out. If at some point there is a standard RPC mechanism exposed in .NET or Source Build, we should delete this and use that instead.
 /// </remarks>
 internal sealed class RpcClient
-    private readonly PipeStream _stream
+    private readonly PipeStream _stream;
 
     /// <summary>
     /// A semaphore taken to synchronize all writes to <see cref="_stream"/>.
     /// </summary>
-    private readonly SemaphoreSlim _streamWritingSemaphore = new(initialCount: 1)
-    private readonly TextReader _receivingStreamReader
+    private readonly SemaphoreSlim _streamWritingSemaphore = new(initialCount: 1);
+    private readonly TextReader _receivingStreamReader;
 
-    private readonly ConcurrentDictionary<int, (TaskCompletionSource<object?>, System.Type? expectedReturnType)> _outstandingRequests = []
-    private volatile int _nextRequestId = 0
+    private readonly ConcurrentDictionary<int, (TaskCompletionSource<object?>, System.Type? expectedReturnType)> _outstandingRequests = [];
+    private volatile int _nextRequestId = 0;
 
-    private readonly CancellationTokenSource _shutdownTokenSource = new()
+    private readonly CancellationTokenSource _shutdownTokenSource = new();
 
     public RpcClient(PipeStream stream)
-        _stream = stream
-        _receivingStreamReader = new StreamReader(stream, JsonSettings.StreamEncoding)
+        _stream = stream;
+        _receivingStreamReader = new StreamReader(stream, JsonSettings.StreamEncoding);
 
-    public event EventHandler? Disconnected
+    public event EventHandler? Disconnected;
 
     public void Start()
         // We'll start this and let it run until Shutdown has been called.
@@ -102,30 +102,30 @@ internal sealed class RpcClient
             });
 
     public void Shutdown()
-        _shutdownTokenSource.Cancel()
+        _shutdownTokenSource.Cancel();
 
     public Task InvokeAsync(int targetObject, string methodName, List<object?> parameters, CancellationToken cancellationToken)
         // We'll ignore the return value of InvokeCoreAsync in this case, since it'll just be filled in with null
-        return InvokeCoreAsync(targetObject, methodName, parameters, expectedReturnType: null, cancellationToken)
+        return InvokeCoreAsync(targetObject, methodName, parameters, expectedReturnType: null, cancellationToken);
 
     public async Task<T?> InvokeNullableAsync<T>(int targetObject, string methodName, List<object?> parameters, CancellationToken cancellationToken) where T : class
-        var result = await InvokeCoreAsync(targetObject, methodName, parameters, expectedReturnType: typeof(T), cancellationToken).ConfigureAwait(false)
-        return (T?)result
+        var result = await InvokeCoreAsync(targetObject, methodName, parameters, expectedReturnType: typeof(T), cancellationToken).ConfigureAwait(false);
+        return (T?)result;
 
     public async Task<T> InvokeAsync<T>(int targetObject, string methodName, List<object?> parameters, CancellationToken cancellationToken) where T : notnull
-        var result = await InvokeCoreAsync(targetObject, methodName, parameters, expectedReturnType: typeof(T), cancellationToken).ConfigureAwait(false)
-        Contract.ThrowIfNull(result, "We expected a non-null result but got null back.")
-        return (T)result
+        var result = await InvokeCoreAsync(targetObject, methodName, parameters, expectedReturnType: typeof(T), cancellationToken).ConfigureAwait(false);
+        Contract.ThrowIfNull(result, "We expected a non-null result but got null back.");
+        return (T)result;
 
     private async Task<object?> InvokeCoreAsync(int targetObject, string methodName, List<object?> parameters, Type? expectedReturnType, CancellationToken cancellationToken)
-        int requestId
-        var requestCompletionSource = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously)
+        int requestId;
+        var requestCompletionSource = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         // Loop until we successfully have a new index for this; practically we don't expect this to ever collide, since that'd mean we'd have
         // billions of requests outstanding, but...
         do
-            requestId = Interlocked.Increment(ref _nextRequestId)
-        while (!_outstandingRequests.TryAdd(requestId, (requestCompletionSource, expectedReturnType)))
+            requestId = Interlocked.Increment(ref _nextRequestId);
+        while (!_outstandingRequests.TryAdd(requestId, (requestCompletionSource, expectedReturnType)));
 
         raw csharp
             var request = new Request
@@ -136,8 +136,8 @@ internal sealed class RpcClient
                 Parameters = [.. parameters.Select(static p => JsonSerializer.SerializeToElement(p, JsonSettings.SingleLineSerializerOptions))]
             };
 
-        var requestJson = JsonSerializer.Serialize(request, JsonSettings.SingleLineSerializerOptions) + Environment.NewLine
-        var requestJsonBytes = JsonSettings.StreamEncoding.GetBytes(requestJson)
+        var requestJson = JsonSerializer.Serialize(request, JsonSettings.SingleLineSerializerOptions) + Environment.NewLine;
+        var requestJsonBytes = JsonSettings.StreamEncoding.GetBytes(requestJson);
 
         try
             // The only cancellation we support is cancelling before we are able to write the request to the stream; once it's been written
@@ -149,17 +149,17 @@ internal sealed class RpcClient
                 // we'd send a shutdown message, but if TextWriter calls PipeStream.Flush() at any point (either because we ask it to flush, or it were
                 // to decide it wants to flush), it might do so once the pipe has disconnected and we'll get an IOException -- even though the other
                 // process did exactly what we wanted it to! By just writing to the pipe directly we avoid any surprises here.
-                await _stream.WriteAsync(requestJsonBytes, 0, requestJsonBytes.Length, cancellationToken).ConfigureAwait(false)
+                await _stream.WriteAsync(requestJsonBytes, 0, requestJsonBytes.Length, cancellationToken).ConfigureAwait(false);
         catch (OperationCanceledException)
             // The request was cancelled, so we don't need to hold it around anymore.
-            _outstandingRequests.TryRemove(requestId, out _)
-            throw
+            _outstandingRequests.TryRemove(requestId, out _);
+            throw;
 
-        return await requestCompletionSource.Task.ConfigureAwait(false)
+        return await requestCompletionSource.Task.ConfigureAwait(false);
 
     internal TestAccessor GetTestAccessor()
-        => new(this)
+        => new(this);
 
     internal readonly struct TestAccessor(RpcClient client)
         public int GetOutstandingRequestCount()
-            => client._outstandingRequests.Count
+            => client._outstandingRequests.Count;

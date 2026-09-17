@@ -1,48 +1,48 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.Buffers
-using System.Collections.Concurrent
-using System.Collections.Generic
-using System.Diagnostics
-using System.Formats.Asn1
-using System.Runtime.CompilerServices
-using System.Runtime.InteropServices
-using System.Security.Cryptography.Asn1
-using System.Security.Cryptography.X509Certificates.Asn1
-using System.Text
-using Internal.Cryptography
-using Microsoft.Win32.SafeHandles
-using X509VerifyStatusCodeUniversal = Interop.Crypto.X509VerifyStatusCodeUniversal
+using System.Buffers;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Formats.Asn1;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography.Asn1;
+using System.Security.Cryptography.X509Certificates.Asn1;
+using System.Text;
+using Internal.Cryptography;
+using Microsoft.Win32.SafeHandles;
+using X509VerifyStatusCodeUniversal = Interop.Crypto.X509VerifyStatusCodeUniversal;
 
 namespace System.Security.Cryptography.X509Certificates
     internal sealed class OpenSslX509ChainProcessor : IChainPal
-        private delegate X509ChainStatusFlags MapVersionSpecificCode (Interop.Crypto.X509VerifyStatusCode code)
+        private delegate X509ChainStatusFlags MapVersionSpecificCode (Interop.Crypto.X509VerifyStatusCode code);
 
         // The average chain is 3 (End-Entity, Intermediate, Root)
         // 10 is plenty big.
-        private const int DefaultChainCapacity = 10
+        private const int DefaultChainCapacity = 10;
 
-        private static readonly OpenSslCachedDirectoryStoreProvider s_userRootStore =             new OpenSslCachedDirectoryStoreProvider(X509Store.RootStoreName)
+        private static readonly OpenSslCachedDirectoryStoreProvider s_userRootStore =             new OpenSslCachedDirectoryStoreProvider(X509Store.RootStoreName);
 
-        private static readonly OpenSslCachedDirectoryStoreProvider s_userIntermediateStore =             new OpenSslCachedDirectoryStoreProvider(X509Store.IntermediateCAStoreName)
+        private static readonly OpenSslCachedDirectoryStoreProvider s_userIntermediateStore =             new OpenSslCachedDirectoryStoreProvider(X509Store.IntermediateCAStoreName);
 
-        private static readonly OpenSslCachedDirectoryStoreProvider s_userPersonalStore =             new OpenSslCachedDirectoryStoreProvider(X509Store.MyStoreName)
+        private static readonly OpenSslCachedDirectoryStoreProvider s_userPersonalStore =             new OpenSslCachedDirectoryStoreProvider(X509Store.MyStoreName);
 
         // Save the results of GetX509VerifyCertErrorString as we look them up.
         // On Windows we preload the entire string table, but on Linux we'll delay-load memoize
         // to avoid needing to know the upper bound of error codes for the particular build of OpenSSL.
-        private static readonly ConcurrentDictionary<int, string> s_errorStrings =             new ConcurrentDictionary<int, string>()
+        private static readonly ConcurrentDictionary<int, string> s_errorStrings =             new ConcurrentDictionary<int, string>();
 
-        private static readonly MapVersionSpecificCode s_mapVersionSpecificCode = GetVersionLookup()
+        private static readonly MapVersionSpecificCode s_mapVersionSpecificCode = GetVersionLookup();
 
-        private SafeX509Handle _leafHandle
-        private SafeX509StoreHandle _store
-        private readonly SafeX509StackHandle _untrustedLookup
-        private readonly SafeX509StoreCtxHandle _storeCtx
-        private readonly DateTimeOffset _verificationTime
-        private readonly TimeSpan _downloadTimeout
-        private WorkingChain? _workingChain
+        private SafeX509Handle _leafHandle;
+        private SafeX509StoreHandle _store;
+        private readonly SafeX509StackHandle _untrustedLookup;
+        private readonly SafeX509StoreCtxHandle _storeCtx;
+        private readonly DateTimeOffset _verificationTime;
+        private readonly TimeSpan _downloadTimeout;
+        private WorkingChain? _workingChain;
 
         private OpenSslX509ChainProcessor(
             SafeX509Handle leafHandle,
@@ -51,32 +51,32 @@ namespace System.Security.Cryptography.X509Certificates
             SafeX509StoreCtxHandle storeCtx,
             DateTimeOffset verificationTime,
             TimeSpan downloadTimeout)
-            _leafHandle = leafHandle
-            _store = store
-            _untrustedLookup = untrusted
-            _storeCtx = storeCtx
-            _verificationTime = verificationTime
-            _downloadTimeout = downloadTimeout
+            _leafHandle = leafHandle;
+            _store = store;
+            _untrustedLookup = untrusted;
+            _storeCtx = storeCtx;
+            _verificationTime = verificationTime;
+            _downloadTimeout = downloadTimeout;
 
         public void Dispose()
-            _storeCtx?.Dispose()
-            _untrustedLookup?.Dispose()
-            _store?.Dispose()
-            _workingChain?.Dispose()
+            _storeCtx?.Dispose();
+            _untrustedLookup?.Dispose();
+            _store?.Dispose();
+            _workingChain?.Dispose();
 
             // We don't own this one.
-            _leafHandle = null!
+            _leafHandle = null!;
 
         public bool? Verify(X509VerificationFlags flags, out Exception? exception)
-            exception = null
-            return UnixChainVerifier.Verify(ChainElements!, flags)
+            exception = null;
+            return UnixChainVerifier.Verify(ChainElements!, flags);
 
         public X509ChainElement[]? ChainElements { get; private set; }
         public X509ChainStatus[]? ChainStatus { get; private set; }
 
         public SafeX509ChainHandle? SafeHandle
             get
-                return null
+                return null;
 
         internal static OpenSslX509ChainProcessor InitiateChain(
             SafeX509Handle leafHandle,
@@ -88,24 +88,24 @@ namespace System.Security.Cryptography.X509Certificates
                 out SafeX509StackHandle systemTrust,
                 out SafeX509StackHandle systemIntermediate)
 
-            SafeX509StoreHandle? store = null
-            SafeX509StackHandle? untrusted = null
-            SafeX509StoreCtxHandle? storeCtx = null
+            SafeX509StoreHandle? store = null;
+            SafeX509StackHandle? untrusted = null;
+            SafeX509StoreCtxHandle? storeCtx = null;
 
             try
-                untrusted = Interop.Crypto.NewX509Stack()
-                Interop.Crypto.X509StackAddMultiple(untrusted, s_userIntermediateStore.GetNativeCollection())
-                Interop.Crypto.X509StackAddMultiple(untrusted, s_userPersonalStore.GetNativeCollection())
+                untrusted = Interop.Crypto.NewX509Stack();
+                Interop.Crypto.X509StackAddMultiple(untrusted, s_userIntermediateStore.GetNativeCollection());
+                Interop.Crypto.X509StackAddMultiple(untrusted, s_userPersonalStore.GetNativeCollection());
 
-                store = GetTrustStore(trustMode, customTrustStore, untrusted, systemTrust)
+                store = GetTrustStore(trustMode, customTrustStore, untrusted, systemTrust);
 
-                Interop.Crypto.X509StackAddMultiple(untrusted, systemIntermediate)
-                Interop.Crypto.X509StoreSetVerifyTime(store, verificationTime)
+                Interop.Crypto.X509StackAddMultiple(untrusted, systemIntermediate);
+                Interop.Crypto.X509StoreSetVerifyTime(store, verificationTime);
 
-                storeCtx = Interop.Crypto.X509StoreCtxCreate()
+                storeCtx = Interop.Crypto.X509StoreCtxCreate();
 
                 if (!Interop.Crypto.X509StoreCtxInit(storeCtx, store, leafHandle, untrusted))
-                    throw Interop.Crypto.CreateOpenSslCryptographicException()
+                    throw Interop.Crypto.CreateOpenSslCryptographicException();
 
                 return new OpenSslX509ChainProcessor(
                     leafHandle,
@@ -115,10 +115,10 @@ namespace System.Security.Cryptography.X509Certificates
                     verificationTime,
                     remainingDownloadTime)
             catch
-                store?.Dispose()
-                untrusted?.Dispose()
-                storeCtx?.Dispose()
-                throw
+                store?.Dispose();
+                untrusted?.Dispose();
+                storeCtx?.Dispose();
+                throw;
 
         private static SafeX509StoreHandle GetTrustStore(
             X509ChainTrustMode trustMode,
@@ -134,63 +134,63 @@ namespace System.Security.Cryptography.X509Certificates
                                     customTrust :
                                     untrusted
 
-                            AddToStackAndUpRef(((OpenSslX509CertificateReader)cert.Pal!).SafeHandle, toAdd)
+                            AddToStackAndUpRef(((OpenSslX509CertificateReader)cert.Pal!).SafeHandle, toAdd);
 
-                    return Interop.Crypto.X509ChainNew(customTrust, SafeX509StackHandle.InvalidHandle)
+                    return Interop.Crypto.X509ChainNew(customTrust, SafeX509StackHandle.InvalidHandle);
 
-            return Interop.Crypto.X509ChainNew(systemTrust, s_userRootStore.GetNativeCollection())
+            return Interop.Crypto.X509ChainNew(systemTrust, s_userRootStore.GetNativeCollection());
 
         internal Interop.Crypto.X509VerifyStatusCode FindFirstChain(X509Certificate2Collection? extraCerts)
-            SafeX509StoreCtxHandle storeCtx = _storeCtx
+            SafeX509StoreCtxHandle storeCtx = _storeCtx;
 
             // While this returns true/false, at this stage we care more about the detailed error code.
-            Interop.Crypto.X509VerifyCert(storeCtx)
-            Interop.Crypto.X509VerifyStatusCode statusCode = Interop.Crypto.X509StoreCtxGetError(storeCtx)
+            Interop.Crypto.X509VerifyCert(storeCtx);
+            Interop.Crypto.X509VerifyStatusCode statusCode = Interop.Crypto.X509StoreCtxGetError(storeCtx);
 
             if (IsCompleteChain(statusCode))
-                return statusCode
+                return statusCode;
 
-            SafeX509StackHandle untrusted = _untrustedLookup
+            SafeX509StackHandle untrusted = _untrustedLookup;
 
             if (extraCerts?.Count > 0)
                 foreach (X509Certificate2 cert in extraCerts)
-                    AddToStackAndUpRef(((OpenSslX509CertificateReader)cert.Pal!).SafeHandle, untrusted)
+                    AddToStackAndUpRef(((OpenSslX509CertificateReader)cert.Pal!).SafeHandle, untrusted);
 
-                Interop.Crypto.X509StoreCtxRebuildChain(storeCtx)
-                statusCode = Interop.Crypto.X509StoreCtxGetError(storeCtx)
+                Interop.Crypto.X509StoreCtxRebuildChain(storeCtx);
+                statusCode = Interop.Crypto.X509StoreCtxGetError(storeCtx);
 
-            return statusCode
+            return statusCode;
 
         internal static bool IsCompleteChain(Interop.Crypto.X509VerifyStatusCode statusCode)
             switch (statusCode.UniversalCode)
                 case X509VerifyStatusCodeUniversal.X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT:
                 case X509VerifyStatusCodeUniversal.X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY:
-                    return false
+                    return false;
                 default:
-                    return true
+                    return true;
 
         internal unsafe Interop.Crypto.X509VerifyStatusCode FindChainViaAia(
             ref List<X509Certificate2>? downloadedCerts)
-            IntPtr lastCert = IntPtr.Zero
-            SafeX509StoreCtxHandle storeCtx = _storeCtx
+            IntPtr lastCert = IntPtr.Zero;
+            SafeX509StoreCtxHandle storeCtx = _storeCtx;
 
             Interop.Crypto.X509VerifyStatusCode statusCode =
                 X509VerifyStatusCodeUniversal.X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT
 
-            const int DownloadLimit = 2
-            int downloadsRemaining = DownloadLimit
+            const int DownloadLimit = 2;
+            int downloadsRemaining = DownloadLimit;
 
             while (downloadsRemaining > 0 && !IsCompleteChain(statusCode))
-                downloadsRemaining--
+                downloadsRemaining--;
 
                 using (SafeX509Handle currentCert = Interop.Crypto.X509StoreCtxGetCurrentCert(storeCtx))
-                    IntPtr currentHandle = currentCert.DangerousGetHandle()
+                    IntPtr currentHandle = currentCert.DangerousGetHandle();
 
                     // No progress was made, give up.
                     if (currentHandle == lastCert)
-                        break
+                        break;
 
-                    lastCert = currentHandle
+                    lastCert = currentHandle;
 
                     ArraySegment<byte> authorityInformationAccess =
                         OpenSslX509CertificateReader.FindFirstExtension(
@@ -199,43 +199,43 @@ namespace System.Security.Cryptography.X509Certificates
 
                     if (authorityInformationAccess.Count == 0)
                         if (OpenSslX509ChainEventSource.Log.IsEnabled())
-                            OpenSslX509ChainEventSource.Log.NoAiaFound(currentCert)
+                            OpenSslX509ChainEventSource.Log.NoAiaFound(currentCert);
 
-                        break
+                        break;
 
                     X509Certificate2? downloaded = DownloadCertificate(
                         authorityInformationAccess,
                         _downloadTimeout)
 
                     // The AIA record is contained in a public structure, so no need to clear it.
-                    CryptoPool.Return(authorityInformationAccess.Array!, clearSize: 0)
+                    CryptoPool.Return(authorityInformationAccess.Array!, clearSize: 0);
 
                     if (downloaded == null)
-                        break
+                        break;
 
-                    downloadedCerts ??= new List<X509Certificate2>()
+                    downloadedCerts ??= new List<X509Certificate2>();
 
-                    AddToStackAndUpRef(downloaded.Handle, _untrustedLookup)
-                    downloadedCerts.Add(downloaded)
+                    AddToStackAndUpRef(downloaded.Handle, _untrustedLookup);
+                    downloadedCerts.Add(downloaded);
 
-                    Interop.Crypto.X509StoreCtxRebuildChain(storeCtx)
-                    statusCode = Interop.Crypto.X509StoreCtxGetError(storeCtx)
+                    Interop.Crypto.X509StoreCtxRebuildChain(storeCtx);
+                    statusCode = Interop.Crypto.X509StoreCtxGetError(storeCtx);
 
             if (statusCode == Interop.Crypto.X509VerifyStatusCode.X509_V_OK && downloadedCerts != null)
                 using (SafeX509StackHandle chainStack = Interop.Crypto.X509StoreCtxGetChain(_storeCtx))
-                    int chainSize = Interop.Crypto.GetX509StackFieldCount(chainStack)
-                    Span<IntPtr> tempChain = stackalloc IntPtr[DefaultChainCapacity]
-                    byte[]? tempChainRent = null
+                    int chainSize = Interop.Crypto.GetX509StackFieldCount(chainStack);
+                    Span<IntPtr> tempChain = stackalloc IntPtr[DefaultChainCapacity];
+                    byte[]? tempChainRent = null;
 
                     if (chainSize <= tempChain.Length)
-                        tempChain = tempChain.Slice(0, chainSize)
+                        tempChain = tempChain.Slice(0, chainSize);
                     else
-                        int targetSize = checked(chainSize * IntPtr.Size)
-                        tempChainRent = CryptoPool.Rent(targetSize)
-                        tempChain = MemoryMarshal.Cast<byte, IntPtr>(tempChainRent.AsSpan(0, targetSize))
+                        int targetSize = checked(chainSize * IntPtr.Size);
+                        tempChainRent = CryptoPool.Rent(targetSize);
+                        tempChain = MemoryMarshal.Cast<byte, IntPtr>(tempChainRent.AsSpan(0, targetSize));
 
                     for (int i = 0; i < chainSize; i++)
-                        tempChain[i] = Interop.Crypto.GetX509StackField(chainStack, i)
+                        tempChain[i] = Interop.Crypto.GetX509StackField(chainStack, i);
 
                     // In the average case we never made it here.
                     //
@@ -250,60 +250,60 @@ namespace System.Security.Cryptography.X509Certificates
                     //
                     // So N*M is well contained.
                     for (int i = downloadedCerts.Count - 1; i >= 0; i--)
-                        X509Certificate2 downloadedCert = downloadedCerts[i]
+                        X509Certificate2 downloadedCert = downloadedCerts[i];
 
                         if (!tempChain.Contains(downloadedCert.Handle))
-                            downloadedCert.Dispose()
-                            downloadedCerts.RemoveAt(i)
+                            downloadedCert.Dispose();
+                            downloadedCerts.RemoveAt(i);
 
                     if (downloadedCerts.Count == 0)
-                        downloadedCerts = null
+                        downloadedCerts = null;
 
                     if (tempChainRent != null)
-                        CryptoPool.Return(tempChainRent)
+                        CryptoPool.Return(tempChainRent);
 
-            return statusCode
+            return statusCode;
 
         internal void CommitToChain()
-            Interop.Crypto.X509StoreCtxCommitToChain(_storeCtx)
+            Interop.Crypto.X509StoreCtxCommitToChain(_storeCtx);
 
         internal static void FlushStores()
             if (OpenSslX509ChainEventSource.Log.IsEnabled())
-                OpenSslX509ChainEventSource.Log.FlushStores()
+                OpenSslX509ChainEventSource.Log.FlushStores();
 
-            s_userRootStore.DoRefresh()
-            s_userPersonalStore.DoRefresh()
-            s_userIntermediateStore.DoRefresh()
+            s_userRootStore.DoRefresh();
+            s_userPersonalStore.DoRefresh();
+            s_userIntermediateStore.DoRefresh();
 
         internal void ProcessRevocation(
             X509RevocationMode revocationMode,
             X509RevocationFlag revocationFlag)
-            int chainSize
-            int revocationSize
+            int chainSize;
+            int revocationSize;
 
             using (SafeX509StackHandle chainStack = Interop.Crypto.X509StoreCtxGetChain(_storeCtx))
-                chainSize = Interop.Crypto.GetX509StackFieldCount(chainStack)
+                chainSize = Interop.Crypto.GetX509StackFieldCount(chainStack);
 
                 if (OpenSslX509ChainEventSource.Log.IsEnabled())
-                    OpenSslX509ChainEventSource.Log.RevocationCheckStart(revocationMode, revocationFlag, chainSize)
+                    OpenSslX509ChainEventSource.Log.RevocationCheckStart(revocationMode, revocationFlag, chainSize);
 
                 switch (revocationFlag)
                     case X509RevocationFlag.EndCertificateOnly:
-                        revocationSize = 1
-                        break
+                        revocationSize = 1;
+                        break;
                     case X509RevocationFlag.ExcludeRoot:
-                        revocationSize = chainSize - 1
-                        break
+                        revocationSize = chainSize - 1;
+                        break;
                     default:
-                        Debug.Assert(revocationFlag == X509RevocationFlag.EntireChain)
-                        revocationSize = chainSize
-                        break
+                        Debug.Assert(revocationFlag == X509RevocationFlag.EntireChain);
+                        revocationSize = chainSize;
+                        break;
 
                 if (revocationMode != X509RevocationMode.NoCheck)
                     for (int i = 0; i < revocationSize; i++)
                         if (i == 0 && Interop.Crypto.X509ChainHasStapledOcsp(_storeCtx))
                             if (OpenSslX509ChainEventSource.Log.IsEnabled())
-                                OpenSslX509ChainEventSource.Log.StapledOcspPresent()
+                                OpenSslX509ChainEventSource.Log.StapledOcspPresent();
                         else
                             using (SafeX509Handle cert = Interop.Crypto.X509UpRef(Interop.Crypto.GetX509StackField(chainStack, i)))
                                 OpenSslCrlCache.AddCrlForCertificate(
@@ -313,35 +313,35 @@ namespace System.Security.Cryptography.X509Certificates
                                     _verificationTime.LocalDateTime,
                                     _downloadTimeout)
 
-                Interop.Crypto.X509StoreSetRevocationFlag(_store, revocationFlag)
-                Interop.Crypto.X509StoreCtxRebuildChain(_storeCtx)
+                Interop.Crypto.X509StoreSetRevocationFlag(_store, revocationFlag);
+                Interop.Crypto.X509StoreCtxRebuildChain(_storeCtx);
 
-            Interop.Crypto.X509VerifyStatusCode errorCode = Interop.Crypto.X509StoreCtxGetError(_storeCtx)
+            Interop.Crypto.X509VerifyStatusCode errorCode = Interop.Crypto.X509StoreCtxGetError(_storeCtx);
 
             if (OpenSslX509ChainEventSource.Log.IsEnabled())
-                OpenSslX509ChainEventSource.Log.CrlChainFinished(errorCode)
+                OpenSslX509ChainEventSource.Log.CrlChainFinished(errorCode);
 
             // If anything is wrong, move see if we need to try OCSP,
             // or clearing an unwanted root revocation flag.
             if (errorCode != Interop.Crypto.X509VerifyStatusCode.X509_V_OK)
-                FinishRevocation(revocationMode, revocationFlag, chainSize)
+                FinishRevocation(revocationMode, revocationFlag, chainSize);
 
             if (OpenSslX509ChainEventSource.Log.IsEnabled())
-                OpenSslX509ChainEventSource.Log.RevocationCheckStop()
+                OpenSslX509ChainEventSource.Log.RevocationCheckStop();
 
         private void FinishRevocation(
             X509RevocationMode revocationMode,
             X509RevocationFlag revocationFlag,
             int chainSize)
-            WorkingChain workingChain = BuildWorkingChain()
+            WorkingChain workingChain = BuildWorkingChain();
 
             // If the chain built and the only error was something we ignore (probably X509_V_ERR_CRL_NOT_YET_VALID)
             // then there's nothing to do.
             if (workingChain.LastError < 0)
                 if (OpenSslX509ChainEventSource.Log.IsEnabled())
-                    OpenSslX509ChainEventSource.Log.AllRevocationErrorsIgnored()
+                    OpenSslX509ChainEventSource.Log.AllRevocationErrorsIgnored();
 
-                return
+                return;
 
             if (OpenSslX509ChainEventSource.Log.IsEnabled() && OpenSslX509ChainEventSource.Log.ShouldLogElementStatuses())
                 for (int logDepth = 0; logDepth <= workingChain.LastError; logDepth++)
@@ -350,27 +350,27 @@ namespace System.Security.Cryptography.X509Certificates
                         workingChain[logDepth],
                         ErrorCollection.BuildDiagnosticString)
 
-            Interop.Crypto.X509VerifyStatusCode statusCode
-            ref ErrorCollection refErrors = ref workingChain[0]
+            Interop.Crypto.X509VerifyStatusCode statusCode;
+            ref ErrorCollection refErrors = ref workingChain[0];
 
             // EndCertificateOnly, not testing a trusted self-signed certificate.
             if (revocationFlag == X509RevocationFlag.EndCertificateOnly && chainSize > 1)
                 if (refErrors.HasCorruptRevocation())
-                    refErrors.ClearRevoked()
+                    refErrors.ClearRevoked();
 
                 if (refErrors.IsRevoked())
-                    refErrors.ClearRevocationUnknown()
-                    return
+                    refErrors.ClearRevocationUnknown();
+                    return;
 
-                Debug.Assert(refErrors.HasRevocationUnknown())
-                refErrors.ClearRevocationUnknown()
+                Debug.Assert(refErrors.HasRevocationUnknown());
+                refErrors.ClearRevocationUnknown();
 
-                statusCode = CheckOcsp(0, _leafHandle, revocationMode)
+                statusCode = CheckOcsp(0, _leafHandle, revocationMode);
 
                 if (statusCode != Interop.Crypto.X509VerifyStatusCode.X509_V_OK)
-                    refErrors.Add(statusCode)
+                    refErrors.Add(statusCode);
 
-                return
+                return;
 
             // Either we're self-signed, or we're in EntireChain or ExcludeRoot
 
@@ -380,18 +380,18 @@ namespace System.Security.Cryptography.X509Certificates
                 //   was revoked it'll assert Revoked, and we need to clear that.
                 // * In EntireChain we'll process OCSP to clear RevocationStatusUnknown, but
                 //   if OCSP also is inconclusive we report NoError.
-                int start = chainSize - 1
-                bool encounteredRevocation = false
+                int start = chainSize - 1;
+                bool encounteredRevocation = false;
 
                 if (workingChain.LastError >= start)
-                    refErrors = ref workingChain[start]
+                    refErrors = ref workingChain[start];
 
                     if (refErrors.HasCorruptRevocation())
-                        refErrors.ClearRevoked()
+                        refErrors.ClearRevoked();
 
-                    encounteredRevocation = refErrors.IsRevoked()
+                    encounteredRevocation = refErrors.IsRevoked();
 
-                    Debug.Assert(chainSize == 1 || revocationFlag != X509RevocationFlag.EndCertificateOnly)
+                    Debug.Assert(chainSize == 1 || revocationFlag != X509RevocationFlag.EndCertificateOnly);
 
                     // If we're in EntireChain, keep the revoked result.
                     // If we're in ExcludeRoot, ignore the revoked result.
@@ -399,34 +399,34 @@ namespace System.Security.Cryptography.X509Certificates
                     // If we're in EndCertificateOnly the chainSize has to be one, or we already exited...
                     // since the root IS the end certificate, keep the revoked result.
                     if (encounteredRevocation && revocationFlag == X509RevocationFlag.ExcludeRoot)
-                        refErrors.ClearRevoked()
-                        encounteredRevocation = false
+                        refErrors.ClearRevoked();
+                        encounteredRevocation = false;
                     else if (refErrors.HasRevocationUnknown() && revocationFlag != X509RevocationFlag.ExcludeRoot)
                         // If the chain size is 1 we need to copy the root cert into untrusted so
                         // OCSP_basic_verify can find it.
                         if (chainSize == 1)
                             using (SafeSharedX509StackHandle untrusted = Interop.Crypto.X509StoreCtxGetSharedUntrusted(_storeCtx))
                                 using (SafeX509Handle upref = Interop.Crypto.X509UpRef(_leafHandle))
-                                    Interop.Crypto.PushX509StackField(untrusted, upref)
+                                    Interop.Crypto.PushX509StackField(untrusted, upref);
                                     // Ownership moved to the stack
-                                    upref.SetHandleAsInvalid()
+                                    upref.SetHandleAsInvalid();
 
-                        IntPtr rootPtr = Interop.Crypto.GetX509StackField(chainStack, start)
+                        IntPtr rootPtr = Interop.Crypto.GetX509StackField(chainStack, start);
 
                         using (SafeX509Handle rootHandle = Interop.Crypto.X509UpRef(rootPtr))
-                            statusCode = CheckOcsp(start, rootHandle, revocationMode)
+                            statusCode = CheckOcsp(start, rootHandle, revocationMode);
 
                         if (statusCode != Interop.Crypto.X509VerifyStatusCode.X509_V_OK)
-                            refErrors.Add(statusCode)
-                            encounteredRevocation = refErrors.IsRevoked()
+                            refErrors.Add(statusCode);
+                            encounteredRevocation = refErrors.IsRevoked();
 
                     // Root is revoked and we care, revoked and we don't care, or it's OK.
                     // Clear any of the bits that indicate revocation is unknown (for the root).
-                    refErrors.ClearRevocationUnknown()
-                    start--
+                    refErrors.ClearRevocationUnknown();
+                    start--;
                 else
-                    Debug.Assert(workingChain.LastError <= start - 1)
-                    start = workingChain.LastError
+                    Debug.Assert(workingChain.LastError <= start - 1);
+                    start = workingChain.LastError;
 
                 // For the remaining (issued) levels:
                 // If any higher level cert is revoked, set RevocationStatusUnknown and clear Revoked.
@@ -434,35 +434,35 @@ namespace System.Security.Cryptography.X509Certificates
                 // If revocation status is unknown, ask OCSP
 
                 for (int i = start; i >= 0; i--)
-                    refErrors = ref workingChain[i]
+                    refErrors = ref workingChain[i];
 
                     if (encounteredRevocation)
-                        refErrors.ClearRevoked()
-                        refErrors.AddRevocationUnknown()
-                        continue
+                        refErrors.ClearRevoked();
+                        refErrors.AddRevocationUnknown();
+                        continue;
 
                     if (refErrors.HasCorruptRevocation())
-                        refErrors.ClearRevoked()
+                        refErrors.ClearRevoked();
 
                     if (refErrors.IsRevoked())
-                        refErrors.ClearRevocationUnknown()
-                        encounteredRevocation = true
-                        continue
+                        refErrors.ClearRevocationUnknown();
+                        encounteredRevocation = true;
+                        continue;
 
                     if (refErrors.HasRevocationUnknown())
-                        refErrors.ClearRevocationUnknown()
+                        refErrors.ClearRevocationUnknown();
 
                         if (i == 0)
-                            statusCode = CheckOcsp(0, _leafHandle, revocationMode)
+                            statusCode = CheckOcsp(0, _leafHandle, revocationMode);
                         else
-                            IntPtr certPtr = Interop.Crypto.GetX509StackField(chainStack, i)
+                            IntPtr certPtr = Interop.Crypto.GetX509StackField(chainStack, i);
 
                             using (SafeX509Handle certHandle = Interop.Crypto.X509UpRef(certPtr))
-                                statusCode = CheckOcsp(i, certHandle, revocationMode)
+                                statusCode = CheckOcsp(i, certHandle, revocationMode);
 
                         if (statusCode != Interop.Crypto.X509VerifyStatusCode.X509_V_OK)
-                            refErrors.Add(statusCode)
-                            encounteredRevocation = refErrors.IsRevoked()
+                            refErrors.Add(statusCode);
+                            encounteredRevocation = refErrors.IsRevoked();
 
             if (OpenSslX509ChainEventSource.Log.IsEnabled() && OpenSslX509ChainEventSource.Log.ShouldLogElementStatuses())
                 for (int logDepth = 0; logDepth <= workingChain.LastError; logDepth++)
@@ -474,111 +474,111 @@ namespace System.Security.Cryptography.X509Certificates
         [UnmanagedCallersOnly]
         private static unsafe int VerifyCallback(int ok, IntPtr ctx)
             if (ok != 0)
-                return ok
+                return ok;
 
             try
                 using (var storeCtx = new SafeX509StoreCtxHandle(ctx, ownsHandle: false))
-                    return ((WorkingChain*)Interop.Crypto.X509StoreCtxGetAppData(storeCtx))->VerifyCallback(storeCtx)
+                    return ((WorkingChain*)Interop.Crypto.X509StoreCtxGetAppData(storeCtx))->VerifyCallback(storeCtx);
             catch
-                return -1
+                return -1;
 
         private unsafe WorkingChain BuildWorkingChain()
             if (_workingChain != null)
-                return _workingChain
+                return _workingChain;
 
-            WorkingChain workingChain = new WorkingChain()
-            WorkingChain? extraDispose = null
+            WorkingChain workingChain = new WorkingChain();
+            WorkingChain? extraDispose = null;
 
-            Interop.Crypto.X509StoreCtxReset(_storeCtx)
+            Interop.Crypto.X509StoreCtxReset(_storeCtx);
 
-            Interop.Crypto.X509StoreCtxSetVerifyCallback(_storeCtx, &VerifyCallback, &workingChain)
+            Interop.Crypto.X509StoreCtxSetVerifyCallback(_storeCtx, &VerifyCallback, &workingChain);
 
-            bool verify = Interop.Crypto.X509VerifyCert(_storeCtx)
+            bool verify = Interop.Crypto.X509VerifyCert(_storeCtx);
 
             if (workingChain.AbortedForSignatureError)
-                Debug.Assert(!verify, "verify should have returned false for signature error")
-                CloneChainForSignatureErrors()
+                Debug.Assert(!verify, "verify should have returned false for signature error");
+                CloneChainForSignatureErrors();
 
                 // Reset to a WorkingChain that won't fail.
-                extraDispose = workingChain
-                workingChain = new WorkingChain(abortOnSignatureError: false)
+                extraDispose = workingChain;
+                workingChain = new WorkingChain(abortOnSignatureError: false);
 
-                Interop.Crypto.X509StoreCtxSetVerifyCallback(_storeCtx, &VerifyCallback, &workingChain)
+                Interop.Crypto.X509StoreCtxSetVerifyCallback(_storeCtx, &VerifyCallback, &workingChain);
 
-                verify = Interop.Crypto.X509VerifyCert(_storeCtx)
+                verify = Interop.Crypto.X509VerifyCert(_storeCtx);
 
             // Because our callback tells OpenSSL that every problem is ignorable, it should tell us that the
             // chain is just fine (unless it returned a negative code for an exception)
-            Debug.Assert(verify, "verify should have returned true")
+            Debug.Assert(verify, "verify should have returned true");
 
-            extraDispose?.Dispose()
+            extraDispose?.Dispose();
 
-            _workingChain = workingChain
-            return workingChain
+            _workingChain = workingChain;
+            return workingChain;
 
         internal void Finish(OidCollection? applicationPolicy, OidCollection? certificatePolicy)
-            WorkingChain? workingChain = _workingChain
+            WorkingChain? workingChain = _workingChain;
 
             // If the chain had any errors during the previous build we need to walk it again with
             // the error collector running.
             if (Interop.Crypto.X509StoreCtxGetError(_storeCtx) != Interop.Crypto.X509VerifyStatusCode.X509_V_OK)
-                workingChain ??= BuildWorkingChain()
+                workingChain ??= BuildWorkingChain();
 
             X509ChainElement[] elements = BuildChainElements(
                 workingChain,
                 out List<X509ChainStatus>? overallStatus)
 
-            workingChain?.Dispose()
+            workingChain?.Dispose();
 
             if (applicationPolicy?.Count > 0 || certificatePolicy?.Count > 0)
-                ProcessPolicy(elements, ref overallStatus, applicationPolicy, certificatePolicy)
+                ProcessPolicy(elements, ref overallStatus, applicationPolicy, certificatePolicy);
             else
                 CertificatePolicyChain.ErrorVector errors = CertificatePolicyChain.CheckEncodingOnly(
                     ElementsToCerts(elements),
                     elements.Length)
 
                 if (errors.Any)
-                    overallStatus ??= new List<X509ChainStatus>()
-                    MergePolicyErrors(elements, errors, usageErrors: default, overallStatus)
+                    overallStatus ??= new List<X509ChainStatus>();
+                    MergePolicyErrors(elements, errors, usageErrors: default, overallStatus);
 
-            ChainStatus = overallStatus?.ToArray() ?? Array.Empty<X509ChainStatus>()
-            ChainElements = elements
+            ChainStatus = overallStatus?.ToArray() ?? Array.Empty<X509ChainStatus>();
+            ChainElements = elements;
 
             // The native resources are not needed any longer.
-            Dispose()
+            Dispose();
 
         private void CloneChainForSignatureErrors()
-            SafeX509StoreHandle? newStore
-            Interop.Crypto.X509StoreCtxResetForSignatureError(_storeCtx, out newStore)
+            SafeX509StoreHandle? newStore;
+            Interop.Crypto.X509StoreCtxResetForSignatureError(_storeCtx, out newStore);
 
             if (newStore != null)
-                _store.Dispose()
-                _store = newStore
+                _store.Dispose();
+                _store = newStore;
 
         private Interop.Crypto.X509VerifyStatusCode CheckOcsp(
             int chainDepth,
             SafeX509Handle certHandle,
             X509RevocationMode revocationMode)
             if (revocationMode == X509RevocationMode.NoCheck)
-                return X509VerifyStatusCodeUniversal.X509_V_ERR_UNABLE_TO_GET_CRL
+                return X509VerifyStatusCodeUniversal.X509_V_ERR_UNABLE_TO_GET_CRL;
 
-            string ocspCache = OpenSslCrlCache.GetCachedOcspResponseDirectory()
+            string ocspCache = OpenSslCrlCache.GetCachedOcspResponseDirectory();
             Interop.Crypto.X509VerifyStatusCode status =
                 Interop.Crypto.X509ChainGetCachedOcspStatus(_storeCtx, ocspCache, chainDepth)
 
             if (OpenSslX509ChainEventSource.Log.IsEnabled())
-                OpenSslX509ChainEventSource.Log.OcspResponseFromCache(chainDepth, status)
+                OpenSslX509ChainEventSource.Log.OcspResponseFromCache(chainDepth, status);
 
             if (status != X509VerifyStatusCodeUniversal.X509_V_ERR_UNABLE_TO_GET_CRL)
-                return status
+                return status;
 
             if (revocationMode != X509RevocationMode.Online)
-                return X509VerifyStatusCodeUniversal.X509_V_ERR_UNABLE_TO_GET_CRL
+                return X509VerifyStatusCodeUniversal.X509_V_ERR_UNABLE_TO_GET_CRL;
 
-            string? baseUri = GetOcspEndpoint(certHandle)
+            string? baseUri = GetOcspEndpoint(certHandle);
 
             if (baseUri == null)
-                return status
+                return status;
 
             using (SafeOcspRequestHandle req = Interop.Crypto.X509ChainBuildOcspRequest(_storeCtx, chainDepth))
                 ArraySegment<byte> encoded = Interop.Crypto.OpenSslRentEncode(
@@ -586,12 +586,12 @@ namespace System.Security.Cryptography.X509Certificates
                     Interop.Crypto.EncodeOcspRequest,
                     req)
 
-                ArraySegment<char> urlEncoded = UrlBase64Encoding.RentEncode(encoded)
-                string requestUrl = UrlPathAppend(baseUri, urlEncoded)
+                ArraySegment<char> urlEncoded = UrlBase64Encoding.RentEncode(encoded);
+                string requestUrl = UrlPathAppend(baseUri, urlEncoded);
 
                 // Nothing sensitive is in the encoded request (it was sent via HTTP-non-S)
-                CryptoPool.Return(encoded.Array!, clearSize: 0)
-                ArrayPool<char>.Shared.Return(urlEncoded.Array!)
+                CryptoPool.Return(encoded.Array!, clearSize: 0);
+                ArrayPool<char>.Shared.Return(urlEncoded.Array!);
 
                 // https://tools.ietf.org/html/rfc6960#appendix-A describes both a GET and a POST
                 // version of an OCSP responder.
@@ -606,73 +606,73 @@ namespace System.Security.Cryptography.X509Certificates
 
                 using (resp)
                     if (resp == null || resp.IsInvalid)
-                        return X509VerifyStatusCodeUniversal.X509_V_ERR_UNABLE_TO_GET_CRL
+                        return X509VerifyStatusCodeUniversal.X509_V_ERR_UNABLE_TO_GET_CRL;
 
                     try
-                        System.IO.Directory.CreateDirectory(ocspCache)
+                        System.IO.Directory.CreateDirectory(ocspCache);
                     catch
                         // Opportunistic create, suppress all errors.
                         ;
 
-                    status = Interop.Crypto.X509ChainVerifyOcsp(_storeCtx, req, resp, ocspCache, chainDepth)
+                    status = Interop.Crypto.X509ChainVerifyOcsp(_storeCtx, req, resp, ocspCache, chainDepth);
 
                     if (OpenSslX509ChainEventSource.Log.IsEnabled())
-                        OpenSslX509ChainEventSource.Log.OcspResponseFromDownload(chainDepth, status)
+                        OpenSslX509ChainEventSource.Log.OcspResponseFromDownload(chainDepth, status);
 
-                    return status
+                    return status;
 
         private static string UrlPathAppend(string baseUri, ReadOnlyMemory<char> resource)
-            Debug.Assert(baseUri.Length > 0)
-            Debug.Assert(resource.Length > 0)
+            Debug.Assert(baseUri.Length > 0);
+            Debug.Assert(resource.Length > 0);
 
             if (baseUri.EndsWith('/'))
-                return string.Concat(baseUri, resource.Span)
+                return string.Concat(baseUri, resource.Span);
 
-            return string.Concat(baseUri, "/", resource.Span)
+            return string.Concat(baseUri, "/", resource.Span);
 
         private X509ChainElement[] BuildChainElements(
             WorkingChain? workingChain,
             out List<X509ChainStatus>? overallStatus)
-            X509ChainElement[] elements
-            overallStatus = null
+            X509ChainElement[] elements;
+            overallStatus = null;
 
-            List<X509ChainStatus>? statusBuilder = null
-            bool overallHasNotSignatureValid = false
+            List<X509ChainStatus>? statusBuilder = null;
+            bool overallHasNotSignatureValid = false;
             using (SafeX509StackHandle chainStack = Interop.Crypto.X509StoreCtxGetChain(_storeCtx))
-                int chainSize = Interop.Crypto.GetX509StackFieldCount(chainStack)
-                elements = new X509ChainElement[chainSize]
+                int chainSize = Interop.Crypto.GetX509StackFieldCount(chainStack);
+                elements = new X509ChainElement[chainSize];
 
                 for (int i = 0; i < chainSize; i++)
-                    X509ChainStatus[] status = Array.Empty<X509ChainStatus>()
-                    ErrorCollection? elementErrors = workingChain?.LastError >= i ? (ErrorCollection?)workingChain[i] : null
+                    X509ChainStatus[] status = Array.Empty<X509ChainStatus>();
+                    ErrorCollection? elementErrors = workingChain?.LastError >= i ? (ErrorCollection?)workingChain[i] : null;
 
                     if (elementErrors.HasValue && elementErrors.Value.HasErrors)
-                        statusBuilder ??= new List<X509ChainStatus>()
-                        overallStatus ??= new List<X509ChainStatus>()
+                        statusBuilder ??= new List<X509ChainStatus>();
+                        overallStatus ??= new List<X509ChainStatus>();
 
-                        bool hadSignatureNotValid = overallHasNotSignatureValid
-                        AddElementStatus(elementErrors.Value, statusBuilder, overallStatus, ref overallHasNotSignatureValid)
+                        bool hadSignatureNotValid = overallHasNotSignatureValid;
+                        AddElementStatus(elementErrors.Value, statusBuilder, overallStatus, ref overallHasNotSignatureValid);
 
                         // Clear NotSignatureValid for the last element when overall chain is not PartialChain or UntrustedRoot.
-                        bool isLastElement = i == chainSize - 1
+                        bool isLastElement = i == chainSize - 1;
                         if (isLastElement && !hadSignatureNotValid && overallHasNotSignatureValid)
                             if (!ContainsStatus(overallStatus, X509ChainStatusFlags.PartialChain) &&
                                 !ContainsStatus(overallStatus, X509ChainStatusFlags.UntrustedRoot))
-                                RemoveStatus(statusBuilder, X509ChainStatusFlags.NotSignatureValid)
-                                RemoveStatus(overallStatus, X509ChainStatusFlags.NotSignatureValid)
-                        status = statusBuilder.ToArray()
-                        statusBuilder.Clear()
+                                RemoveStatus(statusBuilder, X509ChainStatusFlags.NotSignatureValid);
+                                RemoveStatus(overallStatus, X509ChainStatusFlags.NotSignatureValid);
+                        status = statusBuilder.ToArray();
+                        statusBuilder.Clear();
 
-                    IntPtr elementCertPtr = Interop.Crypto.GetX509StackField(chainStack, i)
+                    IntPtr elementCertPtr = Interop.Crypto.GetX509StackField(chainStack, i);
 
                     if (elementCertPtr == IntPtr.Zero)
-                        throw Interop.Crypto.CreateOpenSslCryptographicException()
+                        throw Interop.Crypto.CreateOpenSslCryptographicException();
 
                     // Duplicate the certificate handle
-                    X509Certificate2 elementCert = new X509Certificate2(elementCertPtr)
-                    elements[i] = new X509ChainElement(elementCert, status, "")
+                    X509Certificate2 elementCert = new X509Certificate2(elementCertPtr);
+                    elements[i] = new X509ChainElement(elementCert, status, "");
 
-            return elements
+            return elements;
 
         private static void MergePolicyErrors(
             X509ChainElement[] elements,
@@ -695,31 +695,31 @@ namespace System.Security.Cryptography.X509Certificates
             }
 
             if (extensionErrors.Any)
-                AddUniqueStatus(overallStatus, ref policyConstr)
-                AddUniqueStatus(overallStatus, ref badExt)
+                AddUniqueStatus(overallStatus, ref policyConstr);
+                AddUniqueStatus(overallStatus, ref badExt);
 
             if (usageErrors.Any)
-                AddUniqueStatus(overallStatus, ref badUsage)
+                AddUniqueStatus(overallStatus, ref badUsage);
 
             // No individual element can have seen more errors than the chain overall,
             // so avoid regrowth of the list.
-            List<X509ChainStatus> elementStatus = new List<X509ChainStatus>(overallStatus.Count)
+            List<X509ChainStatus> elementStatus = new List<X509ChainStatus>(overallStatus.Count);
 
             for (int i = 0; i < elements.Length; i++)
-                bool ext = extensionErrors[i]
-                bool usage = usageErrors[i]
+                bool ext = extensionErrors[i];
+                bool usage = usageErrors[i];
 
                 if (ext || usage)
-                    X509ChainElement element = elements[i]
-                    elementStatus.Clear()
-                    elementStatus.AddRange(element.ChainElementStatus)
+                    X509ChainElement element = elements[i];
+                    elementStatus.Clear();
+                    elementStatus.AddRange(element.ChainElementStatus);
 
                     if (ext)
-                        AddUniqueStatus(elementStatus, ref policyConstr)
-                        AddUniqueStatus(elementStatus, ref badExt)
+                        AddUniqueStatus(elementStatus, ref policyConstr);
+                        AddUniqueStatus(elementStatus, ref badExt);
 
                     if (usage)
-                        AddUniqueStatus(elementStatus, ref badUsage)
+                        AddUniqueStatus(elementStatus, ref badUsage);
 
                     elements[i] = new X509ChainElement(
                         element.Certificate,
@@ -731,17 +731,17 @@ namespace System.Security.Cryptography.X509Certificates
             ref List<X509ChainStatus>? overallStatus,
             OidCollection? applicationPolicy,
             OidCollection? certificatePolicy)
-            bool isPartialChain = false
-            X509ChainElement lastElement = elements[^1]
-            Debug.Assert(lastElement.ChainElementStatus is not null)
+            bool isPartialChain = false;
+            X509ChainElement lastElement = elements[^1];
+            Debug.Assert(lastElement.ChainElementStatus is not null);
 
             foreach (X509ChainStatus status in lastElement.ChainElementStatus)
                 if (status.Status == X509ChainStatusFlags.PartialChain)
-                    isPartialChain = true
-                    break
+                    isPartialChain = true;
+                    break;
 
-            CertificatePolicyChain.ErrorVector usageErrors = default
-            CertificatePolicyChain.ErrorVector encodingErrors = default
+            CertificatePolicyChain.ErrorVector usageErrors = default;
+            CertificatePolicyChain.ErrorVector encodingErrors = default;
 
             CertificatePolicyChain policyChain = CertificatePolicyChain.Build(
                 ElementsToCerts(elements),
@@ -750,14 +750,14 @@ namespace System.Security.Cryptography.X509Certificates
                 ref encodingErrors)
 
             if (certificatePolicy is not null)
-                policyChain.MatchCertificatePolicies(certificatePolicy, ref usageErrors)
+                policyChain.MatchCertificatePolicies(certificatePolicy, ref usageErrors);
 
             if (applicationPolicy is not null)
-                policyChain.MatchApplicationPolicies(applicationPolicy, ref usageErrors)
+                policyChain.MatchApplicationPolicies(applicationPolicy, ref usageErrors);
 
             if (usageErrors.Any || encodingErrors.Any)
-                overallStatus ??= new List<X509ChainStatus>()
-                MergePolicyErrors(elements, encodingErrors, usageErrors, overallStatus)
+                overallStatus ??= new List<X509ChainStatus>();
+                MergePolicyErrors(elements, encodingErrors, usageErrors, overallStatus);
 
         private static void AddElementStatus(
             ErrorCollection errorCodes,
@@ -765,7 +765,7 @@ namespace System.Security.Cryptography.X509Certificates
             List<X509ChainStatus> overallStatus,
             ref bool overallHasNotSignatureValid)
             foreach (Interop.Crypto.X509VerifyStatusCode errorCode in errorCodes)
-                AddElementStatus(errorCode, elementStatus, overallStatus, ref overallHasNotSignatureValid)
+                AddElementStatus(errorCode, elementStatus, overallStatus, ref overallHasNotSignatureValid);
 
             foreach (X509ChainStatus element in elementStatus)
                 if (element.Status == X509ChainStatusFlags.RevocationStatusUnknown)
@@ -775,16 +775,16 @@ namespace System.Security.Cryptography.X509Certificates
                         X509VerifyStatusCodeUniversal.X509_V_ERR_UNABLE_TO_GET_CRL),
                     }
 
-                    elementStatus.Add(chainStatus)
-                    AddUniqueStatus(overallStatus, ref chainStatus)
-                    break
+                    elementStatus.Add(chainStatus);
+                    AddUniqueStatus(overallStatus, ref chainStatus);
+                    break;
 
         private static void AddElementStatus(
             Interop.Crypto.X509VerifyStatusCode errorCode,
             List<X509ChainStatus> elementStatus,
             List<X509ChainStatus> overallStatus,
             ref bool overallHasNotSignatureValid)
-            X509ChainStatusFlags statusFlag = MapVerifyErrorToChainStatus(errorCode)
+            X509ChainStatusFlags statusFlag = MapVerifyErrorToChainStatus(errorCode);
 
             Debug.Assert(
                 (statusFlag & (statusFlag - 1)) == 0,
@@ -795,63 +795,63 @@ namespace System.Security.Cryptography.X509Certificates
 
             foreach (X509ChainStatus currentStatus in elementStatus)
                 if ((currentStatus.Status & statusFlag) != 0)
-                    return
+                    return;
 
             X509ChainStatus chainStatus = new X509ChainStatus {
                 Status = statusFlag,
                 StatusInformation = GetErrorString(errorCode),
             }
 
-            elementStatus.Add(chainStatus)
-            AddUniqueStatus(overallStatus, ref chainStatus)
+            elementStatus.Add(chainStatus);
+            AddUniqueStatus(overallStatus, ref chainStatus);
 
             if (statusFlag == X509ChainStatusFlags.NotSignatureValid)
-                overallHasNotSignatureValid = true
+                overallHasNotSignatureValid = true;
 
         private static void AddUniqueStatus(List<X509ChainStatus> list, ref X509ChainStatus status)
-            X509ChainStatusFlags statusCode = status.Status
+            X509ChainStatusFlags statusCode = status.Status;
 
             for (int i = 0; i < list.Count; i++)
                 if (list[i].Status == statusCode)
-                    return
+                    return;
 
-            list.Add(status)
+            list.Add(status);
 
         private static bool ContainsStatus(List<X509ChainStatus> list, X509ChainStatusFlags statusCode)
             for (int i = 0; i < list.Count; i++)
                 if (list[i].Status == statusCode)
-                    return true
+                    return true;
 
-            return false
+            return false;
 
         private static void RemoveStatus(List<X509ChainStatus> list, X509ChainStatusFlags statusCode)
             for (int i = 0; i < list.Count; i++)
                 if (list[i].Status == statusCode)
-                    list.RemoveAt(i)
-                    return
+                    list.RemoveAt(i);
+                    return;
 
         private static X509ChainStatusFlags MapVerifyErrorToChainStatus(Interop.Crypto.X509VerifyStatusCode code)
             switch (code.UniversalCode)
                 case X509VerifyStatusCodeUniversal.X509_V_OK:
-                    return X509ChainStatusFlags.NoError
+                    return X509ChainStatusFlags.NoError;
 
                 case X509VerifyStatusCodeUniversal.X509_V_ERR_CERT_NOT_YET_VALID:
                 case X509VerifyStatusCodeUniversal.X509_V_ERR_CERT_HAS_EXPIRED:
                 case X509VerifyStatusCodeUniversal.X509_V_ERR_ERROR_IN_CERT_NOT_BEFORE_FIELD:
                 case X509VerifyStatusCodeUniversal.X509_V_ERR_ERROR_IN_CERT_NOT_AFTER_FIELD:
-                    return X509ChainStatusFlags.NotTimeValid
+                    return X509ChainStatusFlags.NotTimeValid;
 
                 case X509VerifyStatusCodeUniversal.X509_V_ERR_CERT_REVOKED:
-                    return X509ChainStatusFlags.Revoked
+                    return X509ChainStatusFlags.Revoked;
 
                 case X509VerifyStatusCodeUniversal.X509_V_ERR_UNABLE_TO_DECODE_ISSUER_PUBLIC_KEY:
                 case X509VerifyStatusCodeUniversal.X509_V_ERR_CERT_SIGNATURE_FAILURE:
-                    return X509ChainStatusFlags.NotSignatureValid
+                    return X509ChainStatusFlags.NotSignatureValid;
 
                 case X509VerifyStatusCodeUniversal.X509_V_ERR_CERT_UNTRUSTED:
                 case X509VerifyStatusCodeUniversal.X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT:
                 case X509VerifyStatusCodeUniversal.X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN:
-                    return X509ChainStatusFlags.UntrustedRoot
+                    return X509ChainStatusFlags.UntrustedRoot;
 
                 // When adding to the RevocationStatusUnknown block, ensure these codes are properly
                 // tested/cleared in the ErrorCollection type.
@@ -865,79 +865,79 @@ namespace System.Security.Cryptography.X509Certificates
                 case X509VerifyStatusCodeUniversal.X509_V_ERR_UNABLE_TO_GET_CRL:
                 case X509VerifyStatusCodeUniversal.X509_V_ERR_UNABLE_TO_GET_CRL_ISSUER:
                 case X509VerifyStatusCodeUniversal.X509_V_ERR_UNHANDLED_CRITICAL_CRL_EXTENSION:
-                    return X509ChainStatusFlags.RevocationStatusUnknown
+                    return X509ChainStatusFlags.RevocationStatusUnknown;
 
                 case X509VerifyStatusCodeUniversal.X509_V_ERR_INVALID_EXTENSION:
-                    return X509ChainStatusFlags.InvalidExtension
+                    return X509ChainStatusFlags.InvalidExtension;
 
                 case X509VerifyStatusCodeUniversal.X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT:
                 case X509VerifyStatusCodeUniversal.X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY:
                 case X509VerifyStatusCodeUniversal.X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE:
-                    return X509ChainStatusFlags.PartialChain
+                    return X509ChainStatusFlags.PartialChain;
 
                 case X509VerifyStatusCodeUniversal.X509_V_ERR_INVALID_PURPOSE:
-                    return X509ChainStatusFlags.NotValidForUsage
+                    return X509ChainStatusFlags.NotValidForUsage;
 
                 case X509VerifyStatusCodeUniversal.X509_V_ERR_INVALID_NON_CA:
                 case X509VerifyStatusCodeUniversal.X509_V_ERR_PATH_LENGTH_EXCEEDED:
                 case X509VerifyStatusCodeUniversal.X509_V_ERR_KEYUSAGE_NO_CERTSIGN:
                 case X509VerifyStatusCodeUniversal.X509_V_ERR_KEYUSAGE_NO_DIGITAL_SIGNATURE:
-                    return X509ChainStatusFlags.InvalidBasicConstraints
+                    return X509ChainStatusFlags.InvalidBasicConstraints;
 
                 case X509VerifyStatusCodeUniversal.X509_V_ERR_INVALID_POLICY_EXTENSION:
                 case X509VerifyStatusCodeUniversal.X509_V_ERR_NO_EXPLICIT_POLICY:
-                    return X509ChainStatusFlags.InvalidPolicyConstraints
+                    return X509ChainStatusFlags.InvalidPolicyConstraints;
 
                 case X509VerifyStatusCodeUniversal.X509_V_ERR_CERT_REJECTED:
-                    return X509ChainStatusFlags.ExplicitDistrust
+                    return X509ChainStatusFlags.ExplicitDistrust;
 
                 case X509VerifyStatusCodeUniversal.X509_V_ERR_UNHANDLED_CRITICAL_EXTENSION:
-                    return X509ChainStatusFlags.HasNotSupportedCriticalExtension
+                    return X509ChainStatusFlags.HasNotSupportedCriticalExtension;
 
                 case X509VerifyStatusCodeUniversal.X509_V_ERR_PERMITTED_VIOLATION:
-                    return X509ChainStatusFlags.HasNotPermittedNameConstraint
+                    return X509ChainStatusFlags.HasNotPermittedNameConstraint;
 
                 case X509VerifyStatusCodeUniversal.X509_V_ERR_EXCLUDED_VIOLATION:
-                    return X509ChainStatusFlags.HasExcludedNameConstraint
+                    return X509ChainStatusFlags.HasExcludedNameConstraint;
 
                 case X509VerifyStatusCodeUniversal.X509_V_ERR_UNSUPPORTED_CONSTRAINT_TYPE:
                 case X509VerifyStatusCodeUniversal.X509_V_ERR_SUBTREE_MINMAX:
-                    return X509ChainStatusFlags.HasNotSupportedNameConstraint
+                    return X509ChainStatusFlags.HasNotSupportedNameConstraint;
 
                 case X509VerifyStatusCodeUniversal.X509_V_ERR_UNSUPPORTED_NAME_SYNTAX:
-                    return X509ChainStatusFlags.InvalidNameConstraints
+                    return X509ChainStatusFlags.InvalidNameConstraints;
 
                 case X509VerifyStatusCodeUniversal.X509_V_ERR_OUT_OF_MEM:
-                    throw new OutOfMemoryException()
+                    throw new OutOfMemoryException();
 
                 default:
-                    return s_mapVersionSpecificCode(code)
+                    return s_mapVersionSpecificCode(code);
 
         private static X509ChainStatusFlags MapOpenSsl30Code(Interop.Crypto.X509VerifyStatusCode code)
             switch (code.Code30)
                 case Interop.Crypto.X509VerifyStatusCode30.X509_V_ERR_INVALID_CA:
-                    return X509ChainStatusFlags.InvalidBasicConstraints
+                    return X509ChainStatusFlags.InvalidBasicConstraints;
                 default:
-                    Debug.Fail("Unrecognized X509VerifyStatusCode:" + code.Code30)
-                    throw GetUnmappedCodeException(nameof(MapOpenSsl30Code), (int)code.Code30)
+                    Debug.Fail("Unrecognized X509VerifyStatusCode:" + code.Code30);
+                    throw GetUnmappedCodeException(nameof(MapOpenSsl30Code), (int)code.Code30);
 
         private static X509ChainStatusFlags MapOpenSsl111Code(Interop.Crypto.X509VerifyStatusCode code)
             switch (code.Code111)
                 case Interop.Crypto.X509VerifyStatusCode111.X509_V_ERR_INVALID_CA:
-                    return X509ChainStatusFlags.InvalidBasicConstraints
+                    return X509ChainStatusFlags.InvalidBasicConstraints;
                 default:
-                    Debug.Fail("Unrecognized X509VerifyStatusCode:" + code.Code111)
-                    throw GetUnmappedCodeException(nameof(MapOpenSsl111Code), (int)code.Code111)
+                    Debug.Fail("Unrecognized X509VerifyStatusCode:" + code.Code111);
+                    throw GetUnmappedCodeException(nameof(MapOpenSsl111Code), (int)code.Code111);
 
         private static X509Certificate2? DownloadCertificate(
             ReadOnlyMemory<byte> authorityInformationAccess,
             TimeSpan downloadTimeout)
-            string? uri = FindHttpAiaRecord(authorityInformationAccess, Oids.CertificateAuthorityIssuers)
+            string? uri = FindHttpAiaRecord(authorityInformationAccess, Oids.CertificateAuthorityIssuers);
 
             if (uri == null)
-                return null
+                return null;
 
-            return OpenSslCertificateAssetDownloader.DownloadCertificate(uri, downloadTimeout)
+            return OpenSslCertificateAssetDownloader.DownloadCertificate(uri, downloadTimeout);
 
         private static string? GetOcspEndpoint(SafeX509Handle cert)
             ArraySegment<byte> authorityInformationAccess =
@@ -946,60 +946,60 @@ namespace System.Security.Cryptography.X509Certificates
                 Oids.AuthorityInformationAccess)
 
             if (authorityInformationAccess.Count == 0)
-                return null
+                return null;
 
-            string? baseUrl = FindHttpAiaRecord(authorityInformationAccess, Oids.OcspEndpoint)
-            CryptoPool.Return(authorityInformationAccess.Array!, clearSize: 0)
-            return baseUrl
+            string? baseUrl = FindHttpAiaRecord(authorityInformationAccess, Oids.OcspEndpoint);
+            CryptoPool.Return(authorityInformationAccess.Array!, clearSize: 0);
+            return baseUrl;
 
         private static string? FindHttpAiaRecord(ReadOnlyMemory<byte> authorityInformationAccess, string recordTypeOid)
             try
-                ValueAsnReader reader = new ValueAsnReader(authorityInformationAccess.Span, AsnEncodingRules.DER)
-                ValueAsnReader sequenceReader = reader.ReadSequence()
-                reader.ThrowIfNotEmpty()
+                ValueAsnReader reader = new ValueAsnReader(authorityInformationAccess.Span, AsnEncodingRules.DER);
+                ValueAsnReader sequenceReader = reader.ReadSequence();
+                reader.ThrowIfNotEmpty();
 
                 while (sequenceReader.HasData)
-                    AccessDescriptionAsn.Decode(ref sequenceReader, authorityInformationAccess, out AccessDescriptionAsn description)
+                    AccessDescriptionAsn.Decode(ref sequenceReader, authorityInformationAccess, out AccessDescriptionAsn description);
                     if (StringComparer.Ordinal.Equals(description.AccessMethod, recordTypeOid))
-                        GeneralNameAsn name = description.AccessLocation
+                        GeneralNameAsn name = description.AccessLocation;
 
                         if (name.Uri != null)
                             if (Uri.TryCreate(name.Uri, UriKind.Absolute, out Uri? uri) &&
                                 uri.Scheme == "http")
-                                return name.Uri
+                                return name.Uri;
                             else if (OpenSslX509ChainEventSource.Log.IsEnabled())
-                                OpenSslX509ChainEventSource.Log.NonHttpAiaEntry(name.Uri)
+                                OpenSslX509ChainEventSource.Log.NonHttpAiaEntry(name.Uri);
 
                 if (OpenSslX509ChainEventSource.Log.IsEnabled())
-                    OpenSslX509ChainEventSource.Log.NoMatchingAiaEntry(recordTypeOid)
+                    OpenSslX509ChainEventSource.Log.NoMatchingAiaEntry(recordTypeOid);
             catch (CryptographicException)
                 // Treat any ASN errors as if the extension was missing.
 
                 if (OpenSslX509ChainEventSource.Log.IsEnabled())
-                    OpenSslX509ChainEventSource.Log.InvalidAia()
+                    OpenSslX509ChainEventSource.Log.InvalidAia();
             catch (AsnContentException)
                 // Treat any ASN errors as if the extension was missing.
 
                 if (OpenSslX509ChainEventSource.Log.IsEnabled())
-                    OpenSslX509ChainEventSource.Log.InvalidAia()
+                    OpenSslX509ChainEventSource.Log.InvalidAia();
 
-            return null
+            return null;
 
         private static void AddToStackAndUpRef(SafeX509Handle cert, SafeX509StackHandle stack)
             using (SafeX509Handle tmp = Interop.Crypto.X509UpRef(cert))
                 if (!Interop.Crypto.PushX509StackField(stack, tmp))
-                    throw Interop.Crypto.CreateOpenSslCryptographicException()
+                    throw Interop.Crypto.CreateOpenSslCryptographicException();
 
                 // Ownership was transferred to the cert stack.
-                tmp.SetHandleAsInvalid()
+                tmp.SetHandleAsInvalid();
 
         private static void AddToStackAndUpRef(IntPtr cert, SafeX509StackHandle stack)
             using (SafeX509Handle tmp = Interop.Crypto.X509UpRef(cert))
                 if (!Interop.Crypto.PushX509StackField(stack, tmp))
-                    throw Interop.Crypto.CreateOpenSslCryptographicException()
+                    throw Interop.Crypto.CreateOpenSslCryptographicException();
 
                 // Ownership was transferred to the cert stack.
-                tmp.SetHandleAsInvalid()
+                tmp.SetHandleAsInvalid();
 
         private static string GetErrorString(Interop.Crypto.X509VerifyStatusCode code)
             return s_errorStrings.GetOrAdd(
@@ -1008,15 +1008,15 @@ namespace System.Security.Cryptography.X509Certificates
 
         private static IEnumerable<X509Certificate2> ElementsToCerts(X509ChainElement[] elements)
             foreach (X509ChainElement element in elements)
-                yield return element.Certificate
+                yield return element.Certificate;
 
         private sealed class WorkingChain : IDisposable
             // OpenSSL 1.0 sets a "signature valid, don't check again" if we OK the signature error
             // OpenSSL 1.1 does not.
-            private const long OpenSSL_1_1_0_RTM = 0x10100000L
-            private static readonly bool s_defaultAbort = SafeEvpPKeyHandle.OpenSslVersion < OpenSSL_1_1_0_RTM
+            private const long OpenSSL_1_1_0_RTM = 0x10100000L;
+            private static readonly bool s_defaultAbort = SafeEvpPKeyHandle.OpenSslVersion < OpenSSL_1_1_0_RTM;
 
-            private ErrorCollection[]? _errors
+            private ErrorCollection[]? _errors;
 
             internal bool AbortOnSignatureError { get; }
             internal bool AbortedForSignatureError { get; private set; }
@@ -1024,28 +1024,28 @@ namespace System.Security.Cryptography.X509Certificates
 
             internal WorkingChain()
                 : this(s_defaultAbort)
-                LastError = -1
+                LastError = -1;
 
             internal WorkingChain(bool abortOnSignatureError)
-                AbortOnSignatureError = abortOnSignatureError
+                AbortOnSignatureError = abortOnSignatureError;
 
-            internal ref ErrorCollection this[int idx] => ref _errors![idx]
+            internal ref ErrorCollection this[int idx] => ref _errors![idx];
 
             public void Dispose()
-                ErrorCollection[]? toReturn = _errors
-                _errors = null
+                ErrorCollection[]? toReturn = _errors;
+                _errors = null;
 
                 if (toReturn != null)
-                    ArrayPool<ErrorCollection>.Shared.Return(toReturn)
+                    ArrayPool<ErrorCollection>.Shared.Return(toReturn);
 
             internal int VerifyCallback(SafeX509StoreCtxHandle storeCtx)
-                Interop.Crypto.X509VerifyStatusCode errorCode = Interop.Crypto.X509StoreCtxGetError(storeCtx)
-                int errorDepth = Interop.Crypto.X509StoreCtxGetErrorDepth(storeCtx)
+                Interop.Crypto.X509VerifyStatusCode errorCode = Interop.Crypto.X509StoreCtxGetError(storeCtx);
+                int errorDepth = Interop.Crypto.X509StoreCtxGetErrorDepth(storeCtx);
 
                 if (AbortOnSignatureError &&
                     errorCode == X509VerifyStatusCodeUniversal.X509_V_ERR_CERT_SIGNATURE_FAILURE)
-                    AbortedForSignatureError = true
-                    return 0
+                    AbortedForSignatureError = true;
+                    return 0;
 
                 // * We don't report "OK" as an error.
                 // * For compatibility with Windows / .NET Framework, do not report X509_V_CRL_NOT_YET_VALID.
@@ -1058,67 +1058,67 @@ namespace System.Security.Cryptography.X509Certificates
                     errorCode != X509VerifyStatusCodeUniversal.X509_V_ERR_DIFFERENT_CRL_SCOPE &&
                     errorCode != X509VerifyStatusCodeUniversal.X509_V_ERR_CERT_CHAIN_TOO_LONG)
                     if (_errors == null)
-                        int size = Math.Max(DefaultChainCapacity, errorDepth + 1)
+                        int size = Math.Max(DefaultChainCapacity, errorDepth + 1);
                         // Since ErrorCollection is a non-public type, this is a private pool.
-                        _errors = ArrayPool<ErrorCollection>.Shared.Rent(size)
+                        _errors = ArrayPool<ErrorCollection>.Shared.Rent(size);
 
                         // We only do spares writes.
-                        _errors.AsSpan().Clear()
+                        _errors.AsSpan().Clear();
                     else if (errorDepth >= _errors.Length)
-                        ErrorCollection[] toReturn = _errors
-                        _errors = ArrayPool<ErrorCollection>.Shared.Rent(errorDepth + 1)
-                        toReturn.AsSpan().CopyTo(_errors)
+                        ErrorCollection[] toReturn = _errors;
+                        _errors = ArrayPool<ErrorCollection>.Shared.Rent(errorDepth + 1);
+                        toReturn.AsSpan().CopyTo(_errors);
 
                         // We only do spares writes, clear the remainder.
-                        _errors.AsSpan(toReturn.Length).Clear()
-                        ArrayPool<ErrorCollection>.Shared.Return(toReturn)
+                        _errors.AsSpan(toReturn.Length).Clear();
+                        ArrayPool<ErrorCollection>.Shared.Return(toReturn);
 
-                    LastError = Math.Max(errorDepth, LastError)
-                    _errors[errorDepth].Add(errorCode)
-                return 1
+                    LastError = Math.Max(errorDepth, LastError);
+                    _errors[errorDepth].Add(errorCode);
+                return 1;
 
         private static MapVersionSpecificCode GetVersionLookup()
             // 3.0+ are M_NN_00_PP_p (Major, Minor, 0, Patch, Preview)
             // 1.x.y are 1_XX_YY_PP_p
             if (SafeEvpPKeyHandle.OpenSslVersion >= 0x3_00_00_00_0)
-                return MapOpenSsl30Code
+                return MapOpenSsl30Code;
 
             if (SafeEvpPKeyHandle.OpenSslVersion >= 0x1_01_01_00_0)
-                return MapOpenSsl111Code
+                return MapOpenSsl111Code;
 
-            throw new CryptographicException()
+            throw new CryptographicException();
 
         private static CryptographicException GetUnmappedCodeException(string functionName, int code)
-            return new CryptographicException(SR.Format(SR.Cryptography_UnmappedOpenSslCode, functionName, code))
+            return new CryptographicException(SR.Format(SR.Cryptography_UnmappedOpenSslCode, functionName, code));
 
         private struct ErrorCollection
             // As of OpenSSL 1.1.1 there are 75 defined X509_V_ERR values,
             // therefore it fits in a bitvector backed by 3 ints (96 bits available).
-            private const int BucketCount = 3
-            private const int OverflowValue = BucketCount * sizeof(int) * 8 - 1
-            private InlineArray3<int> _codes
+            private const int BucketCount = 3;
+            private const int OverflowValue = BucketCount * sizeof(int) * 8 - 1;
+            private InlineArray3<int> _codes;
 
-            internal bool HasOverflow => _codes[2] < 0
+            internal bool HasOverflow => _codes[2] < 0;
 
-            internal bool HasErrors => _codes[0] != 0 || _codes[1] != 0 || _codes[2] != 0
+            internal bool HasErrors => _codes[0] != 0 || _codes[1] != 0 || _codes[2] != 0;
 
             internal void Add(Interop.Crypto.X509VerifyStatusCode statusCode)
-                int bucket = FindBucket(statusCode, out int bitValue)
-                _codes[bucket] |= bitValue
+                int bucket = FindBucket(statusCode, out int bitValue);
+                _codes[bucket] |= bitValue;
 
             private void ClearError(Interop.Crypto.X509VerifyStatusCode statusCode)
-                int bucket = FindBucket(statusCode, out int bitValue)
-                _codes[bucket] &= ~bitValue
+                int bucket = FindBucket(statusCode, out int bitValue);
+                _codes[bucket] &= ~bitValue;
 
             private bool HasError(Interop.Crypto.X509VerifyStatusCode statusCode)
-                int bucket = FindBucket(statusCode, out int bitValue)
-                return (_codes[bucket] & bitValue) != 0
+                int bucket = FindBucket(statusCode, out int bitValue);
+                return (_codes[bucket] & bitValue) != 0;
 
             internal void ClearRevoked()
-                ClearError(X509VerifyStatusCodeUniversal.X509_V_ERR_CERT_REVOKED)
+                ClearError(X509VerifyStatusCodeUniversal.X509_V_ERR_CERT_REVOKED);
 
             internal bool IsRevoked()
-                return HasError(X509VerifyStatusCodeUniversal.X509_V_ERR_CERT_REVOKED)
+                return HasError(X509VerifyStatusCodeUniversal.X509_V_ERR_CERT_REVOKED);
 
             internal bool HasCorruptRevocation()
                 return
@@ -1128,20 +1128,20 @@ namespace System.Security.Cryptography.X509Certificates
             internal void ClearRevocationUnknown()
                 // When adding codes here, make sure that HasRevocationUnknown and
                 // MapVerifyErrorToChainStatus both agree that the code maps to RevocationStatusUnknown.
-                ClearError(X509VerifyStatusCodeUniversal.X509_V_ERR_CRL_HAS_EXPIRED)
-                ClearError(X509VerifyStatusCodeUniversal.X509_V_ERR_CRL_NOT_YET_VALID)
-                ClearError(X509VerifyStatusCodeUniversal.X509_V_ERR_CRL_SIGNATURE_FAILURE)
-                ClearError(X509VerifyStatusCodeUniversal.X509_V_ERR_ERROR_IN_CRL_LAST_UPDATE_FIELD)
-                ClearError(X509VerifyStatusCodeUniversal.X509_V_ERR_ERROR_IN_CRL_NEXT_UPDATE_FIELD)
-                ClearError(X509VerifyStatusCodeUniversal.X509_V_ERR_KEYUSAGE_NO_CRL_SIGN)
-                ClearError(X509VerifyStatusCodeUniversal.X509_V_ERR_UNABLE_TO_DECRYPT_CRL_SIGNATURE)
-                ClearError(X509VerifyStatusCodeUniversal.X509_V_ERR_UNABLE_TO_GET_CRL)
-                ClearError(X509VerifyStatusCodeUniversal.X509_V_ERR_UNABLE_TO_GET_CRL_ISSUER)
-                ClearError(X509VerifyStatusCodeUniversal.X509_V_ERR_UNHANDLED_CRITICAL_CRL_EXTENSION)
+                ClearError(X509VerifyStatusCodeUniversal.X509_V_ERR_CRL_HAS_EXPIRED);
+                ClearError(X509VerifyStatusCodeUniversal.X509_V_ERR_CRL_NOT_YET_VALID);
+                ClearError(X509VerifyStatusCodeUniversal.X509_V_ERR_CRL_SIGNATURE_FAILURE);
+                ClearError(X509VerifyStatusCodeUniversal.X509_V_ERR_ERROR_IN_CRL_LAST_UPDATE_FIELD);
+                ClearError(X509VerifyStatusCodeUniversal.X509_V_ERR_ERROR_IN_CRL_NEXT_UPDATE_FIELD);
+                ClearError(X509VerifyStatusCodeUniversal.X509_V_ERR_KEYUSAGE_NO_CRL_SIGN);
+                ClearError(X509VerifyStatusCodeUniversal.X509_V_ERR_UNABLE_TO_DECRYPT_CRL_SIGNATURE);
+                ClearError(X509VerifyStatusCodeUniversal.X509_V_ERR_UNABLE_TO_GET_CRL);
+                ClearError(X509VerifyStatusCodeUniversal.X509_V_ERR_UNABLE_TO_GET_CRL_ISSUER);
+                ClearError(X509VerifyStatusCodeUniversal.X509_V_ERR_UNHANDLED_CRITICAL_CRL_EXTENSION);
 
             internal bool HasRevocationUnknown()
                 if (!HasErrors)
-                    return false
+                    return false;
 
                 // When adding codes here, make sure that ClearRevocationUnknown and
                 // MapVerifyErrorToChainStatus both agree that the code maps to RevocationStatusUnknown.
@@ -1164,13 +1164,13 @@ namespace System.Security.Cryptography.X509Certificates
             internal void AddRevocationUnknown()
                 // Only one of the codes has to be set.
                 // So set the one we look for first.
-                Add(X509VerifyStatusCodeUniversal.X509_V_ERR_UNABLE_TO_GET_CRL)
+                Add(X509VerifyStatusCodeUniversal.X509_V_ERR_UNABLE_TO_GET_CRL);
 
             public Enumerator GetEnumerator()
                 if (HasOverflow)
-                    throw new CryptographicException()
+                    throw new CryptographicException();
 
-                return new Enumerator(this)
+                return new Enumerator(this);
 
             #if DEBUG
                         public override string ToString()
@@ -1195,70 +1195,70 @@ namespace System.Security.Cryptography.X509Certificates
             #endif
 
             private static int FindBucket(Interop.Crypto.X509VerifyStatusCode statusCode, out int bitValue)
-                int val = statusCode.Code
+                int val = statusCode.Code;
 
-                int bucket
+                int bucket;
 
                 if (val >= OverflowValue)
-                    Debug.Fail($"Out of range X509VerifyStatusCode returned {val} >= {OverflowValue}")
-                    bucket = BucketCount - 1
-                    bitValue = 1 << 31
+                    Debug.Fail($"Out of range X509VerifyStatusCode returned {val} >= {OverflowValue}");
+                    bucket = BucketCount - 1;
+                    bitValue = 1 << 31;
                 else
-                    bucket = Math.DivRem(val, 32, out int localBitNumber)
-                    bitValue = (1 << localBitNumber)
+                    bucket = Math.DivRem(val, 32, out int localBitNumber);
+                    bitValue = (1 << localBitNumber);
 
-                return bucket
+                return bucket;
 
             internal static string BuildDiagnosticString(object boxedErrorCollection)
-                ErrorCollection coll = (ErrorCollection)boxedErrorCollection
+                ErrorCollection coll = (ErrorCollection)boxedErrorCollection;
 
-                StringBuilder builder = new StringBuilder()
+                StringBuilder builder = new StringBuilder();
 
                 foreach (Interop.Crypto.X509VerifyStatusCode code in coll)
                     if (builder.Length > 0)
-                        builder.Append(", ")
+                        builder.Append(", ");
 
-                    builder.Append(code.UniversalCode)
+                    builder.Append(code.UniversalCode);
 
                 if (builder.Length == 0)
-                    return "(none)"
+                    return "(none)";
 
-                return builder.ToString()
+                return builder.ToString();
 
             internal struct Enumerator
-                private ErrorCollection _collection
-                private int _lastBucket
-                private int _lastBit
+                private ErrorCollection _collection;
+                private int _lastBucket;
+                private int _lastBit;
 
                 internal Enumerator(ErrorCollection coll)
-                    _collection = coll
-                    _lastBucket = -1
-                    _lastBit = -1
+                    _collection = coll;
+                    _lastBucket = -1;
+                    _lastBit = -1;
 
                 public bool MoveNext()
                     if (_lastBucket >= BucketCount)
-                        return false
+                        return false;
 
                     FindNextBit:
                     if (_lastBit == -1)
-                        _lastBucket++
+                        _lastBucket++;
 
                         while (_lastBucket < BucketCount && _collection._codes[_lastBucket] == 0)
-                            _lastBucket++
+                            _lastBucket++;
 
                         if (_lastBucket >= BucketCount)
-                            return false
+                            return false;
 
-                    _lastBit++
-                    int val = _collection._codes[_lastBucket]
+                    _lastBit++;
+                    int val = _collection._codes[_lastBucket];
 
                     while (_lastBit < 32)
                         if ((val & (1 << _lastBit)) != 0)
-                            return true
+                            return true;
 
-                        _lastBit++
+                        _lastBit++;
 
-                    _lastBit = -1
-                    goto FindNextBit
+                    _lastBit = -1;
+                    goto FindNextBit;
 
-                public Interop.Crypto.X509VerifyStatusCode Current => _lastBit == -1 ? Interop.Crypto.X509VerifyStatusCode.X509_V_OK : (Interop.Crypto.X509VerifyStatusCode)(_lastBit + 32 * _lastBucket)
+                public Interop.Crypto.X509VerifyStatusCode Current => _lastBit == -1 ? Interop.Crypto.X509VerifyStatusCode.X509_V_OK : (Interop.Crypto.X509VerifyStatusCode)(_lastBit + 32 * _lastBucket);

@@ -1,174 +1,174 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.Collections.Concurrent
-using System.Collections.Generic
-using System.Diagnostics.Tracing
-using System.Linq
-using System.Reflection
-using Microsoft.DotNet.RemoteExecutor
-using Microsoft.DotNet.XUnitExtensions
-using Xunit
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Diagnostics.Tracing;
+using System.Linq;
+using System.Reflection;
+using Microsoft.DotNet.RemoteExecutor;
+using Microsoft.DotNet.XUnitExtensions;
+using Xunit;
 
 namespace System.Threading.Tasks.Tests
     public class RuntimeAsyncTests
-        private static bool IsRemoteExecutorAndRuntimeAsyncSupported => RemoteExecutor.IsSupported && PlatformDetection.IsRuntimeAsyncSupported
+        private static bool IsRemoteExecutorAndRuntimeAsyncSupported => RemoteExecutor.IsSupported && PlatformDetection.IsRuntimeAsyncSupported;
 
-        private static readonly FieldInfo s_asyncDebuggingEnabledField = GetCorLibClassStaticField("System.Threading.Tasks.Task", "s_asyncDebuggingEnabled")
-        private static readonly FieldInfo s_taskTimestampsField = GetCorLibClassStaticField("System.Threading.Tasks.Task", "s_runtimeAsyncTaskTimestamps")
-        private static readonly FieldInfo s_continuationTimestampsField = GetCorLibClassStaticField("System.Threading.Tasks.Task", "s_runtimeAsyncContinuationTimestamps")
-        private static readonly FieldInfo s_activeTasksField = GetCorLibClassStaticField("System.Threading.Tasks.Task", "s_currentActiveTasks")
-        private static readonly FieldInfo s_activeFlagsField = GetCorLibClassStaticField("System.Runtime.CompilerServices.AsyncInstrumentation", "s_activeFlags")
+        private static readonly FieldInfo s_asyncDebuggingEnabledField = GetCorLibClassStaticField("System.Threading.Tasks.Task", "s_asyncDebuggingEnabled");
+        private static readonly FieldInfo s_taskTimestampsField = GetCorLibClassStaticField("System.Threading.Tasks.Task", "s_runtimeAsyncTaskTimestamps");
+        private static readonly FieldInfo s_continuationTimestampsField = GetCorLibClassStaticField("System.Threading.Tasks.Task", "s_runtimeAsyncContinuationTimestamps");
+        private static readonly FieldInfo s_activeTasksField = GetCorLibClassStaticField("System.Threading.Tasks.Task", "s_currentActiveTasks");
+        private static readonly FieldInfo s_activeFlagsField = GetCorLibClassStaticField("System.Runtime.CompilerServices.AsyncInstrumentation", "s_activeFlags");
 
-        private static readonly object s_debuggerLock = new object()
+        private static readonly object s_debuggerLock = new object();
 
         // AsyncDebugger(0x2000000) | all event flags(0x7F)
-        private const uint EnabledInstrumentationFlags = 0x200007F
-        private const uint DisabledInstrumentationFlags = 0x0
-        private const uint SynchronizeInstrumentationFlags = 0x80000000
+        private const uint EnabledInstrumentationFlags = 0x200007F;
+        private const uint DisabledInstrumentationFlags = 0x0;
+        private const uint SynchronizeInstrumentationFlags = 0x80000000;
 
         private static void AttachDebugger()
             // Simulate a debugger attach to process by setting s_asyncDebuggingEnabled
             // and triggering a flag synchronization via the Synchronize bit.
             lock (s_debuggerLock)
-                uint flags = Convert.ToUInt32(s_activeFlagsField.GetValue(null))
-                Assert.True(flags == SynchronizeInstrumentationFlags || flags == DisabledInstrumentationFlags, $"ActiveFlags equals {flags}, expected {SynchronizeInstrumentationFlags} || {DisabledInstrumentationFlags}")
+                uint flags = Convert.ToUInt32(s_activeFlagsField.GetValue(null));
+                Assert.True(flags == SynchronizeInstrumentationFlags || flags == DisabledInstrumentationFlags, $"ActiveFlags equals {flags}, expected {SynchronizeInstrumentationFlags} || {DisabledInstrumentationFlags}");
 
-                s_asyncDebuggingEnabledField.SetValue(null, true)
-                s_activeFlagsField.SetValue(null, flags | SynchronizeInstrumentationFlags)
+                s_asyncDebuggingEnabledField.SetValue(null, true);
+                s_activeFlagsField.SetValue(null, flags | SynchronizeInstrumentationFlags);
 
                 // Run an async method to trigger SyncActiveFlags which will pick up the Synchronize bit.
-                Func().GetAwaiter().GetResult()
+                Func().GetAwaiter().GetResult();
 
-                flags = Convert.ToUInt32(s_activeFlagsField.GetValue(null))
-                Assert.True(flags == EnabledInstrumentationFlags, $"ActiveFlags equals {flags}, expected {EnabledInstrumentationFlags}")
+                flags = Convert.ToUInt32(s_activeFlagsField.GetValue(null));
+                Assert.True(flags == EnabledInstrumentationFlags, $"ActiveFlags equals {flags}, expected {EnabledInstrumentationFlags}");
 
-                var activeTasks = (Dictionary<int, Task>)s_activeTasksField.GetValue(null)
-                Assert.True(activeTasks != null, "Expected active tasks dictionary to be initialized")
+                var activeTasks = (Dictionary<int, Task>)s_activeTasksField.GetValue(null);
+                Assert.True(activeTasks != null, "Expected active tasks dictionary to be initialized");
 
-                var taskTimestamps = (Dictionary<int, long>)s_taskTimestampsField.GetValue(null)
-                Assert.True(taskTimestamps != null, "Expected tasks timestamps dictionary to be initialized")
+                var taskTimestamps = (Dictionary<int, long>)s_taskTimestampsField.GetValue(null);
+                Assert.True(taskTimestamps != null, "Expected tasks timestamps dictionary to be initialized");
 
-                var continuationTimestamps = (Dictionary<object, long>)s_continuationTimestampsField.GetValue(null)
-                Assert.True(continuationTimestamps != null, "Expected continuation timestamps dictionary to be initialized")
+                var continuationTimestamps = (Dictionary<object, long>)s_continuationTimestampsField.GetValue(null);
+                Assert.True(continuationTimestamps != null, "Expected continuation timestamps dictionary to be initialized");
 
         private static void DetachDebugger()
             // Simulate a debugger detach from process.
             lock (s_debuggerLock)
-                uint flags = Convert.ToUInt32(s_activeFlagsField.GetValue(null))
-                s_asyncDebuggingEnabledField.SetValue(null, false)
-                s_activeFlagsField.SetValue(null, flags | SynchronizeInstrumentationFlags)
+                uint flags = Convert.ToUInt32(s_activeFlagsField.GetValue(null));
+                s_asyncDebuggingEnabledField.SetValue(null, false);
+                s_activeFlagsField.SetValue(null, flags | SynchronizeInstrumentationFlags);
 
                 // Run an async method to trigger SyncActiveFlags which will detect
                 // s_asyncDebuggingEnabled is false and clear the debugger flags.
-                Func().GetAwaiter().GetResult()
+                Func().GetAwaiter().GetResult();
 
-                flags = Convert.ToUInt32(s_activeFlagsField.GetValue(null))
-                Assert.True(flags == DisabledInstrumentationFlags, $"ActiveFlags equals {flags}, expected {DisabledInstrumentationFlags}")
+                flags = Convert.ToUInt32(s_activeFlagsField.GetValue(null));
+                Assert.True(flags == DisabledInstrumentationFlags, $"ActiveFlags equals {flags}, expected {DisabledInstrumentationFlags}");
 
         private static FieldInfo GetCorLibClassStaticField(string className, string fieldName)
-            Type? classType = typeof(object).Assembly.GetType(className)
+            Type? classType = typeof(object).Assembly.GetType(className);
             if (classType == null)
-                throw new InvalidOperationException($"Type '{className}' doesn't exist in System.Private.CoreLib.")
+                throw new InvalidOperationException($"Type '{className}' doesn't exist in System.Private.CoreLib.");
 
-            FieldInfo? field = classType.GetField(fieldName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)
+            FieldInfo? field = classType.GetField(fieldName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
             if (field == null)
-                throw new InvalidOperationException($"Expected static field '{fieldName}' to exist on type '{className}'.")
+                throw new InvalidOperationException($"Expected static field '{fieldName}' to exist on type '{className}'.");
 
-            return field
+            return field;
 
-        private static int GetTaskTimestampCount() => s_taskTimestampsField.GetValue(null) is Dictionary<int, long> dict ? dict.Count : 0
+        private static int GetTaskTimestampCount() => s_taskTimestampsField.GetValue(null) is Dictionary<int, long> dict ? dict.Count : 0;
 
-        private static int GetContinuationTimestampCount() => s_continuationTimestampsField.GetValue(null) is Dictionary<object, long> dict ? dict.Count : 0
+        private static int GetContinuationTimestampCount() => s_continuationTimestampsField.GetValue(null) is Dictionary<object, long> dict ? dict.Count : 0;
 
         [System.Runtime.CompilerServices.RuntimeAsyncMethodGeneration(true)]
         static async Task Func()
-            await Task.Yield()
+            await Task.Yield();
 
         [System.Runtime.CompilerServices.RuntimeAsyncMethodGeneration(true)]
         static async Task FuncThatThrows()
-            await DeepThrow1()
+            await DeepThrow1();
 
         [System.Runtime.CompilerServices.RuntimeAsyncMethodGeneration(true)]
         static async Task DeepThrow1()
-            await DeepThrow2()
+            await DeepThrow2();
 
         [System.Runtime.CompilerServices.RuntimeAsyncMethodGeneration(true)]
         static async Task DeepThrow2()
-            await Task.Yield()
-            throw new InvalidOperationException("test exception")
+            await Task.Yield();
+            throw new InvalidOperationException("test exception");
 
         [System.Runtime.CompilerServices.RuntimeAsyncMethodGeneration(true)]
         static async Task<int> FuncWithResult()
-            await Task.Yield()
-            return 42
+            await Task.Yield();
+            return 42;
 
         [System.Runtime.CompilerServices.RuntimeAsyncMethodGeneration(true)]
         static async Task OuterFuncThatCatches()
             try
-                await MiddleFuncThatPropagates()
+                await MiddleFuncThatPropagates();
             catch (InvalidOperationException)
                 ;
-            await Task.Yield()
+            await Task.Yield();
 
         [System.Runtime.CompilerServices.RuntimeAsyncMethodGeneration(true)]
         static async Task MiddleFuncThatPropagates()
-            await InnerFuncThatThrows()
+            await InnerFuncThatThrows();
 
         [System.Runtime.CompilerServices.RuntimeAsyncMethodGeneration(true)]
         static async Task InnerFuncThatThrows()
-            await Task.Yield()
-            throw new InvalidOperationException("inner exception")
+            await Task.Yield();
+            throw new InvalidOperationException("inner exception");
 
         [System.Runtime.CompilerServices.RuntimeAsyncMethodGeneration(true)]
         static async Task FuncThatCancels(CancellationToken ct)
-            await Task.Yield()
-            ct.ThrowIfCancellationRequested()
+            await Task.Yield();
+            ct.ThrowIfCancellationRequested();
 
         [System.Runtime.CompilerServices.RuntimeAsyncMethodGeneration(true)]
         static async Task FuncThatWaitsTwice(TaskCompletionSource tcs1, TaskCompletionSource tcs2)
-            await tcs1.Task
-            await tcs2.Task
+            await tcs1.Task;
+            await tcs2.Task;
 
         [System.Runtime.CompilerServices.RuntimeAsyncMethodGeneration(true)]
         static async Task FuncThatInspectsContinuationTimestamps(TaskCompletionSource tcs, Action callback)
-            await tcs.Task
-            callback()
+            await tcs.Task;
+            callback();
 
         [System.Runtime.CompilerServices.RuntimeAsyncMethodGeneration(true)]
         static async Task FuncWithNestedDelays(List<long> observedTimestamps)
-            var continuationTimestamps = (Dictionary<object, long>)s_continuationTimestampsField.GetValue(null)
+            var continuationTimestamps = (Dictionary<object, long>)s_continuationTimestampsField.GetValue(null);
 
-            await Task.Delay(50)
+            await Task.Delay(50);
             lock (continuationTimestamps)
                 foreach (long ts in continuationTimestamps.Values)
-                    observedTimestamps.Add(ts)
+                    observedTimestamps.Add(ts);
 
-            await NestedDelay1(observedTimestamps)
-            await NestedDelay2(observedTimestamps)
+            await NestedDelay1(observedTimestamps);
+            await NestedDelay2(observedTimestamps);
 
         [System.Runtime.CompilerServices.RuntimeAsyncMethodGeneration(true)]
         static async Task NestedDelay1(List<long> observedTimestamps)
-            var continuationTimestamps = (Dictionary<object, long>)s_continuationTimestampsField.GetValue(null)
+            var continuationTimestamps = (Dictionary<object, long>)s_continuationTimestampsField.GetValue(null);
 
-            await Task.Delay(50)
+            await Task.Delay(50);
             lock (continuationTimestamps)
                 foreach (long ts in continuationTimestamps.Values)
-                    observedTimestamps.Add(ts)
+                    observedTimestamps.Add(ts);
 
         [System.Runtime.CompilerServices.RuntimeAsyncMethodGeneration(true)]
         static async Task NestedDelay2(List<long> observedTimestamps)
-            var continuationTimestamps = (Dictionary<object, long>)s_continuationTimestampsField.GetValue(null)
+            var continuationTimestamps = (Dictionary<object, long>)s_continuationTimestampsField.GetValue(null);
 
-            await Task.Delay(50)
+            await Task.Delay(50);
             lock (continuationTimestamps)
                 foreach (long ts in continuationTimestamps.Values)
-                    observedTimestamps.Add(ts)
+                    observedTimestamps.Add(ts);
 
         static void ValidateTimestampsCleared()
             // some other tasks may be created by the runtime, so this is just using a reasonably small upper bound
-            Assert.InRange(GetTaskTimestampCount(), 0, 10)
-            Assert.InRange(GetContinuationTimestampCount(), 0, 10)
+            Assert.InRange(GetTaskTimestampCount(), 0, 10);
+            Assert.InRange(GetContinuationTimestampCount(), 0, 10);
 
         [ConditionalFact(typeof(RuntimeAsyncTests), nameof(IsRemoteExecutorAndRuntimeAsyncSupported))]
         public void RuntimeAsync_TaskCompleted()

@@ -1,19 +1,19 @@
-using System.Collections.Concurrent
-using System.Diagnostics.CodeAnalysis
-using System.Globalization
-using System.Text
-using Microsoft.Extensions.Logging
-using Microsoft.Extensions.Options
-using Umbraco.Cms.Core.Configuration.Models
-using Umbraco.Cms.Core.IO
-using Umbraco.Cms.Core.Mail
-using Umbraco.Cms.Core.Models
-using Umbraco.Cms.Core.Models.Email
-using Umbraco.Cms.Core.Models.Entities
-using Umbraco.Cms.Core.Models.Membership
-using Umbraco.Cms.Core.Persistence.Repositories
-using Umbraco.Cms.Core.Scoping
-using Umbraco.Extensions
+using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
+using System.Text;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Umbraco.Cms.Core.Configuration.Models;
+using Umbraco.Cms.Core.IO;
+using Umbraco.Cms.Core.Mail;
+using Umbraco.Cms.Core.Models;
+using Umbraco.Cms.Core.Models.Email;
+using Umbraco.Cms.Core.Models.Entities;
+using Umbraco.Cms.Core.Models.Membership;
+using Umbraco.Cms.Core.Persistence.Repositories;
+using Umbraco.Cms.Core.Scoping;
+using Umbraco.Extensions;
 
 namespace Umbraco.Cms.Core.Services;
 
@@ -24,18 +24,18 @@ namespace Umbraco.Cms.Core.Services;
 public class NotificationService : INotificationService
     // manage notifications
     // ideally, would need to use IBackgroundTasks - but they are not part of Core!
-    private static readonly Lock Locker = new()
+    private static readonly Lock Locker = new();
 
-    private readonly IContentService _contentService
-    private readonly ContentSettings _contentSettings
-    private readonly IEmailSender _emailSender
-    private readonly GlobalSettings _globalSettings
-    private readonly IIOHelper _ioHelper
-    private readonly ILanguageService _languageService
-    private readonly ILogger<NotificationService> _logger
-    private readonly INotificationsRepository _notificationsRepository
-    private readonly ICoreScopeProvider _uowProvider
-    private readonly IUserService _userService
+    private readonly IContentService _contentService;
+    private readonly ContentSettings _contentSettings;
+    private readonly IEmailSender _emailSender;
+    private readonly GlobalSettings _globalSettings;
+    private readonly IIOHelper _ioHelper;
+    private readonly ILanguageService _languageService;
+    private readonly ILogger<NotificationService> _logger;
+    private readonly INotificationsRepository _notificationsRepository;
+    private readonly ICoreScopeProvider _uowProvider;
+    private readonly IUserService _userService;
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="NotificationService" /> class.
@@ -61,16 +61,16 @@ public class NotificationService : INotificationService
         IOptions<GlobalSettings> globalSettings,
         IOptions<ContentSettings> contentSettings,
         IEmailSender emailSender)
-        _notificationsRepository = notificationsRepository
-        _globalSettings = globalSettings.Value
-        _contentSettings = contentSettings.Value
-        _emailSender = emailSender
-        _uowProvider = provider ?? throw new ArgumentNullException(nameof(provider))
-        _userService = userService ?? throw new ArgumentNullException(nameof(userService))
-        _contentService = contentService ?? throw new ArgumentNullException(nameof(contentService))
-        _languageService = languageService
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger))
-        _ioHelper = ioHelper
+        _notificationsRepository = notificationsRepository;
+        _globalSettings = globalSettings.Value;
+        _contentSettings = contentSettings.Value;
+        _emailSender = emailSender;
+        _uowProvider = provider ?? throw new ArgumentNullException(nameof(provider));
+        _userService = userService ?? throw new ArgumentNullException(nameof(userService));
+        _contentService = contentService ?? throw new ArgumentNullException(nameof(contentService));
+        _languageService = languageService;
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _ioHelper = ioHelper;
 
     /// <summary>
     ///     Sends the notifications for the specified user regarding the specified node and action.
@@ -91,11 +91,11 @@ public class NotificationService : INotificationService
         Func<(IUser user, NotificationEmailSubjectParams subject), string> createSubject,
         Func<(IUser user, NotificationEmailBodyParams body, bool isHtml), string> createBody)
         // sort the entities explicitly by path to handle notification inheritance (see comment below)
-        var entitiesL = entities.OrderBy(entity => entity.Path).ToList()
+        var entitiesL = entities.OrderBy(entity => entity.Path).ToList();
 
         // exit if there are no entities
         if (entitiesL.Count == 0)
-            return
+            return;
 
         // create a dictionary of entity paths by entity ID
         var pathsByEntityId = entitiesL.ToDictionary(
@@ -104,15 +104,15 @@ public class NotificationService : INotificationService
                 .Select(s => int.Parse(s, CultureInfo.InvariantCulture)).ToArray());
 
         // lazily get versions
-        var prevVersionDictionary = new Dictionary<int, IContentBase?>()
+        var prevVersionDictionary = new Dictionary<int, IContentBase?>();
 
-        var notifications = GetUsersNotifications(new List<int>(), action, Enumerable.Empty<int>(), Constants.ObjectTypes.Document)?.ToList()
+        var notifications = GetUsersNotifications(new List<int>(), action, Enumerable.Empty<int>(), Constants.ObjectTypes.Document)?.ToList();
         if (notifications is null || notifications.Count == 0)
-            return
+            return;
 
-        IUser[] users = _userService.GetAll(0, int.MaxValue, out _).ToArray()
+        IUser[] users = _userService.GetAll(0, int.MaxValue, out _).ToArray();
         foreach (IUser user in users)
-            Notification[] userNotifications = notifications.Where(n => n.UserId == user.Id).ToArray()
+            Notification[] userNotifications = notifications.Where(n => n.UserId == user.Id).ToArray();
             foreach (Notification notification in userNotifications)
                 // notifications are inherited down the tree - find the topmost entity
                 // relevant to this notification (entity list is sorted by path)
@@ -122,15 +122,15 @@ public class NotificationService : INotificationService
                     path.Contains(notification.EntityId));
 
                 if (entityForNotification == null)
-                    continue
+                    continue;
 
                 if (prevVersionDictionary.ContainsKey(entityForNotification.Id) == false)
-                    prevVersionDictionary[entityForNotification.Id] = GetPreviousVersion(entityForNotification.Id)
+                    prevVersionDictionary[entityForNotification.Id] = GetPreviousVersion(entityForNotification.Id);
 
                 // queue notification
-                NotificationRequest req = CreateNotificationRequest(operatingUser, user, entityForNotification, prevVersionDictionary[entityForNotification.Id], actionName, siteUri, createSubject, createBody)
-                Enqueue(req)
-                break
+                NotificationRequest req = CreateNotificationRequest(operatingUser, user, entityForNotification, prevVersionDictionary[entityForNotification.Id], actionName, siteUri, createSubject, createBody);
+                Enqueue(req);
+                break;
 
     /// <summary>
     ///     Gets the notifications for the user
@@ -139,7 +139,7 @@ public class NotificationService : INotificationService
     /// <returns></returns>
     public IEnumerable<Notification>? GetUserNotifications(IUser user)
         using (ICoreScope scope = _uowProvider.CreateCoreScope(autoComplete: true))
-            return _notificationsRepository.GetUserNotifications(user)
+            return _notificationsRepository.GetUserNotifications(user);
 
     /// <summary>
     ///     Gets the notifications for the user based on the specified node path
@@ -153,10 +153,10 @@ public class NotificationService : INotificationService
     /// </remarks>
     public IEnumerable<Notification>? GetUserNotifications(IUser? user, string path)
         if (user is null)
-            return null
+            return null;
 
-        IEnumerable<Notification>? userNotifications = GetUserNotifications(user)
-        return FilterUserNotificationsByPath(userNotifications, path)
+        IEnumerable<Notification>? userNotifications = GetUserNotifications(user);
+        return FilterUserNotificationsByPath(userNotifications, path);
 
     /// <summary>
     ///     Deletes notifications by entity
@@ -164,7 +164,7 @@ public class NotificationService : INotificationService
     /// <param name="entity"></param>
     public IEnumerable<Notification>? GetEntityNotifications(IEntity entity)
         using (ICoreScope scope = _uowProvider.CreateCoreScope(autoComplete: true))
-            return _notificationsRepository.GetEntityNotifications(entity)
+            return _notificationsRepository.GetEntityNotifications(entity);
 
     /// <summary>
     ///     Deletes notifications by entity
@@ -172,8 +172,8 @@ public class NotificationService : INotificationService
     /// <param name="entity"></param>
     public void DeleteNotifications(IEntity entity)
         using (ICoreScope scope = _uowProvider.CreateCoreScope())
-            _notificationsRepository.DeleteNotifications(entity)
-            scope.Complete()
+            _notificationsRepository.DeleteNotifications(entity);
+            scope.Complete();
 
     /// <summary>
     ///     Deletes notifications by user
@@ -181,8 +181,8 @@ public class NotificationService : INotificationService
     /// <param name="user"></param>
     public void DeleteNotifications(IUser user)
         using (ICoreScope scope = _uowProvider.CreateCoreScope())
-            _notificationsRepository.DeleteNotifications(user)
-            scope.Complete()
+            _notificationsRepository.DeleteNotifications(user);
+            scope.Complete();
 
     /// <summary>
     ///     Delete notifications by user and entity
@@ -191,8 +191,8 @@ public class NotificationService : INotificationService
     /// <param name="entity"></param>
     public void DeleteNotifications(IUser user, IEntity entity)
         using (ICoreScope scope = _uowProvider.CreateCoreScope())
-            _notificationsRepository.DeleteNotifications(user, entity)
-            scope.Complete()
+            _notificationsRepository.DeleteNotifications(user, entity);
+            scope.Complete();
 
     /// <summary>
     ///     Sets the specific notifications for the user and entity
@@ -205,19 +205,19 @@ public class NotificationService : INotificationService
     /// </remarks>
     public IEnumerable<Notification>? SetNotifications(IUser? user, IEntity entity, string[] actions)
         if (user is null)
-            return null
+            return null;
 
         using (ICoreScope scope = _uowProvider.CreateCoreScope())
-            IEnumerable<Notification> notifications = _notificationsRepository.SetNotifications(user, entity, actions)
-            scope.Complete()
-            return notifications
+            IEnumerable<Notification> notifications = _notificationsRepository.SetNotifications(user, entity, actions);
+            scope.Complete();
+            return notifications;
 
     /// <inheritdoc/>
     public bool TryCreateNotification(IUser user, IEntity entity, string action, [NotNullWhen(true)] out Notification? notification)
         using (ICoreScope scope = _uowProvider.CreateCoreScope())
-            var result = _notificationsRepository.TryCreateNotification(user, entity, action, out notification)
-            scope.Complete()
-            return result
+            var result = _notificationsRepository.TryCreateNotification(user, entity, action, out notification);
+            scope.Complete();
+            return result;
 
     /// <summary>
     ///     Filters a userNotifications collection by a path
@@ -228,7 +228,7 @@ public class NotificationService : INotificationService
     public IEnumerable<Notification>? FilterUserNotificationsByPath(
         IEnumerable<Notification>? userNotifications,
         string path)
-        var pathParts = path.Split(Constants.CharArrays.Comma, StringSplitOptions.RemoveEmptyEntries)
+        var pathParts = path.Split(Constants.CharArrays.Comma, StringSplitOptions.RemoveEmptyEntries);
         return userNotifications
             ?.Where(r => pathParts.InvariantContains(r.EntityId.ToString(CultureInfo.InvariantCulture))).ToList()
 
@@ -241,13 +241,13 @@ public class NotificationService : INotificationService
         // Regarding this: http://issues.umbraco.org/issue/U4-5180
         // we know they are descending from the service so we know that newest is first
         // we are only selecting the top 2 rows since that is all we need
-        var allVersions = _contentService.GetVersionIds(contentId, 2).ToList()
-        var prevVersionIndex = allVersions.Count > 1 ? 1 : 0
-        return _contentService.GetVersion(allVersions[prevVersionIndex])
+        var allVersions = _contentService.GetVersionIds(contentId, 2).ToList();
+        var prevVersionIndex = allVersions.Count > 1 ? 1 : 0;
+        return _contentService.GetVersion(allVersions[prevVersionIndex]);
 
     private IEnumerable<Notification>? GetUsersNotifications(IEnumerable<int> userIds, string? action, IEnumerable<int> nodeIds, Guid objectType)
         using (ICoreScope scope = _uowProvider.CreateCoreScope(autoComplete: true))
-            return _notificationsRepository.GetUsersNotifications(userIds, action, nodeIds, objectType)
+            return _notificationsRepository.GetUsersNotifications(userIds, action, nodeIds, objectType);
 
     /// <summary>
     ///     Replaces the HTML symbols with the character equivalent.
@@ -255,14 +255,14 @@ public class NotificationService : INotificationService
     /// <param name="oldString">The old string.</param>
     private static void ReplaceHtmlSymbols(ref string? oldString)
         if (oldString.IsNullOrWhiteSpace())
-            return
+            return;
 
-        oldString = oldString!.Replace("&nbsp;", " ")
-        oldString = oldString.Replace("&rsquo;", "'")
-        oldString = oldString.Replace("&amp;", "&")
-        oldString = oldString.Replace("&ldquo;", "“")
-        oldString = oldString.Replace("&rdquo;", "”")
-        oldString = oldString.Replace("&quot;", "\"")
+        oldString = oldString!.Replace("&nbsp;", " ");
+        oldString = oldString.Replace("&rsquo;", "'");
+        oldString = oldString.Replace("&amp;", "&");
+        oldString = oldString.Replace("&ldquo;", "“");
+        oldString = oldString.Replace("&rdquo;", "”");
+        oldString = oldString.Replace("&quot;", "\"");
 
     #region private methods
 
@@ -290,25 +290,25 @@ public class NotificationService : INotificationService
         Func<(IUser user, NotificationEmailSubjectParams subject), string> createSubject,
         Func<(IUser user, NotificationEmailBodyParams body, bool isHtml), string> createBody)
         if (performingUser == null)
-            throw new ArgumentNullException("performingUser")
+            throw new ArgumentNullException("performingUser");
 
         if (mailingUser == null)
-            throw new ArgumentNullException("mailingUser")
+            throw new ArgumentNullException("mailingUser");
 
         if (content == null)
-            throw new ArgumentNullException("content")
+            throw new ArgumentNullException("content");
 
         if (siteUri == null)
-            throw new ArgumentNullException("siteUri")
+            throw new ArgumentNullException("siteUri");
 
         if (createSubject == null)
-            throw new ArgumentNullException("createSubject")
+            throw new ArgumentNullException("createSubject");
 
         if (createBody == null)
-            throw new ArgumentNullException("createBody")
+            throw new ArgumentNullException("createBody");
 
         // build summary
-        var summary = new StringBuilder()
+        var summary = new StringBuilder();
 
         if (content.ContentType.VariesByCulture())
             // it's variant, so detect what cultures have changed
@@ -319,14 +319,14 @@ public class NotificationService : INotificationService
                     .Select(isoCode => _languageService.GetAsync(isoCode).GetAwaiter().GetResult())
                     .WhereNotNull()
                     .Select(x => x.CultureName);
-                summary.Append("<ul>")
+                summary.Append("<ul>");
                 if (culturesChanged is not null)
                     foreach (var culture in culturesChanged)
-                        summary.Append("<li>")
-                        summary.Append(culture)
-                        summary.Append("</li>")
+                        summary.Append("<li>");
+                        summary.Append(culture);
+                        summary.Append("</li>");
 
-                summary.Append("</ul>")
+                summary.Append("</ul>");
             else
                 // Create the text based summary (csv of culture names)
                 var culturesChanged = string.Join(", ", content.CultureInfos!.Values.Where(x => x.WasDirty())
@@ -335,42 +335,42 @@ public class NotificationService : INotificationService
                     .WhereNotNull()
                     .Select(x => x.CultureName));
 
-                summary.Append("'")
-                summary.Append(culturesChanged)
-                summary.Append("'")
+                summary.Append("'");
+                summary.Append(culturesChanged);
+                summary.Append("'");
         else if (!_contentSettings.Notifications.DisableHtmlEmail)
             // create the HTML summary for invariant content
 
             // list all of the property values like we used to
-            summary.Append("<table style=\"width: 100 %; \">")
+            summary.Append("<table style=\"width: 100 %; \">");
             foreach (IProperty p in content.Properties)
                 // TODO: doesn't take into account variants
-                var newText = p.GetValue() != null ? p.GetValue()?.ToString() : string.Empty
-                var oldText = newText
+                var newText = p.GetValue() != null ? p.GetValue()?.ToString() : string.Empty;
+                var oldText = newText;
 
                 // check if something was changed and display the changes otherwise display the fields
                 if (oldDoc?.Properties.Contains(p.PropertyType.Alias) ?? false)
-                    IProperty? oldProperty = oldDoc.Properties[p.PropertyType.Alias]
-                    oldText = oldProperty?.GetValue() != null ? oldProperty.GetValue()?.ToString() : string.Empty
+                    IProperty? oldProperty = oldDoc.Properties[p.PropertyType.Alias];
+                    oldText = oldProperty?.GetValue() != null ? oldProperty.GetValue()?.ToString() : string.Empty;
 
                     // replace HTML with char equivalent
-                    ReplaceHtmlSymbols(ref oldText)
-                    ReplaceHtmlSymbols(ref newText)
+                    ReplaceHtmlSymbols(ref oldText);
+                    ReplaceHtmlSymbols(ref newText);
 
                 // show the values
-                summary.Append("<tr>")
+                summary.Append("<tr>");
                 summary.Append(
                     "<th style='text-align: left; vertical-align: top; width: 25%;border-bottom: 1px solid #CCC'>")
-                summary.Append(p.PropertyType.Name)
-                summary.Append("</th>")
-                summary.Append("<td style='text-align: left; vertical-align: top;border-bottom: 1px solid #CCC'>")
-                summary.Append(newText)
-                summary.Append("</td>")
-                summary.Append("</tr>")
+                summary.Append(p.PropertyType.Name);
+                summary.Append("</th>");
+                summary.Append("<td style='text-align: left; vertical-align: top;border-bottom: 1px solid #CCC'>");
+                summary.Append(newText);
+                summary.Append("</td>");
+                summary.Append("</tr>");
 
-            summary.Append("</table>")
+            summary.Append("</table>");
 
-        var protocol = siteUri.Scheme
+        var protocol = siteUri.Scheme;
 
         var subjectVars = new NotificationEmailSubjectParams(
             string.Concat(siteUri.Authority, _ioHelper.ResolveUrl(Constants.System.DefaultUmbracoPath)),
@@ -392,11 +392,11 @@ public class NotificationService : INotificationService
             string.Concat(siteUri.Authority, _ioHelper.ResolveUrl(Constants.System.DefaultUmbracoPath)),
             summary.ToString())
 
-        var fromMail = _contentSettings.Notifications.Email ?? _globalSettings.Smtp?.From
+        var fromMail = _contentSettings.Notifications.Email ?? _globalSettings.Smtp?.From;
 
-        var subject = createSubject((mailingUser, subjectVars))
-        var body = string.Empty
-        var isBodyHtml = false
+        var subject = createSubject((mailingUser, subjectVars));
+        var body = string.Empty;
+        var isBodyHtml = false;
 
         if (_contentSettings.Notifications.DisableHtmlEmail)
             body = createBody((user: mailingUser, body: bodyVars, false));
@@ -413,39 +413,39 @@ public class NotificationService : INotificationService
         // Due to hardcoded http strings in resource files, we need to check for https replacements here
         // adding the server name to make sure we don't replace external links
         if (string.Equals(siteUri.Scheme, "https", StringComparison.OrdinalIgnoreCase) && string.IsNullOrEmpty(body) == false)
-            var serverName = siteUri.Host
+            var serverName = siteUri.Host;
             body = body.Replace(
                 $"http://{serverName}",
                 $"https://{serverName}")
 
         // create the mail message
-        var mail = new EmailMessage(fromMail, mailingUser.Email, subject, body, isBodyHtml)
+        var mail = new EmailMessage(fromMail, mailingUser.Email, subject, body, isBodyHtml);
 
-        return new NotificationRequest(mail, actionName, mailingUser.Name, mailingUser.Email)
+        return new NotificationRequest(mail, actionName, mailingUser.Name, mailingUser.Email);
 
     private string ReplaceLinks(string text, Uri siteUri)
-        var sb = new StringBuilder(_globalSettings.UseHttps ? "https://" : "http://")
-        sb.Append(siteUri.Authority)
-        sb.Append("/")
-        var domain = sb.ToString()
-        text = text.Replace("href=\"/", "href=\"" + domain)
-        text = text.Replace("src=\"/", "src=\"" + domain)
-        return text
+        var sb = new StringBuilder(_globalSettings.UseHttps ? "https://" : "http://");
+        sb.Append(siteUri.Authority);
+        sb.Append("/");
+        var domain = sb.ToString();
+        text = text.Replace("href=\"/", "href=\"" + domain);
+        text = text.Replace("src=\"/", "src=\"" + domain);
+        return text;
 
-    private static readonly BlockingCollection<NotificationRequest> Queue = new()
-    private static volatile bool _running
+    private static readonly BlockingCollection<NotificationRequest> Queue = new();
+    private static volatile bool _running;
 
     private void Enqueue(NotificationRequest notification)
-        Queue.Add(notification)
+        Queue.Add(notification);
         if (_running)
-            return
+            return;
 
         lock (Locker)
             if (_running)
-                return
+                return;
 
-            Process(Queue)
-            _running = true
+            Process(Queue);
+            _running = true;
 
     private void Process(BlockingCollection<NotificationRequest> notificationRequests)
         // We need to suppress the flow of the ExecutionContext when starting a new thread.
@@ -495,10 +495,10 @@ public class NotificationService : INotificationService
         /// <param name="userName">The name of the user receiving the notification.</param>
         /// <param name="email">The email address of the user receiving the notification.</param>
         public NotificationRequest(EmailMessage mail, string? action, string? userName, string? email)
-            Mail = mail
-            Action = action
-            UserName = userName
-            Email = email
+            Mail = mail;
+            Action = action;
+            UserName = userName;
+            Email = email;
 
         /// <summary>
         ///     Gets the email message to send.

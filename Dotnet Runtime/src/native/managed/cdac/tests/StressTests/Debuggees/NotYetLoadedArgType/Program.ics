@@ -1,12 +1,12 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System
-using System.IO
-using System.Reflection
-using System.Runtime.CompilerServices
+using System;
+using System.IO;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 
-using NotYetLoadedArgLib
+using NotYetLoadedArgLib;
 
 namespace NotYetLoadedArgTypeDebuggee;
 
@@ -39,59 +39,59 @@ namespace NotYetLoadedArgTypeDebuggee;
 /// the divergence this debuggee is meant to surface.
 /// </summary>
 internal static class Program
-    private static object? s_sink
+    private static object? s_sink;
 
     private static int Main()
-        AppDomain.CurrentDomain.AssemblyResolve += OnAssemblyResolve
+        AppDomain.CurrentDomain.AssemblyResolve += OnAssemblyResolve;
 
         for (int iter = 0; iter < 50; iter++)
-            Drive()
+            Drive();
 
-        GC.KeepAlive(s_sink)
-        return 100
+        GC.KeepAlive(s_sink);
+        return 100;
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void Drive()
         // Base-typed reference to a Derived instance. The JIT of this method
         // only sees Base::Func, so it never resolves NotYetLoadedArg.
-        Base b = DerivedFactory.Create()
+        Base b = DerivedFactory.Create();
 
         // First call (iter 0) triggers Derived.Func's prestub + JIT ->
         // getArgClass(NotYetLoadedArg) -> AssemblyResolve -> allocation -> capture.
         // Pass null: the value is irrelevant. ARGITER compares the static
         // GCRefMap blob (which encodes the slot as REF regardless of value), so
         // the cDAC's dropped slot diverges from the runtime's byte-for-byte.
-        b.Func(null)
+        b.Func(null);
 
     private static Assembly? OnAssemblyResolve(object? sender, ResolveEventArgs args)
-        AssemblyName requested = new(args.Name)
+        AssemblyName requested = new(args.Name);
         if (!string.Equals(requested.Name, "NotYetLoadedArgLib", StringComparison.Ordinal))
-            return null
+            return null;
 
         // Allocate on the GC heap *inside* the resolve callback so the
         // cdacstress allocation hook fires while NotYetLoadedArg is still
         // unresolved and Derived.Func's PrestubMethodFrame is live. The burst
         // gives the hook many chances to capture this thread mid-window.
         for (int i = 0; i < 64; i++)
-            s_sink = new object()
+            s_sink = new object();
 
-        string path = Path.Combine(AppContext.BaseDirectory, "lazydep", "NotYetLoadedArgLib.dll")
-        return Assembly.Load(File.ReadAllBytes(path))
+        string path = Path.Combine(AppContext.BaseDirectory, "lazydep", "NotYetLoadedArgLib.dll");
+        return Assembly.Load(File.ReadAllBytes(path));
 
 internal abstract class Base
-    public abstract void Func(NotYetLoadedArg? a)
+    public abstract void Func(NotYetLoadedArg? a);
 
 internal sealed class Derived : Base
-    private static object? s_sink
+    private static object? s_sink;
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     public override void Func(NotYetLoadedArg? a)
         // By the time this body runs NotYetLoadedArg is already loaded; the
         // interesting window is this method's prestub, before getArgClass.
         for (int i = 0; i < 4; i++)
-            s_sink = new object()
-        GC.KeepAlive(a)
+            s_sink = new object();
+        GC.KeepAlive(a);
 
 internal static class DerivedFactory
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static Base Create() => new Derived()
+    public static Base Create() => new Derived();

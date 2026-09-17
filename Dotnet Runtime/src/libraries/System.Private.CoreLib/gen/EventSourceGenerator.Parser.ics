@@ -1,42 +1,42 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System
-using System.Collections.Generic
-using System.Collections.Immutable
-using System.IO
-using System.Security.Cryptography
-using System.Text
-using System.Threading
-using Microsoft.CodeAnalysis
-using Microsoft.CodeAnalysis.CSharp
-using Microsoft.CodeAnalysis.CSharp.Syntax
+using System;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.IO;
+using System.Security.Cryptography;
+using System.Text;
+using System.Threading;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Generators
     public partial class EventSourceGenerator
         private static EventSourceClass? GetSemanticTargetForGeneration(GeneratorAttributeSyntaxContext context, CancellationToken cancellationToken)
-            const string EventSourceAttribute = "System.Diagnostics.Tracing.EventSourceAttribute"
+            const string EventSourceAttribute = "System.Diagnostics.Tracing.EventSourceAttribute";
 
-            var classDef = (ClassDeclarationSyntax)context.TargetNode
-            NamespaceDeclarationSyntax? ns = classDef.Parent as NamespaceDeclarationSyntax
+            var classDef = (ClassDeclarationSyntax)context.TargetNode;
+            NamespaceDeclarationSyntax? ns = classDef.Parent as NamespaceDeclarationSyntax;
             if (ns is null)
                 if (classDef.Parent is not CompilationUnitSyntax)
                     // since this generator doesn't know how to generate a nested type...
-                    return null
+                    return null;
 
-            EventSourceClass? eventSourceClass = null
-            string? nspace = null
+            EventSourceClass? eventSourceClass = null;
+            string? nspace = null;
 
             foreach (AttributeData attribute in context.TargetSymbol.GetAttributes())
                 if (attribute.AttributeClass?.Name != "EventSourceAttribute" ||
                     attribute.AttributeClass.ToDisplayString() != EventSourceAttribute)
-                    continue
+                    continue;
 
-                bool isPartial = false
+                bool isPartial = false;
                 foreach (var modifier in classDef.Modifiers)
                     if (modifier.IsKind(SyntaxKind.PartialKeyword))
-                        isPartial = true
-                        break
+                        isPartial = true;
+                        break;
 
                 if (!isPartial)
                     var diagnostic = Diagnostic.Create(
@@ -49,15 +49,15 @@ namespace Generators
                             isEnabledByDefault: true),
                         classDef.GetLocation(),
                         classDef.Identifier.ValueText)
-                    return new EventSourceClass(diagnostic, null, null, null, default, false)
+                    return new EventSourceClass(diagnostic, null, null, null, default, false);
 
                 foreach (MemberDeclarationSyntax member in classDef.Members)
                     if (member is ConstructorDeclarationSyntax ctor)
-                        bool isStatic = false
+                        bool isStatic = false;
                         foreach (SyntaxToken ctorModifier in ctor.Modifiers)
                             if (ctorModifier.IsKind(SyntaxKind.StaticKeyword))
-                                isStatic = true
-                                break
+                                isStatic = true;
+                                break;
 
                         if (!isStatic)
                             var diagnostic = Diagnostic.Create(
@@ -70,54 +70,54 @@ namespace Generators
                                     isEnabledByDefault: true),
                                 classDef.GetLocation(),
                                 classDef.Identifier.ValueText)
-                            return new EventSourceClass(diagnostic, null, null, null, default, false)
+                            return new EventSourceClass(diagnostic, null, null, null, default, false);
 
-                nspace ??= ConstructNamespace(ns)
+                nspace ??= ConstructNamespace(ns);
 
-                string className = classDef.Identifier.ValueText
-                string name = className
-                string guid = ""
+                string className = classDef.Identifier.ValueText;
+                string name = className;
+                string guid = "";
 
-                ImmutableArray<KeyValuePair<string, TypedConstant>> args = attribute.NamedArguments
+                ImmutableArray<KeyValuePair<string, TypedConstant>> args = attribute.NamedArguments;
                 foreach (KeyValuePair<string, TypedConstant> arg in args)
-                    string argName = arg.Key
-                    string value = arg.Value.Value?.ToString()
+                    string argName = arg.Key;
+                    string value = arg.Value.Value?.ToString();
 
                     switch (argName)
                         case "Guid":
-                            guid = value
-                            break
+                            guid = value;
+                            break;
                         case "Name":
-                            name = value
-                            break
+                            name = value;
+                            break;
 
                 if (!Guid.TryParse(guid, out Guid result))
-                    result = GenerateGuidFromName(name.ToUpperInvariant())
+                    result = GenerateGuidFromName(name.ToUpperInvariant());
 
-                bool hasProviderMetadataProperty = false
+                bool hasProviderMetadataProperty = false;
                 foreach (MemberDeclarationSyntax member in classDef.Members)
                     if (member is PropertyDeclarationSyntax prop && prop.Identifier.Text == "ProviderMetadata")
-                        hasProviderMetadataProperty = true
-                        break
+                        hasProviderMetadataProperty = true;
+                        break;
 
-                eventSourceClass = new EventSourceClass(null, nspace, className, name, result, hasProviderMetadataProperty)
-                continue
+                eventSourceClass = new EventSourceClass(null, nspace, className, name, result, hasProviderMetadataProperty);
+                continue;
 
-            return eventSourceClass
+            return eventSourceClass;
 
         private static string ConstructNamespace(NamespaceDeclarationSyntax? ns)
             if (ns is null)
-                return string.Empty
+                return string.Empty;
 
-            string nspace = ns.Name.ToString()
+            string nspace = ns.Name.ToString();
             while (true)
-                ns = ns.Parent as NamespaceDeclarationSyntax
+                ns = ns.Parent as NamespaceDeclarationSyntax;
                 if (ns == null)
-                    break
+                    break;
 
-                nspace = $"{ns.Name}.{nspace}"
+                nspace = $"{ns.Name}.{nspace}";
 
-            return nspace
+            return nspace;
 
         // From System.Private.CoreLib
         private static Guid GenerateGuidFromName(string name)
@@ -140,19 +140,19 @@ namespace Generators
                 0xFB,
             };
 
-            byte[] bytes = Encoding.BigEndianUnicode.GetBytes(name)
+            byte[] bytes = Encoding.BigEndianUnicode.GetBytes(name);
 
-            byte[] combinedBytes = new byte[namespaceBytes.Length + bytes.Length]
+            byte[] combinedBytes = new byte[namespaceBytes.Length + bytes.Length];
 
-            bytes.CopyTo(combinedBytes, namespaceBytes.Length)
-            namespaceBytes.CopyTo(combinedBytes)
+            bytes.CopyTo(combinedBytes, namespaceBytes.Length);
+            namespaceBytes.CopyTo(combinedBytes);
 
             #pragma warning disable CA5350 // Do Not Use Weak Cryptographic Algorithms
             using (SHA1 sha = SHA1.Create())
-                bytes = sha.ComputeHash(combinedBytes)
+                bytes = sha.ComputeHash(combinedBytes);
             #pragma warning restore CA5350 // Do Not Use Weak Cryptographic Algorithms
 
-            Array.Resize(ref bytes, 16)
+            Array.Resize(ref bytes, 16);
 
             bytes[7] = unchecked((byte)((bytes[7] & 0x0F) | 0x50)) // Set high 4 bits of octet 7 to 5, as per RFC 4122
-            return new Guid(bytes)
+            return new Guid(bytes);

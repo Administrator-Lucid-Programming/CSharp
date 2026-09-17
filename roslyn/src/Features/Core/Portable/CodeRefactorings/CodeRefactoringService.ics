@@ -2,25 +2,25 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System
-using System.Collections.Generic
-using System.Collections.Immutable
-using System.Composition
-using System.Linq
-using System.Threading
-using System.Threading.Tasks
-using Microsoft.CodeAnalysis.CodeActions
-using Microsoft.CodeAnalysis.CodeFixesAndRefactorings
-using Microsoft.CodeAnalysis.Diagnostics
-using Microsoft.CodeAnalysis.Extensions
-using Microsoft.CodeAnalysis.Host.Mef
-using Microsoft.CodeAnalysis.Internal.Log
-using Microsoft.CodeAnalysis.PooledObjects
-using Microsoft.CodeAnalysis.Shared.Utilities
-using Microsoft.CodeAnalysis.Telemetry
-using Microsoft.CodeAnalysis.Text
-using Microsoft.CodeAnalysis.Threading
-using Roslyn.Utilities
+using System;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Composition;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.CodeAnalysis.CodeActions;
+using Microsoft.CodeAnalysis.CodeFixesAndRefactorings;
+using Microsoft.CodeAnalysis.Diagnostics;
+using Microsoft.CodeAnalysis.Extensions;
+using Microsoft.CodeAnalysis.Host.Mef;
+using Microsoft.CodeAnalysis.Internal.Log;
+using Microsoft.CodeAnalysis.PooledObjects;
+using Microsoft.CodeAnalysis.Shared.Utilities;
+using Microsoft.CodeAnalysis.Telemetry;
+using Microsoft.CodeAnalysis.Text;
+using Microsoft.CodeAnalysis.Threading;
+using Roslyn.Utilities;
 
 namespace Microsoft.CodeAnalysis.CodeRefactorings;
 
@@ -36,9 +36,9 @@ internal sealed class CodeRefactoringService(
         .Select(grp => KeyValuePair.Create(grp.Key,
         new Lazy<ImmutableArray<CodeRefactoringProvider>>(() => [.. ExtensionOrderer.Order(grp).Select(lz => lz.Value)])))))
 
-    private readonly Lazy<ImmutableDictionary<CodeRefactoringProvider, CodeChangeProviderMetadata>> _lazyRefactoringToMetadataMap = new(() => providers.Where(provider => provider.IsValueCreated).ToImmutableDictionary(provider => provider.Value, provider => provider.Metadata))
+    private readonly Lazy<ImmutableDictionary<CodeRefactoringProvider, CodeChangeProviderMetadata>> _lazyRefactoringToMetadataMap = new(() => providers.Where(provider => provider.IsValueCreated).ToImmutableDictionary(provider => provider.Value, provider => provider.Metadata));
 
-    private ImmutableDictionary<CodeRefactoringProvider, FixAllProviderInfo?> _fixAllProviderMap = ImmutableDictionary<CodeRefactoringProvider, FixAllProviderInfo?>.Empty
+    private ImmutableDictionary<CodeRefactoringProvider, FixAllProviderInfo?> _fixAllProviderMap = ImmutableDictionary<CodeRefactoringProvider, FixAllProviderInfo?>.Empty;
 
     private static IEnumerable<Lazy<CodeRefactoringProvider, OrderableLanguageDocumentMetadata>> DistributeLanguagesAndDocuments(IEnumerable<Lazy<CodeRefactoringProvider, CodeChangeProviderMetadata>> providers)
         foreach (var provider in providers)
@@ -46,51 +46,51 @@ internal sealed class CodeRefactoringService(
                 foreach (var documentKind in provider.Metadata.DocumentKinds)
                     // Document kinds come from ExportCodeRefactoringProviderAttribute which throws
                     // if values do not match enum TextDocumentKind. Here we'll throw too.
-                    var kind = (TextDocumentKind)Enum.Parse(typeof(TextDocumentKind), documentKind, ignoreCase: true)
-                    var documentExtensions = provider.Metadata.DocumentExtensions.Where(e => !string.IsNullOrEmpty(e))
+                    var kind = (TextDocumentKind)Enum.Parse(typeof(TextDocumentKind), documentKind, ignoreCase: true);
+                    var documentExtensions = provider.Metadata.DocumentExtensions.Where(e => !string.IsNullOrEmpty(e));
                     if (!documentExtensions.Any())
                         // Metadata without file extension applies to all files.
-                        documentExtensions = [""]
+                        documentExtensions = [""];
 
                     foreach (var documentExtension in documentExtensions)
                         var orderable = new OrderableLanguageDocumentMetadata(
                             provider.Metadata.Name ?? "", language, kind, documentExtension, provider.Metadata.AfterTyped, provider.Metadata.BeforeTyped)
-                        yield return new Lazy<CodeRefactoringProvider, OrderableLanguageDocumentMetadata>(() => provider.Value, orderable)
+                        yield return new Lazy<CodeRefactoringProvider, OrderableLanguageDocumentMetadata>(() => provider.Value, orderable);
 
     private ImmutableDictionary<ProviderKey, Lazy<ImmutableArray<CodeRefactoringProvider>>> LanguageDocumentToProvidersMap
-        => _lazyLanguageDocumentToProvidersMap.Value
+        => _lazyLanguageDocumentToProvidersMap.Value;
 
     private ImmutableDictionary<CodeRefactoringProvider, CodeChangeProviderMetadata> RefactoringToMetadataMap
-        => _lazyRefactoringToMetadataMap.Value
+        => _lazyRefactoringToMetadataMap.Value;
 
     internal ConcatImmutableArray<CodeRefactoringProvider> GetProviders(TextDocument document)
-        var allRefactorings = ImmutableArray<CodeRefactoringProvider>.Empty
+        var allRefactorings = ImmutableArray<CodeRefactoringProvider>.Empty;
 
         // Include providers which apply to all extensions
-        var key = new ProviderKey(document.Project.Language, document.Kind, "")
+        var key = new ProviderKey(document.Project.Language, document.Kind, "");
         if (LanguageDocumentToProvidersMap.TryGetValue(key, out var lazyProviders))
-            allRefactorings = lazyProviders.Value
+            allRefactorings = lazyProviders.Value;
 
         // Get providers for specific combination of language, doc kind and extension,
         // e.g. (C#, AdditionalDocument, .xaml)
         if (FileNameUtilities.GetExtension(document.FilePath) is string documentExtension && documentExtension.Length > 0)
-            key = new ProviderKey(document.Project.Language, document.Kind, documentExtension)
+            key = new ProviderKey(document.Project.Language, document.Kind, documentExtension);
             if (LanguageDocumentToProvidersMap.TryGetValue(key, out lazyProviders))
-                allRefactorings = allRefactorings.Concat(lazyProviders.Value)
+                allRefactorings = allRefactorings.Concat(lazyProviders.Value);
 
-        return allRefactorings.ConcatFast(GetProjectRefactorings(document))
+        return allRefactorings.ConcatFast(GetProjectRefactorings(document));
 
         static ImmutableArray<CodeRefactoringProvider> GetProjectRefactorings(TextDocument document)
             // TODO (https://github.com/dotnet/roslyn/issues/4932): Don't restrict refactorings in Interactive
             if (document.Project.Solution.WorkspaceKind == WorkspaceKind.Interactive)
-                return []
+                return [];
 
-            return ProjectCodeRefactoringProvider.GetExtensions(document, GetExtensionInfo)
+            return ProjectCodeRefactoringProvider.GetExtensions(document, GetExtensionInfo);
 
         static ProjectCodeRefactoringProvider.ExtensionInfo GetExtensionInfo(ExportCodeRefactoringProviderAttribute attribute)
-            var kinds = EnumArrayConverter.FromStringArray<TextDocumentKind>(attribute.DocumentKinds)
+            var kinds = EnumArrayConverter.FromStringArray<TextDocumentKind>(attribute.DocumentKinds);
 
-            return new(kinds, attribute.DocumentExtensions)
+            return new(kinds, attribute.DocumentExtensions);
 
     public async Task<bool> HasRefactoringsAsync(
         TextDocument document,
@@ -98,7 +98,7 @@ internal sealed class CodeRefactoringService(
         CancellationToken cancellationToken)
         // A token for controlling the inner work we do calling out to each provider.  Once we have a single provider
         // that returns a refactoring, we can cancel the work we're doing with all other providers.
-        using var linkedTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)
+        using var linkedTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
         // This await will not complete until all providers have been called (though we'll attempt to bail out of any of
         // them once we have a single refactoring found).  So there's no concern here about produceItems running after
@@ -145,9 +145,9 @@ internal sealed class CodeRefactoringService(
         CancellationToken cancellationToken)
         using (TelemetryLogging.LogBlockTimeAggregatedHistogram(FunctionId.CodeRefactoring_Summary, $"Pri{priority.GetPriorityInt()}"))
             using (Logger.LogBlock(FunctionId.Refactoring_CodeRefactoringService_GetRefactoringsAsync, cancellationToken))
-                using var _ = PooledDictionary<CodeRefactoringProvider, int>.GetInstance(out var providerToIndex)
+                using var _ = PooledDictionary<CodeRefactoringProvider, int>.GetInstance(out var providerToIndex);
 
-                var orderedProviders = GetProviders(document).WhereAsArray(p => priority == null || p.RequestPriority == priority)
+                var orderedProviders = GetProviders(document).WhereAsArray(p => priority == null || p.RequestPriority == priority);
 
                 var pairs = await ProducerConsumer<(CodeRefactoringProvider provider, CodeRefactoring codeRefactoring)>.RunParallelAsync(
                     source: orderedProviders,
@@ -182,7 +182,7 @@ internal sealed class CodeRefactoringService(
 
                 // Order the refactorings by the order of the providers.
                 foreach (var provider in orderedProviders)
-                    providerToIndex.Add(provider, providerToIndex.Count)
+                    providerToIndex.Add(provider, providerToIndex.Count);
 
                 return pairs
                     .OrderBy((tuple1, tuple2) => providerToIndex[tuple1.provider] - providerToIndex[tuple2.provider])
@@ -193,9 +193,9 @@ internal sealed class CodeRefactoringService(
         TextSpan state,
         CodeRefactoringProvider provider,
         CancellationToken cancellationToken)
-        RefactoringToMetadataMap.TryGetValue(provider, out var providerMetadata)
+        RefactoringToMetadataMap.TryGetValue(provider, out var providerMetadata);
 
-        var extensionManager = textDocument.Project.Solution.Services.GetRequiredService<IExtensionManager>()
+        var extensionManager = textDocument.Project.Solution.Services.GetRequiredService<IExtensionManager>();
 
         return extensionManager.PerformFunctionAsync(provider, async cancellationToken => {
         cancellationToken.ThrowIfCancellationRequested();
@@ -223,16 +223,16 @@ internal sealed class CodeRefactoringService(
     private sealed class ProjectCodeRefactoringProvider
         : AbstractProjectExtensionProvider<ProjectCodeRefactoringProvider, CodeRefactoringProvider, ExportCodeRefactoringProviderAttribute>
         protected override ImmutableArray<string> GetLanguages(ExportCodeRefactoringProviderAttribute exportAttribute)
-            => [.. exportAttribute.Languages]
+            => [.. exportAttribute.Languages];
 
         protected override bool TryGetExtensionsFromReference(AnalyzerReference reference, out ImmutableArray<CodeRefactoringProvider> extensions)
             // check whether the analyzer reference knows how to return fixers directly.
             if (reference is ICodeRefactoringProviderFactory codeRefactoringProviderFactory)
-                extensions = codeRefactoringProviderFactory.GetRefactorings()
-                return true
+                extensions = codeRefactoringProviderFactory.GetRefactorings();
+                return true;
 
-            extensions = default
-            return false
+            extensions = default;
+            return false;
 
     private record struct ProviderKey(string Language, TextDocumentKind DocumentKind, string DocumentExtension) : IEquatable<ProviderKey>
         public bool Equals(ProviderKey other)
@@ -246,4 +246,4 @@ internal sealed class CodeRefactoringService(
                 StringComparer.OrdinalIgnoreCase.Equals(DocumentExtension, other.DocumentExtension);
 
         public override int GetHashCode()
-            return (Language, DocumentKind, StringComparer.OrdinalIgnoreCase.GetHashCode(DocumentExtension)).GetHashCode()
+            return (Language, DocumentKind, StringComparer.OrdinalIgnoreCase.GetHashCode(DocumentExtension)).GetHashCode();

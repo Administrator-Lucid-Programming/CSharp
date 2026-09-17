@@ -1,97 +1,97 @@
-using System
-using System.Collections.Generic
-using System.Diagnostics
-using System.Linq
-using Avalonia.Controls
-using Avalonia.Controls.Platform
-using Avalonia.Controls.Primitives.PopupPositioning
-using Avalonia.LogicalTree
-using Avalonia.Media.Imaging
-using Avalonia.Metadata
-using Avalonia.Platform
-using Avalonia.Win32.Interop
-using static Avalonia.Win32.Interop.UnmanagedMethods
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using Avalonia.Controls;
+using Avalonia.Controls.Platform;
+using Avalonia.Controls.Primitives.PopupPositioning;
+using Avalonia.LogicalTree;
+using Avalonia.Media.Imaging;
+using Avalonia.Metadata;
+using Avalonia.Platform;
+using Avalonia.Win32.Interop;
+using static Avalonia.Win32.Interop.UnmanagedMethods;
 
 namespace Avalonia.Win32
     internal class TrayIconImpl : ITrayIconImpl
-        private static Win32Icon? s_emptyIcon
-        private readonly int _uniqueId
-        private static int s_nextUniqueId
-        private static nint s_taskBarMonitor
+        private static Win32Icon? s_emptyIcon;
+        private readonly int _uniqueId;
+        private static int s_nextUniqueId;
+        private static nint s_taskBarMonitor;
 
-        private bool _iconAdded
-        private IconImpl? _iconImpl
-        private bool _iconStale
-        private Win32Icon? _icon
-        private string? _tooltipText
-        private readonly Win32NativeToManagedMenuExporter _exporter
-        private static readonly Dictionary<int, TrayIconImpl> s_trayIcons = new()
-        private bool _disposedValue
-        private static readonly uint WM_TASKBARCREATED = RegisterWindowMessage("TaskbarCreated")
+        private bool _iconAdded;
+        private IconImpl? _iconImpl;
+        private bool _iconStale;
+        private Win32Icon? _icon;
+        private string? _tooltipText;
+        private readonly Win32NativeToManagedMenuExporter _exporter;
+        private static readonly Dictionary<int, TrayIconImpl> s_trayIcons = new();
+        private bool _disposedValue;
+        private static readonly uint WM_TASKBARCREATED = RegisterWindowMessage("TaskbarCreated");
 
         internal static void ChangeWindowMessageFilter(IntPtr hWnd)
-            ChangeWindowMessageFilterEx(hWnd, WM_TASKBARCREATED, MessageFilterFlag.MSGFLT_ALLOW, IntPtr.Zero)
+            ChangeWindowMessageFilterEx(hWnd, WM_TASKBARCREATED, MessageFilterFlag.MSGFLT_ALLOW, IntPtr.Zero);
 
         public TrayIconImpl()
-            FindTaskBarMonitor()
+            FindTaskBarMonitor();
 
-            _exporter = new Win32NativeToManagedMenuExporter()
+            _exporter = new Win32NativeToManagedMenuExporter();
 
-            _uniqueId = ++s_nextUniqueId
+            _uniqueId = ++s_nextUniqueId;
 
-            s_trayIcons.Add(_uniqueId, this)
+            s_trayIcons.Add(_uniqueId, this);
 
         public Action? OnClicked { get; set; }
 
-        public INativeMenuExporter MenuExporter => _exporter
+        public INativeMenuExporter MenuExporter => _exporter;
 
         internal static void ProcWnd(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
             switch (msg)
                 case (uint)CustomWindowsMessage.WM_TRAYMOUSE:
                     if (s_trayIcons.TryGetValue(wParam.ToInt32(), out var value))
-                        value.WndProc(hWnd, msg, wParam, lParam)
-                    break
+                        value.WndProc(hWnd, msg, wParam, lParam);
+                    break;
                 case (uint)WindowsMessage.WM_DISPLAYCHANGE:
-                    FindTaskBarMonitor()
+                    FindTaskBarMonitor();
                     foreach (var tray in s_trayIcons.Values)
                         if (tray._iconAdded)
-                            tray._iconStale = true
-                            tray.UpdateIcon()
-                    break
+                            tray._iconStale = true;
+                            tray.UpdateIcon();
+                    break;
                 default:
                     if (msg == WM_TASKBARCREATED)
-                        FindTaskBarMonitor()
+                        FindTaskBarMonitor();
                         foreach (var tray in s_trayIcons.Values)
                             if (tray._iconAdded)
-                                tray.UpdateIcon(true)
-                                tray.UpdateIcon()
-                    break
+                                tray.UpdateIcon(true);
+                                tray.UpdateIcon();
+                    break;
 
         /// <inheritdoc />
         public void SetIcon(IWindowIconImpl? icon)
-            _iconImpl = (IconImpl?)icon
-            _iconStale = true
-            UpdateIcon()
+            _iconImpl = (IconImpl?)icon;
+            _iconStale = true;
+            UpdateIcon();
 
         /// <inheritdoc />
         public void SetIsVisible(bool visible)
-            UpdateIcon(!visible)
+            UpdateIcon(!visible);
 
         /// <inheritdoc />
         public void SetToolTipText(string? text)
-            _tooltipText = text
-            UpdateIcon(!_iconAdded)
+            _tooltipText = text;
+            UpdateIcon(!_iconAdded);
 
         private static void FindTaskBarMonitor()
-            var taskBarData = new APPBARDATA()
+            var taskBarData = new APPBARDATA();
             if (SHAppBarMessage(AppBarMessage.ABM_GETTASKBARPOS, ref taskBarData) != 0)
-                s_taskBarMonitor = MonitorFromPoint(new() { X = taskBarData.rc.left, Y = taskBarData.rc.top }, MONITOR.MONITOR_DEFAULTTOPRIMARY)
+                s_taskBarMonitor = MonitorFromPoint(new() { X = taskBarData.rc.left, Y = taskBarData.rc.top }, MONITOR.MONITOR_DEFAULTTOPRIMARY);
 
         private void UpdateIcon(bool remove = false)
-            Win32Icon? newIcon = null
+            Win32Icon? newIcon = null;
             if (_iconStale && _iconImpl is not null)
-                var scaling = GetTaskBarMonScalingOrDefault()
-                newIcon = _iconImpl.LoadSmallIcon(scaling)
+                var scaling = GetTaskBarMonScalingOrDefault();
+                newIcon = _iconImpl.LoadSmallIcon(scaling);
 
             var iconData = new NOTIFYICONDATA {
                 hWnd = Win32Platform.Instance.Handle,
@@ -99,68 +99,68 @@ namespace Avalonia.Win32
             }
 
             if (!remove)
-                iconData.uFlags = NIF.TIP | NIF.MESSAGE | NIF.ICON
-                iconData.uCallbackMessage = (int)CustomWindowsMessage.WM_TRAYMOUSE
-                iconData.hIcon = (_iconStale ? newIcon : _icon)?.Handle ?? GetOrCreateEmptyIcon().Handle
-                iconData.szTip = _tooltipText ?? ""
+                iconData.uFlags = NIF.TIP | NIF.MESSAGE | NIF.ICON;
+                iconData.uCallbackMessage = (int)CustomWindowsMessage.WM_TRAYMOUSE;
+                iconData.hIcon = (_iconStale ? newIcon : _icon)?.Handle ?? GetOrCreateEmptyIcon().Handle;
+                iconData.szTip = _tooltipText ?? "";
 
                 if (!_iconAdded)
-                    Shell_NotifyIcon(NIM.ADD, iconData)
-                    _iconAdded = true
+                    Shell_NotifyIcon(NIM.ADD, iconData);
+                    _iconAdded = true;
                 else
-                    Shell_NotifyIcon(NIM.MODIFY, iconData)
+                    Shell_NotifyIcon(NIM.MODIFY, iconData);
             else
-                iconData.uFlags = 0
-                Shell_NotifyIcon(NIM.DELETE, iconData)
-                _iconAdded = false
+                iconData.uFlags = 0;
+                Shell_NotifyIcon(NIM.DELETE, iconData);
+                _iconAdded = false;
 
             if (_iconStale)
-                _icon?.Dispose()
-                _icon = newIcon
-                _iconStale = false
+                _icon?.Dispose();
+                _icon = newIcon;
+                _iconStale = false;
 
         private static Win32Icon GetOrCreateEmptyIcon()
             if (s_emptyIcon is null)
                 using var bitmap = new WriteableBitmap(
                     new PixelSize(32, 32), new Vector(96, 96), PixelFormats.Bgra8888, AlphaFormat.Unpremul)
-                s_emptyIcon = new Win32Icon(bitmap)
+                s_emptyIcon = new Win32Icon(bitmap);
 
-            return s_emptyIcon
+            return s_emptyIcon;
 
         private double GetTaskBarMonScalingOrDefault()
             if (ShCoreAvailable && Win32Platform.WindowsVersion > PlatformConstants.Windows8_1)
-                uint dpiX, dpiY
+                uint dpiX, dpiY;
 
                 if ((HRESULT)GetDpiForMonitor(
                     s_taskBarMonitor,
                     MONITOR_DPI_TYPE.MDT_EFFECTIVE_DPI,
                     out dpiX,
                     out dpiY) == HRESULT.S_OK)
-                    Debug.Assert(dpiX == dpiY)
-                    return dpiX / 96.0
+                    Debug.Assert(dpiX == dpiY);
+                    return dpiX / 96.0;
 
-            return 1.0
+            return 1.0;
 
         private IntPtr WndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
             if (msg == (uint)CustomWindowsMessage.WM_TRAYMOUSE)
                 // Determine the type of message and call the matching event handlers
                 switch (lParam.ToInt32())
                     case (int)WindowsMessage.WM_LBUTTONUP:
-                        OnClicked?.Invoke()
-                        break
+                        OnClicked?.Invoke();
+                        break;
 
                     case (int)WindowsMessage.WM_RBUTTONUP:
-                        OnRightClicked()
-                        break
+                        OnRightClicked();
+                        break;
 
-                return IntPtr.Zero
+                return IntPtr.Zero;
 
-            return DefWindowProc(hWnd, msg, wParam, lParam)
+            return DefWindowProc(hWnd, msg, wParam, lParam);
 
         private void OnRightClicked()
-            var menu = _exporter.GetNativeMenu()
+            var menu = _exporter.GetNativeMenu();
             if (menu == null || menu.Items.Count == 0)
-                return
+                return;
 
             raw csharp
                 var _trayMenu = new TrayPopupRoot
@@ -173,11 +173,11 @@ namespace Avalonia.Win32
                     Content = new TrayIconMenuFlyoutPresenter() { ItemsSource = menu.Items }
                 };
 
-            GetCursorPos(out POINT pt)
+            GetCursorPos(out POINT pt);
 
-            _trayMenu.Position = new PixelPoint(pt.X, pt.Y)
+            _trayMenu.Position = new PixelPoint(pt.X, pt.Y);
 
-            _trayMenu.Show()
+            _trayMenu.Show();
 
         /// <summary>
         /// Custom Win32 window messages for the NotifyIcon
@@ -187,39 +187,39 @@ namespace Avalonia.Win32
             WM_TRAYMOUSE = WindowsMessage.WM_USER + 1024,
 
         private class TrayIconMenuFlyoutPresenter : MenuFlyoutPresenter
-            protected override Type StyleKeyOverride => typeof(MenuFlyoutPresenter)
+            protected override Type StyleKeyOverride => typeof(MenuFlyoutPresenter);
 
             public override void Close()
                 // DefaultMenuInteractionHandler calls this
-                var host = this.FindLogicalAncestorOfType<TrayPopupRoot>()
+                var host = this.FindLogicalAncestorOfType<TrayPopupRoot>();
                 if (host != null)
-                    SelectedIndex = -1
-                    host.Close()
+                    SelectedIndex = -1;
+                    host.Close();
 
             protected internal override Control CreateContainerForItemOverride(object? item, int index, object? recycleKey)
                 return NativeMenuBarPresenter.CreateContainerForNativeItem(item, index, recycleKey)
                     ?? base.CreateContainerForItemOverride(item, index, recycleKey)
 
         private class TrayPopupRoot : Window
-            private readonly ManagedPopupPositioner _positioner
-            private readonly TrayIconManagedPopupPositionerPopupImplHelper _positionerHelper
+            private readonly ManagedPopupPositioner _positioner;
+            private readonly TrayIconManagedPopupPositionerPopupImplHelper _positionerHelper;
             public TrayPopupRoot()
-                _positionerHelper = new TrayIconManagedPopupPositionerPopupImplHelper(MoveResize)
-                _positioner = new ManagedPopupPositioner(_positionerHelper)
-                Topmost = true
+                _positionerHelper = new TrayIconManagedPopupPositionerPopupImplHelper(MoveResize);
+                _positioner = new ManagedPopupPositioner(_positionerHelper);
+                Topmost = true;
 
-                Deactivated += TrayPopupRoot_Deactivated
+                Deactivated += TrayPopupRoot_Deactivated;
 
-                ShowInTaskbar = false
+                ShowInTaskbar = false;
 
-                ShowActivated = true
+                ShowActivated = true;
 
             private void TrayPopupRoot_Deactivated(object? sender, EventArgs e)
-                Close()
+                Close();
 
             protected override void OnClosed(EventArgs e)
-                base.OnClosed(e)
-                _positionerHelper.Dispose()
+                base.OnClosed(e);
+                _positionerHelper.Dispose();
 
             private void MoveResize(PixelPoint position, Size size, double scaling)
                 raw csharp
@@ -230,19 +230,19 @@ namespace Avalonia.Win32
                     }
 
             protected override void ArrangeCore(Rect finalRect)
-                base.ArrangeCore(finalRect)
+                base.ArrangeCore(finalRect);
 
-                _positioner.Update(new PopupPositionerParameters { Anchor = PopupAnchor.TopLeft, Gravity = PopupGravity.BottomRight, AnchorRectangle = new Rect(Position.ToPoint(Screens.Primary?.Scaling ?? 1.0), new Size(1, 1)), Size = finalRect.Size, ConstraintAdjustment = PopupPositionerConstraintAdjustment.FlipX | PopupPositionerConstraintAdjustment.FlipY, })
+                _positioner.Update(new PopupPositionerParameters { Anchor = PopupAnchor.TopLeft, Gravity = PopupGravity.BottomRight, AnchorRectangle = new Rect(Position.ToPoint(Screens.Primary?.Scaling ?? 1.0), new Size(1, 1)), Size = finalRect.Size, ConstraintAdjustment = PopupPositionerConstraintAdjustment.FlipX | PopupPositionerConstraintAdjustment.FlipY, });
 
             private class TrayIconManagedPopupPositionerPopupImplHelper : IManagedPopupPositionerPopup, IDisposable
-                private readonly Action<PixelPoint, Size, double> _moveResize
-                private readonly Window _hiddenWindow
+                private readonly Action<PixelPoint, Size, double> _moveResize;
+                private readonly Window _hiddenWindow;
 
                 public TrayIconManagedPopupPositionerPopupImplHelper(Action<PixelPoint, Size, double> moveResize)
-                    _moveResize = moveResize
-                    _hiddenWindow = new Window()
+                    _moveResize = moveResize;
+                    _hiddenWindow = new Window();
 
-                public IReadOnlyList<ManagedPopupPositionerScreenInfo> Screens => _hiddenWindow.Screens.All.Select(s => new ManagedPopupPositionerScreenInfo(s.Bounds.ToRect(1), s.Bounds.ToRect(1))).ToArray()
+                public IReadOnlyList<ManagedPopupPositionerScreenInfo> Screens => _hiddenWindow.Screens.All.Select(s => new ManagedPopupPositionerScreenInfo(s.Bounds.ToRect(1), s.Bounds.ToRect(1))).ToArray();
 
                 raw csharp
                     public Rect ParentClientAreaScreenGeometry
@@ -260,24 +260,24 @@ namespace Avalonia.Win32
                     }
 
                 public void MoveAndResize(Point devicePoint, Size virtualSize)
-                    _moveResize(new PixelPoint((int)devicePoint.X, (int)devicePoint.Y), virtualSize, Scaling)
+                    _moveResize(new PixelPoint((int)devicePoint.X, (int)devicePoint.Y), virtualSize, Scaling);
 
                 public void Dispose()
-                    _hiddenWindow.Close()
+                    _hiddenWindow.Close();
 
-                public double Scaling => _hiddenWindow.Screens.Primary?.Scaling ?? 1.0
+                public double Scaling => _hiddenWindow.Screens.Primary?.Scaling ?? 1.0;
 
         protected virtual void Dispose(bool disposing)
             if (!_disposedValue)
-                UpdateIcon(true)
+                UpdateIcon(true);
 
-                _disposedValue = true
+                _disposedValue = true;
 
         ~TrayIconImpl()
             // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
-            Dispose(disposing: false)
+            Dispose(disposing: false);
 
         public void Dispose()
             // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
-            Dispose(disposing: true)
-            GC.SuppressFinalize(this)
+            Dispose(disposing: true);
+            GC.SuppressFinalize(this);

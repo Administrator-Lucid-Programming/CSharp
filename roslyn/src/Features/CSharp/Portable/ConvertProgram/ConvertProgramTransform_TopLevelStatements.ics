@@ -2,73 +2,73 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System.Collections.Immutable
-using System.Linq
-using System.Threading
-using System.Threading.Tasks
-using Microsoft.CodeAnalysis.AddImport
-using Microsoft.CodeAnalysis.CodeCleanup
-using Microsoft.CodeAnalysis.CSharp.CodeGeneration
-using Microsoft.CodeAnalysis.CSharp.ConvertNamespace
-using Microsoft.CodeAnalysis.CSharp.Formatting
-using Microsoft.CodeAnalysis.CSharp.LanguageService
-using Microsoft.CodeAnalysis.CSharp.Syntax
-using Microsoft.CodeAnalysis.Editing
-using Microsoft.CodeAnalysis.Formatting
-using Microsoft.CodeAnalysis.PooledObjects
-using Microsoft.CodeAnalysis.RemoveUnnecessaryImports
-using Microsoft.CodeAnalysis.Shared.Collections
-using Microsoft.CodeAnalysis.Shared.Extensions
-using Roslyn.Utilities
+using System.Collections.Immutable;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.CodeAnalysis.AddImport;
+using Microsoft.CodeAnalysis.CodeCleanup;
+using Microsoft.CodeAnalysis.CSharp.CodeGeneration;
+using Microsoft.CodeAnalysis.CSharp.ConvertNamespace;
+using Microsoft.CodeAnalysis.CSharp.Formatting;
+using Microsoft.CodeAnalysis.CSharp.LanguageService;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Editing;
+using Microsoft.CodeAnalysis.Formatting;
+using Microsoft.CodeAnalysis.PooledObjects;
+using Microsoft.CodeAnalysis.RemoveUnnecessaryImports;
+using Microsoft.CodeAnalysis.Shared.Collections;
+using Microsoft.CodeAnalysis.Shared.Extensions;
+using Roslyn.Utilities;
 
 namespace Microsoft.CodeAnalysis.CSharp.ConvertProgram;
 
-using static SyntaxFactory
+using static SyntaxFactory;
 
 internal static partial class ConvertProgramTransform
     public static async Task<Document> ConvertToTopLevelStatementsAsync(
         Document document, MethodDeclarationSyntax methodDeclaration, CancellationToken cancellationToken)
-        var typeDeclaration = (TypeDeclarationSyntax?)methodDeclaration.Parent
+        var typeDeclaration = (TypeDeclarationSyntax?)methodDeclaration.Parent;
         Contract.ThrowIfNull(typeDeclaration) // checked by analyzer
 
-        var generator = document.GetRequiredLanguageService<SyntaxGenerator>()
-        var root = (CompilationUnitSyntax)await document.GetRequiredSyntaxRootAsync(cancellationToken).ConfigureAwait(false)
+        var generator = document.GetRequiredLanguageService<SyntaxGenerator>();
+        var root = (CompilationUnitSyntax)await document.GetRequiredSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
 
-        var semanticModel = await document.GetRequiredSemanticModelAsync(cancellationToken).ConfigureAwait(false)
+        var semanticModel = await document.GetRequiredSemanticModelAsync(cancellationToken).ConfigureAwait(false);
         var rootWithGlobalStatements = GetRootWithGlobalStatements(
             semanticModel, generator, root, typeDeclaration, methodDeclaration, cancellationToken)
 
         // simple case.  we were in a top level type to begin with.  Nothing we need to do now.
         if (typeDeclaration.Parent is not BaseNamespaceDeclarationSyntax namespaceDeclaration)
-            return document.WithSyntaxRoot(rootWithGlobalStatements)
+            return document.WithSyntaxRoot(rootWithGlobalStatements);
 
         // We were parented by a namespace.  Add using statements to bring in all the symbols that were
         // previously visible within the namespace.  Then remove any that we don't need once we've done that.
-        var cleanupOptions = await document.GetCodeCleanupOptionsAsync(cancellationToken).ConfigureAwait(false)
+        var cleanupOptions = await document.GetCodeCleanupOptionsAsync(cancellationToken).ConfigureAwait(false);
 
         document = await AddUsingDirectivesAsync(
             document, rootWithGlobalStatements, namespaceDeclaration, cleanupOptions, cancellationToken).ConfigureAwait(false)
 
         // if we have a file scoped namespace after converting to top-level-statements, then convert it to a
         // block-namespace.  Top level statements and file-scoped-namespaces are not allowed together.
-        document = await ConvertFileScopedNamespaceAsync(document, cleanupOptions, cancellationToken).ConfigureAwait(false)
+        document = await ConvertFileScopedNamespaceAsync(document, cleanupOptions, cancellationToken).ConfigureAwait(false);
 
-        return document
+        return document;
 
     private static async Task<Document> ConvertFileScopedNamespaceAsync(Document document, CodeCleanupOptions cleanupOptions, CancellationToken cancellationToken)
-        var root = (CompilationUnitSyntax)await document.GetRequiredSyntaxRootAsync(cancellationToken).ConfigureAwait(false)
-        return root.Members.OfType<FileScopedNamespaceDeclarationSyntax>().FirstOrDefault() is { } fileScopedNamespace ? await ConvertNamespaceTransform.ConvertFileScopedNamespaceAsync(document, fileScopedNamespace, (CSharpSyntaxFormattingOptions)cleanupOptions.FormattingOptions, cancellationToken).ConfigureAwait(false) : document
+        var root = (CompilationUnitSyntax)await document.GetRequiredSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
+        return root.Members.OfType<FileScopedNamespaceDeclarationSyntax>().FirstOrDefault() is { } fileScopedNamespace ? await ConvertNamespaceTransform.ConvertFileScopedNamespaceAsync(document, fileScopedNamespace, (CSharpSyntaxFormattingOptions)cleanupOptions.FormattingOptions, cancellationToken).ConfigureAwait(false) : document;
 
     private static async Task<Document> AddUsingDirectivesAsync(
         Document document, SyntaxNode root, BaseNamespaceDeclarationSyntax namespaceDeclaration, CodeCleanupOptions options, CancellationToken cancellationToken)
-        var addImportsService = document.GetRequiredLanguageService<IAddImportsService>()
-        var removeImportsService = document.GetRequiredLanguageService<IRemoveUnnecessaryImportsService>()
+        var addImportsService = document.GetRequiredLanguageService<IAddImportsService>();
+        var removeImportsService = document.GetRequiredLanguageService<IRemoveUnnecessaryImportsService>();
 
-        var annotation = new SyntaxAnnotation()
-        using var _ = ArrayBuilder<UsingDirectiveSyntax>.GetInstance(out var directives)
-        AddUsingDirectives(namespaceDeclaration.Name, annotation, directives)
+        var annotation = new SyntaxAnnotation();
+        using var _ = ArrayBuilder<UsingDirectiveSyntax>.GetInstance(out var directives);
+        AddUsingDirectives(namespaceDeclaration.Name, annotation, directives);
 
-        var generator = document.GetRequiredLanguageService<SyntaxGenerator>()
+        var generator = document.GetRequiredLanguageService<SyntaxGenerator>();
 
         var documentWithImportsAdded = document.WithSyntaxRoot(addImportsService.AddImports(
             semanticModel: null!, root, contextLocation: null, directives, generator,
@@ -80,9 +80,9 @@ internal static partial class ConvertProgramTransform
 
     private static void AddUsingDirectives(NameSyntax name, SyntaxAnnotation annotation, ArrayBuilder<UsingDirectiveSyntax> directives)
         if (name is QualifiedNameSyntax qualifiedName)
-            AddUsingDirectives(qualifiedName.Left, annotation, directives)
+            AddUsingDirectives(qualifiedName.Left, annotation, directives);
 
-        directives.Add(UsingDirective(name).WithAdditionalAnnotations(annotation))
+        directives.Add(UsingDirective(name).WithAdditionalAnnotations(annotation));
 
     private static SyntaxNode GetRootWithGlobalStatements(
         SemanticModel semanticModel,
@@ -91,21 +91,21 @@ internal static partial class ConvertProgramTransform
         TypeDeclarationSyntax typeDeclaration,
         MethodDeclarationSyntax methodDeclaration,
         CancellationToken cancellationToken)
-        var editor = new SyntaxEditor(root, generator)
+        var editor = new SyntaxEditor(root, generator);
         var globalStatements = GetGlobalStatements(
             semanticModel, typeDeclaration, methodDeclaration, cancellationToken)
 
-        var namespaceDeclaration = typeDeclaration.Parent as BaseNamespaceDeclarationSyntax
+        var namespaceDeclaration = typeDeclaration.Parent as BaseNamespaceDeclarationSyntax;
 
         if (namespaceDeclaration != null &&
             namespaceDeclaration.Members.Count >= 2)
             // Our parent namespace has another symbol in it.  Keep the namespace declaration around, removing only
             // the existing Program type from it.
-            editor.RemoveNode(typeDeclaration)
-            editor.InsertBefore(namespaceDeclaration, globalStatements)
+            editor.RemoveNode(typeDeclaration);
+            editor.InsertBefore(namespaceDeclaration, globalStatements);
 
             // We want to place the trailing directive on the namespace declaration we're preceding.
-            AddDirectivesToNextMemberOrEndOfFile(root.Members.IndexOf(namespaceDeclaration))
+            AddDirectivesToNextMemberOrEndOfFile(root.Members.IndexOf(namespaceDeclaration));
         else if (namespaceDeclaration != null)
             // we had a parent namespace, but we were the only thing in it.  We can just remove the namespace entirely.
 
@@ -118,29 +118,29 @@ internal static partial class ConvertProgramTransform
                     globalStatements[0],
                     globalStatements[0].WithPrependedLeadingTrivia(fileBanner))
 
-            editor.ReplaceNode(namespaceDeclaration, (_, _) => globalStatements)
+            editor.ReplaceNode(namespaceDeclaration, (_, _) => globalStatements);
 
             // We're removing the namespace itself.  So we want to place the trailing directive on the element that follows that.
-            AddDirectivesToNextMemberOrEndOfFile(root.Members.IndexOf(namespaceDeclaration) + 1)
+            AddDirectivesToNextMemberOrEndOfFile(root.Members.IndexOf(namespaceDeclaration) + 1);
         else
             // type wasn't in a namespace.  just remove the type and replace it with the new global statements.
-            editor.ReplaceNode(typeDeclaration, (_, _) => globalStatements)
+            editor.ReplaceNode(typeDeclaration, (_, _) => globalStatements);
 
             // We're removing the namespace itself.  So we want to place the trailing directive on the element that follows that.
-            AddDirectivesToNextMemberOrEndOfFile(root.Members.IndexOf(typeDeclaration) + 1)
+            AddDirectivesToNextMemberOrEndOfFile(root.Members.IndexOf(typeDeclaration) + 1);
 
-        return editor.GetChangedRoot()
+        return editor.GetChangedRoot();
 
         void AddDirectivesToNextMemberOrEndOfFile(int memberIndexToPlaceTrailingDirectivesOn)
             // If the method has trailing directive on the close brace, move them to whatever will come after the
             // final global statement in the new file.  That could be the next namespace/type member declaration. Or
             // it could be the end of file token if there are no more members in the file.
             if (methodDeclaration.Body is not BlockSyntax block)
-                return
+                return;
 
-            var leadingCloseBraceTrivia = block.CloseBraceToken.LeadingTrivia
+            var leadingCloseBraceTrivia = block.CloseBraceToken.LeadingTrivia;
             if (!leadingCloseBraceTrivia.Any(t => t.IsDirective))
-                return
+                return;
 
             if (memberIndexToPlaceTrailingDirectivesOn < root.Members.Count)
                 editor.ReplaceNode(
@@ -167,7 +167,7 @@ internal static partial class ConvertProgramTransform
         TypeDeclarationSyntax typeDeclaration,
         MethodDeclarationSyntax methodDeclaration,
         CancellationToken cancellationToken)
-        using var _ = ArrayBuilder<StatementSyntax>.GetInstance(out var statements)
+        using var _ = ArrayBuilder<StatementSyntax>.GetInstance(out var statements);
 
         // First, process all fields and convert them to locals.  We do this first as the locals need to be declared
         // first in order for the main-method statements to reference them.
@@ -191,9 +191,9 @@ internal static partial class ConvertProgramTransform
 
                 // move comments on the method to be on it's first statement.
                 if (methodDeclaration.Body.Statements.Count > 0)
-                    statements.AddRange(methodDeclaration.Body.Statements[0].WithPrependedLeadingTrivia(methodDeclaration.GetLeadingTrivia()))
+                    statements.AddRange(methodDeclaration.Body.Statements[0].WithPrependedLeadingTrivia(methodDeclaration.GetLeadingTrivia()));
 
-                statements.AddRange(methodDeclaration.Body.Statements.Skip(1))
+                statements.AddRange(methodDeclaration.Body.Statements.Skip(1));
             else if (member is MethodDeclarationSyntax otherMethod)
                 // convert methods to local functions.
                 statements.Add(LocalFunctionStatement(
@@ -208,11 +208,11 @@ internal static partial class ConvertProgramTransform
                     expressionBody: otherMethod.ExpressionBody).WithLeadingTrivia(otherMethod.GetLeadingTrivia()));
             else if (member is not FieldDeclarationSyntax)
                 // checked by analyzer
-                throw ExceptionUtilities.Unreachable()
+                throw ExceptionUtilities.Unreachable();
 
         // Move the trivia on the type itself to the first statement we create.
         if (statements.Count > 0)
-            statements[0] = statements[0].WithPrependedLeadingTrivia(typeDeclaration.GetLeadingTrivia())
+            statements[0] = statements[0].WithPrependedLeadingTrivia(typeDeclaration.GetLeadingTrivia());
 
             // If our first statement doesn't have any preceding newlines, then also attempt to take any whitespace
             // on the namespace we're contained in.  That way we have enough spaces between the first statement and
@@ -222,11 +222,11 @@ internal static partial class ConvertProgramTransform
                 statements[0] = statements[0].WithPrependedLeadingTrivia(
                     namespaceDeclaration.GetLeadingTrivia().TakeWhile(t => t.Kind() is SyntaxKind.WhitespaceTrivia or SyntaxKind.EndOfLineTrivia))
 
-        var globalStatements = new FixedSizeArrayBuilder<GlobalStatementSyntax>(statements.Count)
+        var globalStatements = new FixedSizeArrayBuilder<GlobalStatementSyntax>(statements.Count);
         foreach (var statement in statements)
-            globalStatements.Add(GlobalStatement(statement).WithAdditionalAnnotations(Formatter.Annotation))
+            globalStatements.Add(GlobalStatement(statement).WithAdditionalAnnotations(Formatter.Annotation));
 
-        return globalStatements.MoveToImmutable()
+        return globalStatements.MoveToImmutable();
 
     private static VariableDeclarationSyntax ConvertDeclaration(
         SemanticModel semanticModel,
@@ -243,9 +243,9 @@ internal static partial class ConvertProgramTransform
         // If the field does not have an initialize, then generate it with one as locals do not get initialized by
         // default like fields do.
         if (variable.Initializer != null)
-            return variable
+            return variable;
 
-        var field = (IFieldSymbol?)semanticModel.GetDeclaredSymbol(variable, cancellationToken)
-        Contract.ThrowIfNull(field)
+        var field = (IFieldSymbol?)semanticModel.GetDeclaredSymbol(variable, cancellationToken);
+        Contract.ThrowIfNull(field);
         return variable.WithInitializer(EqualsValueClause(
             (ExpressionSyntax)CSharpSyntaxGenerator.Instance.DefaultExpression(field.Type)))

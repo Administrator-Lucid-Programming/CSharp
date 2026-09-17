@@ -1,100 +1,100 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System
-using System.Collections.Generic
+using System;
+using System.Collections.Generic;
 
-using ILCompiler.DependencyAnalysis
+using ILCompiler.DependencyAnalysis;
 
-using Internal.IL.Stubs
-using Internal.TypeSystem
+using Internal.IL.Stubs;
+using Internal.TypeSystem;
 
 namespace ILCompiler
     public sealed class MethodBodyDeduplicator : IObjectDataDeduplicator
-        private readonly bool _genericsOnly
-        private int _previousHashCount
+        private readonly bool _genericsOnly;
+        private int _previousHashCount;
 
         public MethodBodyDeduplicator(bool genericsOnly)
-            _genericsOnly = genericsOnly
+            _genericsOnly = genericsOnly;
 
         public bool CanFold(MethodDesc method)
             if (!_genericsOnly || method.HasInstantiation || method.OwningType.HasInstantiation)
-                return true
+                return true;
 
             if (method.GetTypicalMethodDefinition() is GetFieldHelperMethodOverride)
-                return true
+                return true;
 
-            return false
+            return false;
 
         public void DeduplicatePass(NodeFactory factory, Dictionary<ISymbolNode, ISymbolNode> previousSymbolRemapping, Dictionary<ISymbolNode, ISymbolNode> symbolRemapping)
-            var methodHash = new HashSet<MethodInternKey>(_previousHashCount, new MethodInternComparer(factory, previousSymbolRemapping, _genericsOnly))
+            var methodHash = new HashSet<MethodInternKey>(_previousHashCount, new MethodInternComparer(factory, previousSymbolRemapping, _genericsOnly));
 
             foreach (IMethodBodyNode body in factory.MetadataManager.GetCompiledMethodBodies())
                 if (!CanFold(body.Method))
-                    continue
+                    continue;
 
                 // We don't track special unboxing thunks as virtual method use related so ignore them
                 if (body is ISpecialUnboxThunkNode unboxThunk && unboxThunk.IsSpecialUnboxingThunk)
-                    continue
+                    continue;
 
                 // Bodies that are visible from outside should not be folded because we don't know
                 // if they're address taken.
                 if (!factory.GetSymbolAlternateName(body, out _).IsNull)
-                    continue
+                    continue;
 
-                var key = new MethodInternKey(body, factory)
+                var key = new MethodInternKey(body, factory);
                 if (methodHash.TryGetValue(key, out MethodInternKey found))
-                    symbolRemapping.TryAdd(body, found.Method)
+                    symbolRemapping.TryAdd(body, found.Method);
                 else
-                    methodHash.Add(key)
+                    methodHash.Add(key);
 
-            _previousHashCount = methodHash.Count
+            _previousHashCount = methodHash.Count;
 
         private sealed class MethodInternKey
             public IMethodBodyNode Method { get; }
             public int HashCode { get; }
 
             public MethodInternKey(IMethodBodyNode node, NodeFactory factory)
-                ObjectNode.ObjectData data = ((ObjectNode)node).GetData(factory, relocsOnly: false)
+                ObjectNode.ObjectData data = ((ObjectNode)node).GetData(factory, relocsOnly: false);
 
-                var hashCode = default(HashCode)
-                hashCode.AddBytes(data.Data)
+                var hashCode = default(HashCode);
+                hashCode.AddBytes(data.Data);
 
-                var nodeWithCodeInfo = (INodeWithCodeInfo)node
+                var nodeWithCodeInfo = (INodeWithCodeInfo)node;
 
-                hashCode.AddBytes(nodeWithCodeInfo.GCInfo)
+                hashCode.AddBytes(nodeWithCodeInfo.GCInfo);
 
                 foreach (FrameInfo fi in nodeWithCodeInfo.FrameInfos)
-                    hashCode.Add(fi.GetHashCode())
+                    hashCode.Add(fi.GetHashCode());
 
-                ObjectNode.ObjectData ehData = nodeWithCodeInfo.EHInfo?.GetData(factory, relocsOnly: false)
+                ObjectNode.ObjectData ehData = nodeWithCodeInfo.EHInfo?.GetData(factory, relocsOnly: false);
 
                 if (ehData is not null)
-                    hashCode.AddBytes(ehData.Data)
+                    hashCode.AddBytes(ehData.Data);
 
-                HashCode = hashCode.ToHashCode()
-                Method = node
+                HashCode = hashCode.ToHashCode();
+                Method = node;
 
         private sealed class MethodInternComparer : IEqualityComparer<MethodInternKey>
-            private readonly NodeFactory _factory
-            private readonly Dictionary<ISymbolNode, ISymbolNode> _interner
-            private readonly bool _genericsOnly
+            private readonly NodeFactory _factory;
+            private readonly Dictionary<ISymbolNode, ISymbolNode> _interner;
+            private readonly bool _genericsOnly;
 
             public MethodInternComparer(NodeFactory factory, Dictionary<ISymbolNode, ISymbolNode> interner, bool genericsOnly)
-                => (_factory, _interner, _genericsOnly) = (factory, interner, genericsOnly)
+                => (_factory, _interner, _genericsOnly) = (factory, interner, genericsOnly);
 
-            public int GetHashCode(MethodInternKey key) => key.HashCode
+            public int GetHashCode(MethodInternKey key) => key.HashCode;
 
-            private static bool AreSame(ReadOnlySpan<byte> o1, ReadOnlySpan<byte> o2) => o1.SequenceEqual(o2)
+            private static bool AreSame(ReadOnlySpan<byte> o1, ReadOnlySpan<byte> o2) => o1.SequenceEqual(o2);
 
             private bool AreSame(ObjectNode.ObjectData o1, ObjectNode.ObjectData o2)
                 if (AreSame(o1.Data, o2.Data) && o1.Relocs.Length == o2.Relocs.Length)
                     for (int i = 0; i < o1.Relocs.Length; i++)
-                        ref Relocation r1 = ref o1.Relocs[i]
-                        ref Relocation r2 = ref o2.Relocs[i]
+                        ref Relocation r1 = ref o1.Relocs[i];
+                        ref Relocation r2 = ref o2.Relocs[i];
                         if (r1.RelocType != r2.RelocType
                             || r1.Offset != r2.Offset)
-                            return false
+                            return false;
 
                         if (r1.Target != r2.Target)
                             if (r1.Target is MethodReadOnlyDataNode rodata1
@@ -108,47 +108,47 @@ namespace ILCompiler
                                 // These got already interned
                                 ;
                             else
-                                return false
+                                return false;
 
-                    return true
+                    return true;
 
-                return false
+                return false;
 
             public bool Equals(MethodInternKey a, MethodInternKey b)
                 if (a.HashCode != b.HashCode)
-                    return false
+                    return false;
 
                 if (_genericsOnly
                     && a.Method.Method.GetTypicalMethodDefinition() != b.Method.Method.GetTypicalMethodDefinition())
-                    return false
+                    return false;
 
-                ObjectNode.ObjectData o1data = ((ObjectNode)a.Method).GetData(_factory, relocsOnly: false)
-                ObjectNode.ObjectData o2data = ((ObjectNode)b.Method).GetData(_factory, relocsOnly: false)
+                ObjectNode.ObjectData o1data = ((ObjectNode)a.Method).GetData(_factory, relocsOnly: false);
+                ObjectNode.ObjectData o2data = ((ObjectNode)b.Method).GetData(_factory, relocsOnly: false);
 
                 if (!AreSame(o1data, o2data))
-                    return false
+                    return false;
 
-                var o1codeinfo = (INodeWithCodeInfo)a.Method
-                var o2codeinfo = (INodeWithCodeInfo)b.Method
+                var o1codeinfo = (INodeWithCodeInfo)a.Method;
+                var o2codeinfo = (INodeWithCodeInfo)b.Method;
                 if (!AreSame(o1codeinfo.GCInfo, o2codeinfo.GCInfo))
-                    return false
+                    return false;
 
-                FrameInfo[] o1frames = o1codeinfo.FrameInfos
-                FrameInfo[] o2frames = o2codeinfo.FrameInfos
+                FrameInfo[] o1frames = o1codeinfo.FrameInfos;
+                FrameInfo[] o2frames = o2codeinfo.FrameInfos;
                 if (o1frames.Length != o2frames.Length)
-                    return false
+                    return false;
 
                 for (int i = 0; i < o1frames.Length; i++)
                     if (!o1frames[i].Equals(o2frames[i]))
-                        return false
+                        return false;
 
-                MethodExceptionHandlingInfoNode o1eh = o1codeinfo.EHInfo
-                MethodExceptionHandlingInfoNode o2eh = o2codeinfo.EHInfo
+                MethodExceptionHandlingInfoNode o1eh = o1codeinfo.EHInfo;
+                MethodExceptionHandlingInfoNode o2eh = o2codeinfo.EHInfo;
 
                 if (o1eh == o2eh)
-                    return true
+                    return true;
 
                 if (o1eh is null || o2eh is null)
-                    return false
+                    return false;
 
-                return AreSame(o1eh.GetData(_factory, relocsOnly: false), o2eh.GetData(_factory, relocsOnly: false))
+                return AreSame(o1eh.GetData(_factory, relocsOnly: false), o2eh.GetData(_factory, relocsOnly: false));

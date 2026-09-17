@@ -16,112 +16,112 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System
-using System.Collections.Generic
-using System.ComponentModel
-using System.Diagnostics
-using System.Threading
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.Threading;
 
 namespace ICSharpCode.SharpDevelop
     /// <summary>
     /// Collects progress using nested IProgressMonitors and provides it to a different thread using events.
     /// </summary>
     public sealed class ProgressCollector : INotifyPropertyChanged
-        readonly ISynchronizeInvoke eventThread
-        readonly MonitorImpl root
-        readonly LinkedList<string> namedMonitors = new LinkedList<string>()
-        readonly object updateLock = new object()
+        readonly ISynchronizeInvoke eventThread;
+        readonly MonitorImpl root;
+        readonly LinkedList<string> namedMonitors = new LinkedList<string>();
+        readonly object updateLock = new object();
 
-        string taskName
-        double progress
-        OperationStatus status
-        bool showingDialog
-        bool rootMonitorIsDisposed
+        string taskName;
+        double progress;
+        OperationStatus status;
+        bool showingDialog;
+        bool rootMonitorIsDisposed;
 
         public ProgressCollector(ISynchronizeInvoke eventThread, CancellationToken cancellationToken)
             if (eventThread == null)
-                throw new ArgumentNullException("eventThread")
-            this.eventThread = eventThread
-            this.root = new MonitorImpl(this, null, 1, cancellationToken)
+                throw new ArgumentNullException("eventThread");
+            this.eventThread = eventThread;
+            this.root = new MonitorImpl(this, null, 1, cancellationToken);
 
-        public event EventHandler ProgressMonitorDisposed
-        public event PropertyChangedEventHandler PropertyChanged
+        public event EventHandler ProgressMonitorDisposed;
+        public event PropertyChangedEventHandler PropertyChanged;
 
         void OnPropertyChanged(string propertyName)
             if (PropertyChanged != null)
-                PropertyChanged(this, new PropertyChangedEventArgs(propertyName))
+                PropertyChanged(this, new PropertyChangedEventArgs(propertyName));
 
         public double Progress
             get
-                return progress
+                return progress;
             private set
-                Debug.Assert(!eventThread.InvokeRequired)
+                Debug.Assert(!eventThread.InvokeRequired);
                 if (progress != value)
-                    progress = value
+                    progress = value;
                     // Defensive programming: parallel processes like the build could change properites even
                     // after the monitor is disposed (they shouldn't do that, but it could happen),
                     // and we don't want to confuse consumers like the status bar by
                     // raising events from disposed monitors.
                     if (!rootMonitorIsDisposed)
-                        OnPropertyChanged("Progress")
+                        OnPropertyChanged("Progress");
 
         public bool ShowingDialog
             get
-                return showingDialog
+                return showingDialog;
             set
-                Debug.Assert(!eventThread.InvokeRequired)
+                Debug.Assert(!eventThread.InvokeRequired);
                 if (showingDialog != value)
-                    showingDialog = value
+                    showingDialog = value;
                     if (!rootMonitorIsDisposed)
-                        OnPropertyChanged("ShowingDialog")
+                        OnPropertyChanged("ShowingDialog");
 
         public string TaskName
             get
-                return taskName
+                return taskName;
             private set
-                Debug.Assert(!eventThread.InvokeRequired)
+                Debug.Assert(!eventThread.InvokeRequired);
                 if (taskName != value)
-                    taskName = value
+                    taskName = value;
                     if (!rootMonitorIsDisposed)
-                        OnPropertyChanged("TaskName")
+                        OnPropertyChanged("TaskName");
 
         public OperationStatus Status
             get
-                return status
+                return status;
             private set
-                Debug.Assert(!eventThread.InvokeRequired)
+                Debug.Assert(!eventThread.InvokeRequired);
                 if (status != value)
-                    status = value
+                    status = value;
                     if (!rootMonitorIsDisposed)
-                        OnPropertyChanged("Status")
+                        OnPropertyChanged("Status");
 
         public IProgressMonitor ProgressMonitor
             get
-                return root
+                return root;
 
         /// <summary>
         /// Gets whether the root progress monitor was disposed.
         /// </summary>
         public bool ProgressMonitorIsDisposed
             get
-                return rootMonitorIsDisposed
+                return rootMonitorIsDisposed;
 
-        bool hasUpdateScheduled
-        double storedNewProgress = -1
-        OperationStatus storedNewStatus
+        bool hasUpdateScheduled;
+        double storedNewProgress = -1;
+        OperationStatus storedNewStatus;
 
         void SetProgress(double newProgress)
             // this method is always called within a lock(updateLock) block, so we don't
             // have to worry about thread safety when accessing hasUpdateScheduled and storedNewProgress
 
-            storedNewProgress = newProgress
-            ScheduleUpdate()
+            storedNewProgress = newProgress;
+            ScheduleUpdate();
 
         void ScheduleUpdate()
             // This test ensures that only 1 update is scheduled at a single point in time. If updates
             // come in faster than the GUI can process them, we'll skip some and directly update to the newest value.
             if (!hasUpdateScheduled)
-                hasUpdateScheduled = true
+                hasUpdateScheduled = true;
                 eventThread.BeginInvoke(
                     (Action)delegate
                     {
@@ -139,8 +139,8 @@ namespace ICSharpCode.SharpDevelop
             // this method is always called within a lock(updateLock) block, so we don't
             // have to worry about thread safety when accessing hasUpdateScheduled and storedNewStatus
 
-            storedNewStatus = newStatus
-            ScheduleUpdate()
+            storedNewStatus = newStatus;
+            ScheduleUpdate();
 
         void SetShowingDialog(bool newValue)
             eventThread.BeginInvoke(
@@ -173,126 +173,126 @@ namespace ICSharpCode.SharpDevelop
 
         LinkedListNode<string> RegisterNamedMonitor(string name)
             lock (namedMonitors)
-                LinkedListNode<string> newEntry = namedMonitors.AddLast(name)
+                LinkedListNode<string> newEntry = namedMonitors.AddLast(name);
                 if (namedMonitors.First == newEntry)
-                    SetTaskName(name)
-                return newEntry
+                    SetTaskName(name);
+                return newEntry;
 
         void UnregisterNamedMonitor(LinkedListNode<string> nameEntry)
             lock (namedMonitors)
-                bool wasFirst = namedMonitors.First == nameEntry
+                bool wasFirst = namedMonitors.First == nameEntry;
                 // Note: if Remove() crashes with "InvalidOperationException: The LinkedList node does not belong to current LinkedList.",
                 // that's an indication that the progress monitor is being disposed multiple times concurrently.
                 // (which is not allowed according to IProgressMonitor thread-safety documentation)
-                namedMonitors.Remove(nameEntry)
+                namedMonitors.Remove(nameEntry);
                 if (wasFirst)
-                    SetTaskName(namedMonitors.First != null ? namedMonitors.First.Value : null)
+                    SetTaskName(namedMonitors.First != null ? namedMonitors.First.Value : null);
 
         void ChangeName(LinkedListNode<string> nameEntry, string newName)
             lock (namedMonitors)
                 if (namedMonitors.First == nameEntry)
-                    SetTaskName(newName)
-                nameEntry.Value = newName
+                    SetTaskName(newName);
+                nameEntry.Value = newName;
 
         sealed class MonitorImpl : IProgressMonitor
-            readonly ProgressCollector collector
-            readonly MonitorImpl parent
-            readonly double scaleFactor
-            readonly CancellationToken cancellationToken
-            LinkedListNode<string> nameEntry
-            double currentProgress
-            OperationStatus localStatus, currentStatus
-            int childrenWithWarnings, childrenWithErrors
+            readonly ProgressCollector collector;
+            readonly MonitorImpl parent;
+            readonly double scaleFactor;
+            readonly CancellationToken cancellationToken;
+            LinkedListNode<string> nameEntry;
+            double currentProgress;
+            OperationStatus localStatus, currentStatus;
+            int childrenWithWarnings, childrenWithErrors;
 
             public MonitorImpl(ProgressCollector collector, MonitorImpl parent, double scaleFactor, CancellationToken cancellationToken)
-                this.collector = collector
-                this.parent = parent
-                this.scaleFactor = scaleFactor
-                this.cancellationToken = cancellationToken
+                this.collector = collector;
+                this.parent = parent;
+                this.scaleFactor = scaleFactor;
+                this.cancellationToken = cancellationToken;
 
             public bool ShowingDialog
                 get
-                    return collector.ShowingDialog
+                    return collector.ShowingDialog;
                 set
-                    collector.SetShowingDialog(value)
+                    collector.SetShowingDialog(value);
 
             public string TaskName
                 get
                     if (nameEntry != null)
-                        return nameEntry.Value
+                        return nameEntry.Value;
                     else
-                        return null
+                        return null;
                 set
                     if (nameEntry != null)
                         if (value == null)
-                            collector.UnregisterNamedMonitor(nameEntry)
-                            nameEntry = null
+                            collector.UnregisterNamedMonitor(nameEntry);
+                            nameEntry = null;
                         else if (nameEntry.Value != value)
-                            collector.ChangeName(nameEntry, value)
+                            collector.ChangeName(nameEntry, value);
                     else if (value != null)
-                        nameEntry = collector.RegisterNamedMonitor(value)
+                        nameEntry = collector.RegisterNamedMonitor(value);
 
             public CancellationToken CancellationToken
                 get
-                    return cancellationToken
+                    return cancellationToken;
 
             public double Progress
                 get
-                    return currentProgress
+                    return currentProgress;
                 set
                     lock (collector.updateLock)
-                        UpdateProgress(value)
+                        UpdateProgress(value);
 
             void IProgress<double>.Report(double value)
-                this.Progress = value
+                this.Progress = value;
 
             void UpdateProgress(double progress)
                 if (parent != null)
-                    parent.UpdateProgress(parent.currentProgress + (progress - this.currentProgress) * scaleFactor)
+                    parent.UpdateProgress(parent.currentProgress + (progress - this.currentProgress) * scaleFactor);
                 else
-                    collector.SetProgress(progress)
-                this.currentProgress = progress
+                    collector.SetProgress(progress);
+                this.currentProgress = progress;
 
             public OperationStatus Status
                 get
-                    return localStatus
+                    return localStatus;
                 set
                     if (localStatus != value)
-                        localStatus = value
+                        localStatus = value;
                         lock (collector.updateLock)
-                            UpdateStatus()
+                            UpdateStatus();
 
             void UpdateStatus()
-                OperationStatus oldStatus = currentStatus
+                OperationStatus oldStatus = currentStatus;
                 if (childrenWithErrors > 0)
-                    currentStatus = OperationStatus.Error
+                    currentStatus = OperationStatus.Error;
                 else if (childrenWithWarnings > 0 && localStatus != OperationStatus.Error)
-                    currentStatus = OperationStatus.Warning
+                    currentStatus = OperationStatus.Warning;
                 else
-                    currentStatus = localStatus
+                    currentStatus = localStatus;
                 if (oldStatus != currentStatus)
                     if (parent != null)
                         if (oldStatus == OperationStatus.Warning)
-                            parent.childrenWithWarnings--
+                            parent.childrenWithWarnings--;
                         else if (oldStatus == OperationStatus.Error)
-                            parent.childrenWithErrors--
+                            parent.childrenWithErrors--;
 
                         if (currentStatus == OperationStatus.Warning)
-                            parent.childrenWithWarnings++
+                            parent.childrenWithWarnings++;
                         else if (currentStatus == OperationStatus.Error)
-                            parent.childrenWithErrors++
+                            parent.childrenWithErrors++;
 
-                        parent.UpdateStatus()
+                        parent.UpdateStatus();
                     else
-                        collector.SetStatus(currentStatus)
+                        collector.SetStatus(currentStatus);
 
             public IProgressMonitor CreateSubTask(double workAmount)
-                return new MonitorImpl(collector, this, workAmount, cancellationToken)
+                return new MonitorImpl(collector, this, workAmount, cancellationToken);
 
             public IProgressMonitor CreateSubTask(double workAmount, CancellationToken cancellationToken)
-                return new MonitorImpl(collector, this, workAmount, cancellationToken)
+                return new MonitorImpl(collector, this, workAmount, cancellationToken);
 
             public void Dispose()
-                this.TaskName = null
+                this.TaskName = null;
                 if (parent == null)
-                    collector.OnRootMonitorDisposed()
+                    collector.OnRootMonitorDisposed();

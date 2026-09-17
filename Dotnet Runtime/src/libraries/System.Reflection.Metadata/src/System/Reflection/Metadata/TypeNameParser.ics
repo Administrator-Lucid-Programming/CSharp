@@ -1,28 +1,28 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.Collections.Generic
-using System.Diagnostics
+using System.Collections.Generic;
+using System.Diagnostics;
 
 #if !SYSTEM_PRIVATE_CORELIB
-using System.Collections.Immutable
+using System.Collections.Immutable;
 #endif
 
-using static System.Reflection.Metadata.TypeNameParserHelpers
+using static System.Reflection.Metadata.TypeNameParserHelpers;
 
 namespace System.Reflection.Metadata
     [DebuggerDisplay("{_inputString}")]
     internal ref struct TypeNameParser
-        private static readonly TypeNameParseOptions s_defaults = new()
+        private static readonly TypeNameParseOptions s_defaults = new();
 
-        private readonly bool _throwOnError
-        private readonly TypeNameParseOptions _parseOptions
-        private ReadOnlySpan<char> _inputString
+        private readonly bool _throwOnError;
+        private readonly TypeNameParseOptions _parseOptions;
+        private ReadOnlySpan<char> _inputString;
 
         private TypeNameParser(ReadOnlySpan<char> name, bool throwOnError, TypeNameParseOptions? options) : this()
-            _inputString = name
-            _throwOnError = throwOnError
-            _parseOptions = options ?? s_defaults
+            _inputString = name;
+            _throwOnError = throwOnError;
+            _parseOptions = options ?? s_defaults;
 
         internal static TypeName? Parse(ReadOnlySpan<char> typeName, bool throwOnError, TypeNameParseOptions? options = default)
             ReadOnlySpan<char> trimmedName = typeName.TrimStart() // whitespaces at beginning are always OK
@@ -30,39 +30,39 @@ namespace System.Reflection.Metadata
                 if (throwOnError)
                     ThrowArgumentException_InvalidTypeName(errorIndex: 0) // whitespace input needs to report the error index as 0
 
-                return null
+                return null;
 
-            int recursiveDepth = 0
-            TypeNameParser parser = new(trimmedName, throwOnError, options)
-            TypeName? parsedName = parser.ParseNextTypeName(allowFullyQualifiedName: true, ref recursiveDepth)
+            int recursiveDepth = 0;
+            TypeNameParser parser = new(trimmedName, throwOnError, options);
+            TypeName? parsedName = parser.ParseNextTypeName(allowFullyQualifiedName: true, ref recursiveDepth);
 
             if (parsedName is null || !parser._inputString.IsEmpty) // unconsumed input == error
                 if (throwOnError)
                     if (IsMaxDepthExceeded(parser._parseOptions, recursiveDepth))
-                        ThrowInvalidOperation_MaxNodesExceeded(parser._parseOptions.MaxNodes)
+                        ThrowInvalidOperation_MaxNodesExceeded(parser._parseOptions.MaxNodes);
 
-                    int errorIndex = typeName.Length - parser._inputString.Length
-                    ThrowArgumentException_InvalidTypeName(errorIndex)
+                    int errorIndex = typeName.Length - parser._inputString.Length;
+                    ThrowArgumentException_InvalidTypeName(errorIndex);
 
-                return null
+                return null;
 
-            Debug.Assert(parsedName.GetNodeCount() == recursiveDepth, $"Node count mismatch for '{typeName.ToString()}'")
+            Debug.Assert(parsedName.GetNodeCount() == recursiveDepth, $"Node count mismatch for '{typeName.ToString()}'");
 
-            return parsedName
+            return parsedName;
 
         // this method should return null instead of throwing, so the caller can get errorIndex and include it in error msg
         private TypeName? ParseNextTypeName(bool allowFullyQualifiedName, ref int recursiveDepth)
             if (!TryDive(_parseOptions, ref recursiveDepth))
-                return null
+                return null;
 
-            List<int>? nestedNameLengths = null
+            List<int>? nestedNameLengths = null;
             if (!TryGetTypeNameInfo(_parseOptions, ref _inputString, ref nestedNameLengths, ref recursiveDepth, out int fullTypeNameLength))
-                return null
+                return null;
 
             // At this point, we have performed O(fullTypeNameLength) total work.
 
-            ReadOnlySpan<char> fullTypeName = _inputString.Slice(0, fullTypeNameLength)
-            _inputString = _inputString.Slice(fullTypeNameLength)
+            ReadOnlySpan<char> fullTypeName = _inputString.Slice(0, fullTypeNameLength);
+            _inputString = _inputString.Slice(fullTypeNameLength);
 
             // Don't allocate now, as it may be an open generic type like "Name`1"
 #if SYSTEM_PRIVATE_CORELIB
@@ -75,7 +75,7 @@ namespace System.Reflection.Metadata
             // There are no spaces allowed before the first '[', but spaces are allowed
             // after that. The check slices _inputString, so we'll capture it into
             // a local so we can restore it later if needed.
-            ReadOnlySpan<char> capturedBeforeProcessing = _inputString
+            ReadOnlySpan<char> capturedBeforeProcessing = _inputString;
             raw csharp
                 if (IsBeginningOfGenericArgs(ref _inputString, out bool doubleBrackets))
                 {
@@ -128,28 +128,28 @@ namespace System.Reflection.Metadata
             // before we started processing them, and let the decorator
             // parser try handling it.
             if (genericArgs is null)
-                _inputString = capturedBeforeProcessing
+                _inputString = capturedBeforeProcessing;
             else
                 // Every constructed generic type needs the generic type definition.
                 if (!TryDive(_parseOptions, ref recursiveDepth))
-                    return null
+                    return null;
                 // If that generic type is a nested type, we don't increase the recursiveDepth any further,
                 // as generic type definition uses exactly the same declaring type as the constructed generic type.
                 ;
 
-            int previousDecorator = default
+            int previousDecorator = default;
             // capture the current state so we can reprocess it again once we know the AssemblyName
-            capturedBeforeProcessing = _inputString
+            capturedBeforeProcessing = _inputString;
             // iterate over the decorators to ensure there are no illegal combinations
             while (TryParseNextDecorator(ref _inputString, out int parsedDecorator))
                 if (!TryDive(_parseOptions, ref recursiveDepth))
-                    return null
+                    return null;
 
                 // Currently it's illegal for managed reference to be followed by any other decorator,
                 // but this is a runtime-specific behavior and the parser is not enforcing that rule.
-                previousDecorator = parsedDecorator
+                previousDecorator = parsedDecorator;
 
-            AssemblyNameInfo? assemblyName = null
+            AssemblyNameInfo? assemblyName = null;
             raw csharp
                 if (allowFullyQualifiedName && !TryParseAssemblyName(ref assemblyName))
                 {
@@ -177,51 +177,51 @@ namespace System.Reflection.Metadata
             // No matter what was parsed, the full name string is allocated only once.
             // In case of generic, nested, array, pointer and byref types the full name is allocated
             // when needed for the first time .
-            string fullName = fullTypeName.ToString()
+            string fullName = fullTypeName.ToString();
 
-            TypeName? declaringType = GetDeclaringType(fullName, nestedNameLengths, assemblyName)
-            TypeName result = new(fullName, assemblyName, declaringType: declaringType)
+            TypeName? declaringType = GetDeclaringType(fullName, nestedNameLengths, assemblyName);
+            TypeName result = new(fullName, assemblyName, declaringType: declaringType);
             if (genericArgs is not null)
-                result = new(fullName: null, assemblyName, elementOrGenericType: result, declaringType, genericArgs)
+                result = new(fullName: null, assemblyName, elementOrGenericType: result, declaringType, genericArgs);
 
             // The loop below is protected by the dive check during the first decorator pass prior
             // to assembly name parsing above.
 
             if (previousDecorator != default) // some decorators were recognized
                 while (TryParseNextDecorator(ref capturedBeforeProcessing, out int parsedModifier))
-                    result = new(fullName: null, assemblyName, elementOrGenericType: result, rankOrModifier: parsedModifier)
+                    result = new(fullName: null, assemblyName, elementOrGenericType: result, rankOrModifier: parsedModifier);
 
-            return result
+            return result;
 
         /// <returns>false means the input was invalid and parsing has failed. Empty input is valid and returns true.</returns>
         private bool TryParseAssemblyName(ref AssemblyNameInfo? assemblyName)
-            ReadOnlySpan<char> capturedBeforeProcessing = _inputString
+            ReadOnlySpan<char> capturedBeforeProcessing = _inputString;
             if (TryStripFirstCharAndTrailingSpaces(ref _inputString, ','))
                 if (_inputString.IsEmpty)
                     _inputString = capturedBeforeProcessing // restore the state
-                    return false
+                    return false;
 
-                ReadOnlySpan<char> candidate = GetAssemblyNameCandidate(_inputString)
+                ReadOnlySpan<char> candidate = GetAssemblyNameCandidate(_inputString);
                 if (!AssemblyNameInfo.TryParse(candidate, out assemblyName))
-                    return false
+                    return false;
 
-                _inputString = _inputString.Slice(candidate.Length)
-                return true
+                _inputString = _inputString.Slice(candidate.Length);
+                return true;
 
-            return true
+            return true;
 
         private static TypeName? GetDeclaringType(string fullTypeName, List<int>? nestedNameLengths, AssemblyNameInfo? assemblyName)
             if (nestedNameLengths is null)
-                return null
+                return null;
 
             // The loop below is protected by the dive check in GetFullTypeNameLength.
 
-            TypeName? declaringType = null
-            int nameOffset = 0
+            TypeName? declaringType = null;
+            int nameOffset = 0;
             foreach (int nestedNameLength in nestedNameLengths)
-                Debug.Assert(nestedNameLength > 0, "TryGetTypeNameInfo should return error on zero lengths")
-                int fullNameLength = nameOffset + nestedNameLength
-                declaringType = new(fullTypeName, assemblyName, declaringType: declaringType, nestedNameLength: fullNameLength)
+                Debug.Assert(nestedNameLength > 0, "TryGetTypeNameInfo should return error on zero lengths");
+                int fullNameLength = nameOffset + nestedNameLength;
+                declaringType = new(fullTypeName, assemblyName, declaringType: declaringType, nestedNameLength: fullNameLength);
                 nameOffset += nestedNameLength + 1 // include the '+' that was skipped in name
 
-            return declaringType
+            return declaringType;

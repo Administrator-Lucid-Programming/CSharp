@@ -1,8 +1,8 @@
-using System.Data
-using System.Data.Common
-using NPoco
-using Umbraco.Cms.Core
-using Umbraco.Cms.Infrastructure.Persistence
+using System.Data;
+using System.Data.Common;
+using NPoco;
+using Umbraco.Cms.Core;
+using Umbraco.Cms.Infrastructure.Persistence;
 
 namespace Umbraco.Extensions;
 
@@ -17,7 +17,7 @@ public static partial class NPocoDatabaseExtensions
     /// <param name="column">The column.</param>
     /// <returns>A value indicating whether the column should be part of the bulk-insert.</returns>
     /// <remarks>Columns that are primary keys and auto-incremental, or result columns, are excluded from bulk-inserts.</remarks>
-    public static bool IncludeColumn(PocoData pocoData, KeyValuePair<string, PocoColumn> column) => column.Value.ResultColumn == false     && (pocoData.TableInfo.AutoIncrement == false || column.Key != pocoData.TableInfo.PrimaryKey)
+    public static bool IncludeColumn(PocoData pocoData, KeyValuePair<string, PocoColumn> column) => column.Value.ResultColumn == false     && (pocoData.TableInfo.AutoIncrement == false || column.Key != pocoData.TableInfo.PrimaryKey);
 
     /// <summary>
     ///     Creates bulk-insert commands.
@@ -28,17 +28,17 @@ public static partial class NPocoDatabaseExtensions
     /// <returns>The sql commands to execute.</returns>
     internal static IDbCommand[] GenerateBulkInsertCommands<T>(this IUmbracoDatabase database, T[] records)
         if (database.Connection == null)
-            throw new ArgumentException("Null database?.connection.", nameof(database))
+            throw new ArgumentException("Null database?.connection.", nameof(database));
 
-        PocoData pocoData = database.PocoDataFactory.ForType(typeof(T))
+        PocoData pocoData = database.PocoDataFactory.ForType(typeof(T));
 
         // get columns to include, = number of parameters per row
         KeyValuePair<string, PocoColumn>[] columns =
             pocoData.Columns.Where(c => IncludeColumn(pocoData, c)).ToArray();
-        var paramsPerRecord = columns.Length
+        var paramsPerRecord = columns.Length;
 
         // format columns to sql
-        var tableName = database.DatabaseType.EscapeTableName(pocoData.TableInfo.TableName)
+        var tableName = database.DatabaseType.EscapeTableName(pocoData.TableInfo.TableName);
         var columnNames = string.Join(
             ", ",
             columns.Select(c => tableName + "." + database.DatabaseType.EscapeSqlIdentifier(c.Key)))
@@ -52,30 +52,30 @@ public static partial class NPocoDatabaseExtensions
         var recordsPerCommand = paramsPerRecord == 0
             ? int.MaxValue
             : Convert.ToInt32(Math.Floor((double)Constants.Sql.MaxParameterCount / paramsPerRecord));
-        var commandsCount = Convert.ToInt32(Math.Ceiling((double)records.Length / recordsPerCommand))
+        var commandsCount = Convert.ToInt32(Math.Ceiling((double)records.Length / recordsPerCommand));
 
-        var commands = new IDbCommand[commandsCount]
-        var recordsIndex = 0
-        var recordsLeftToInsert = records.Length
-        var prefix = database.DatabaseType.GetParameterPrefix(database.ConnectionString)
+        var commands = new IDbCommand[commandsCount];
+        var recordsIndex = 0;
+        var recordsLeftToInsert = records.Length;
+        var prefix = database.DatabaseType.GetParameterPrefix(database.ConnectionString);
         for (var commandIndex = 0; commandIndex < commandsCount; commandIndex++)
-            DbCommand command = database.CreateCommand(database.Connection, CommandType.Text, string.Empty)
-            var parameterIndex = 0
-            var commandRecords = Math.Min(recordsPerCommand, recordsLeftToInsert)
-            var recordsValues = new string[commandRecords]
+            DbCommand command = database.CreateCommand(database.Connection, CommandType.Text, string.Empty);
+            var parameterIndex = 0;
+            var commandRecords = Math.Min(recordsPerCommand, recordsLeftToInsert);
+            var recordsValues = new string[commandRecords];
             for (var commandRecordIndex = 0;
                 commandRecordIndex < commandRecords;
                 commandRecordIndex++, recordsIndex++, recordsLeftToInsert--)
-                T record = records[recordsIndex]
-                var recordValues = new string[columns.Length]
+                T record = records[recordsIndex];
+                var recordValues = new string[columns.Length];
                 for (var columnIndex = 0; columnIndex < columns.Length; columnIndex++)
-                    database.AddParameter(command, columns[columnIndex].Value.GetValue(record))
-                    recordValues[columnIndex] = prefix + parameterIndex++
+                    database.AddParameter(command, columns[columnIndex].Value.GetValue(record));
+                    recordValues[columnIndex] = prefix + parameterIndex++;
 
-                recordsValues[commandRecordIndex] = "(" + string.Join(",", recordValues) + ")"
+                recordsValues[commandRecordIndex] = "(" + string.Join(",", recordValues) + ")";
 
             command.CommandText =
                 $"INSERT INTO {tableName} ({columnNames}) VALUES {string.Join(", ", recordsValues)}"
-            commands[commandIndex] = command
+            commands[commandIndex] = command;
 
-        return commands
+        return commands;

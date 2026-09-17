@@ -2,15 +2,15 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System
-using System.Collections.Generic
-using System.Collections.Immutable
-using System.IO
-using System.Linq
-using System.Threading
-using System.Threading.Tasks
-using Microsoft.CodeAnalysis.Collections
-using Roslyn.Utilities
+using System;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.IO;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.CodeAnalysis.Collections;
+using Roslyn.Utilities;
 
 namespace Microsoft.CodeAnalysis.UnusedReferences;
 
@@ -18,7 +18,7 @@ internal static class UnusedReferencesRemover
     // This is the order that we look for used references. We set this processing order because we
     // want to favor transitive references when possible. For instance we process Projects before
     // Packages, since a particular Package could be brought in transitively by a Project reference.
-    private static readonly ImmutableArray<ReferenceType> s_processingOrder = [ReferenceType.Project, ReferenceType.Package, ReferenceType.Assembly]
+    private static readonly ImmutableArray<ReferenceType> s_processingOrder = [ReferenceType.Project, ReferenceType.Package, ReferenceType.Assembly];
 
     public static async Task<ImmutableArray<ReferenceInfo>> GetUnusedReferencesAsync(
         Solution solution,
@@ -28,15 +28,15 @@ internal static class UnusedReferencesRemover
         var projects = solution.Projects
             .Where(project => projectFilePath.Equals(project.FilePath, StringComparison.OrdinalIgnoreCase))
 
-        HashSet<string> usedAssemblyFilePaths = []
-        HashSet<string> usedProjectFileNames = []
+        HashSet<string> usedAssemblyFilePaths = [];
+        HashSet<string> usedProjectFileNames = [];
 
         foreach (var project in projects)
-            var compilation = await project.GetCompilationAsync(cancellationToken).ConfigureAwait(false)
+            var compilation = await project.GetCompilationAsync(cancellationToken).ConfigureAwait(false);
             if (compilation is null)
-                continue
+                continue;
 
-            var usedAssemblyReferences = compilation.GetUsedAssemblyReferences(cancellationToken)
+            var usedAssemblyReferences = compilation.GetUsedAssemblyReferences(cancellationToken);
 
             // Create a lookup of used assembly paths
             usedAssemblyFilePaths.AddRange(usedAssemblyReferences
@@ -51,13 +51,13 @@ internal static class UnusedReferencesRemover
                 .Select(reference => reference.Compilation.SourceModule.MetadataName)
                 .WhereNotNull());
 
-        return GetUnusedReferences(usedAssemblyFilePaths, usedProjectFileNames, references)
+        return GetUnusedReferences(usedAssemblyFilePaths, usedProjectFileNames, references);
 
     internal static ImmutableArray<ReferenceInfo> GetUnusedReferences(
         HashSet<string> usedAssemblyFilePaths,
         HashSet<string> usedProjectFileNames,
         ImmutableArray<ReferenceInfo> references)
-        var unusedReferencesBuilder = ImmutableArray.CreateBuilder<ReferenceInfo>()
+        var unusedReferencesBuilder = ImmutableArray.CreateBuilder<ReferenceInfo>();
         var referencesByType = references.GroupBy(reference => reference.ReferenceType)
             .ToDictionary(group => group.Key, group => group.ToImmutableArray())
 
@@ -76,7 +76,7 @@ internal static class UnusedReferencesRemover
         // Pass 1: Find all directly used references and remove them.
         foreach (var referenceType in s_processingOrder)
             if (!referencesByType.TryGetValue(referenceType, out var referencesForReferenceType))
-                continue
+                continue;
 
             var unusedReferences = RemoveDirectlyUsedReferences(
                 referencesForReferenceType,
@@ -85,23 +85,23 @@ internal static class UnusedReferencesRemover
 
             // Update with the references that are remaining.
             if (unusedReferences.IsEmpty)
-                referencesByType.Remove(referenceType)
+                referencesByType.Remove(referenceType);
             else
-                referencesByType[referenceType] = unusedReferences
+                referencesByType[referenceType] = unusedReferences;
 
         // Pass 2: Find all transitively used refrences and remove them.
         foreach (var referenceType in s_processingOrder)
             if (!referencesByType.TryGetValue(referenceType, out var referencesForReferenceType))
-                continue
+                continue;
 
             var unusedReferences = RemoveTransitivelyUsedReferences(
                 referencesForReferenceType,
                 usedAssemblyFilePaths)
 
             // If a references isn't directly or transitively used, then we will consider it unused.
-            unusedReferencesBuilder.AddRange(unusedReferences)
+            unusedReferencesBuilder.AddRange(unusedReferences);
 
-        return unusedReferencesBuilder.ToImmutableAndClear()
+        return unusedReferencesBuilder.ToImmutableAndClear();
 
     private static ImmutableArray<ReferenceInfo> RemoveDirectlyUsedReferences(
         ImmutableArray<ReferenceInfo> references,
@@ -113,7 +113,7 @@ internal static class UnusedReferencesRemover
         //    usedAssemblyLookup: [ "/libs/Used.dll" ]
         //
 
-        var unusedReferencesBuilder = ImmutableArray.CreateBuilder<ReferenceInfo>()
+        var unusedReferencesBuilder = ImmutableArray.CreateBuilder<ReferenceInfo>();
 
         foreach (var reference in references)
             if (reference.ReferenceType == ReferenceType.Project)
@@ -128,24 +128,24 @@ internal static class UnusedReferencesRemover
                 if (!projectAssemblyFileNames.Any(static (name, usedProjectFileNames) => usedProjectFileNames.Contains(name), usedProjectFileNames))
                     // None of the project assemblies brought into this compilation are in the
                     // used assemblies list, so we will consider the reference unused.
-                    unusedReferencesBuilder.Add(reference)
-                    continue
+                    unusedReferencesBuilder.Add(reference);
+                    continue;
 
                 // Remove the project file name now that we've identified it.
-                usedProjectFileNames.ExceptWith(projectAssemblyFileNames)
+                usedProjectFileNames.ExceptWith(projectAssemblyFileNames);
             else
                 // We will look at the compilation assemblies brought in directly by the
                 // references to see if they are used.
                 if (!reference.CompilationAssemblies.Any(static (name, usedAssemblyFilePaths) => usedAssemblyFilePaths.Contains(name), usedAssemblyFilePaths))
                     // None of the assemblies brought into this compilation are in the
                     // used assemblies list, so we will consider the reference unused.
-                    unusedReferencesBuilder.Add(reference)
-                    continue
+                    unusedReferencesBuilder.Add(reference);
+                    continue;
 
             // Remove all assemblies that are brought into this compilation by this reference.
-            RemoveAllCompilationAssemblies(reference, usedAssemblyFilePaths)
+            RemoveAllCompilationAssemblies(reference, usedAssemblyFilePaths);
 
-        return unusedReferencesBuilder.ToImmutableAndClear()
+        return unusedReferencesBuilder.ToImmutableAndClear();
 
     private static ImmutableArray<ReferenceInfo> RemoveTransitivelyUsedReferences(
         ImmutableArray<ReferenceInfo> references,
@@ -160,7 +160,7 @@ internal static class UnusedReferencesRemover
         //    usedAssemblyLookup: [ "/libs/Used.dll" ]
         //
 
-        var unusedReferencesBuilder = ImmutableArray.CreateBuilder<ReferenceInfo>()
+        var unusedReferencesBuilder = ImmutableArray.CreateBuilder<ReferenceInfo>();
 
         foreach (var reference in references)
             // Get all compilation assemblies brought in by this reference so we
@@ -168,50 +168,50 @@ internal static class UnusedReferencesRemover
             if (!HasAnyCompilationAssembly(reference))
                 // We will consider References that do not contribute any assemblies to the
                 // compilation, such as Analyzer packages, as used.
-                continue
+                continue;
 
             if (!ContainsAnyCompilationAssembly(reference, usedAssemblyFilePaths))
                 // None of the assemblies brought into this compilation are in the
                 // used assemblies list, so we will consider the reference unused.
-                unusedReferencesBuilder.Add(reference)
-                continue
+                unusedReferencesBuilder.Add(reference);
+                continue;
 
             // Remove all assemblies that are brought into this compilation by this reference.
-            RemoveAllCompilationAssemblies(reference, usedAssemblyFilePaths)
+            RemoveAllCompilationAssemblies(reference, usedAssemblyFilePaths);
 
-        return unusedReferencesBuilder.ToImmutableAndClear()
+        return unusedReferencesBuilder.ToImmutableAndClear();
 
     internal static bool HasAnyCompilationAssembly(ReferenceInfo reference)
         if (reference.CompilationAssemblies.Length > 0)
-            return true
+            return true;
 
-        return reference.Dependencies.Any(HasAnyCompilationAssembly)
+        return reference.Dependencies.Any(HasAnyCompilationAssembly);
 
     internal static bool ContainsAnyCompilationAssembly(ReferenceInfo reference, HashSet<string> usedAssemblyFilePaths)
         if (reference.CompilationAssemblies.Any(static (name, usedAssemblyFilePaths) => usedAssemblyFilePaths.Contains(name), usedAssemblyFilePaths))
-            return true
+            return true;
 
-        return reference.Dependencies.Any(static (dependency, usedAssemblyFilePaths) => ContainsAnyCompilationAssembly(dependency, usedAssemblyFilePaths), usedAssemblyFilePaths)
+        return reference.Dependencies.Any(static (dependency, usedAssemblyFilePaths) => ContainsAnyCompilationAssembly(dependency, usedAssemblyFilePaths), usedAssemblyFilePaths);
 
     internal static void RemoveAllCompilationAssemblies(ReferenceInfo reference, HashSet<string> usedAssemblyFilePaths)
-        usedAssemblyFilePaths.ExceptWith(reference.CompilationAssemblies)
+        usedAssemblyFilePaths.ExceptWith(reference.CompilationAssemblies);
 
         foreach (var dependency in reference.Dependencies)
-            RemoveAllCompilationAssemblies(dependency, usedAssemblyFilePaths)
+            RemoveAllCompilationAssemblies(dependency, usedAssemblyFilePaths);
 
     internal static ImmutableArray<string> GetAllCompilationAssemblies(ReferenceInfo reference)
         var transitiveCompilationAssemblies = reference.Dependencies
             .SelectMany(dependency => GetAllCompilationAssemblies(dependency))
-        return [.. reference.CompilationAssemblies, .. transitiveCompilationAssemblies]
+        return [.. reference.CompilationAssemblies, .. transitiveCompilationAssemblies];
 
     public static async Task UpdateReferencesAsync(
         Solution solution,
         string projectFilePath,
         ImmutableArray<ReferenceUpdate> referenceUpdates,
         CancellationToken cancellationToken)
-        var referenceCleanupService = solution.Services.GetRequiredService<IReferenceCleanupService>()
+        var referenceCleanupService = solution.Services.GetRequiredService<IReferenceCleanupService>();
 
-        await ApplyReferenceUpdatesAsync(referenceCleanupService, projectFilePath, referenceUpdates, cancellationToken).ConfigureAwait(true)
+        await ApplyReferenceUpdatesAsync(referenceCleanupService, projectFilePath, referenceUpdates, cancellationToken).ConfigureAwait(true);
 
     internal static async Task ApplyReferenceUpdatesAsync(
         IReferenceCleanupService referenceCleanupService,
@@ -223,12 +223,12 @@ internal static class UnusedReferencesRemover
             // continue to the next update.
             if (referenceUpdate.Action == UpdateAction.TreatAsUnused &&
                 !referenceUpdate.ReferenceInfo.TreatAsUsed)
-                continue
+                continue;
             else if (referenceUpdate.Action == UpdateAction.TreatAsUsed &&
                 referenceUpdate.ReferenceInfo.TreatAsUsed)
-                continue
+                continue;
             else if (referenceUpdate.Action == UpdateAction.None)
-                continue
+                continue;
 
             await referenceCleanupService.TryUpdateReferenceAsync(
                 projectFilePath,

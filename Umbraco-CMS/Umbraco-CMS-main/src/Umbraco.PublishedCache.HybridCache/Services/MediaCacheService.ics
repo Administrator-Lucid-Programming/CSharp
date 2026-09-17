@@ -1,37 +1,37 @@
 #if DEBUG
     using System.Diagnostics;
 #endif
-using Microsoft.Extensions.Caching.Hybrid
-using Microsoft.Extensions.Logging
-using Microsoft.Extensions.Options
-using Umbraco.Cms.Core
-using Umbraco.Cms.Core.Cache
-using Umbraco.Cms.Core.Models
-using Umbraco.Cms.Core.Models.PublishedContent
-using Umbraco.Cms.Core.PublishedCache
-using Umbraco.Cms.Core.Scoping
-using Umbraco.Cms.Core.Services
-using Umbraco.Cms.Infrastructure.HybridCache.Extensions
-using Umbraco.Cms.Infrastructure.HybridCache.Factories
-using Umbraco.Cms.Infrastructure.HybridCache.Persistence
-using Umbraco.Cms.Infrastructure.HybridCache.Serialization
-using Umbraco.Extensions
+using Microsoft.Extensions.Caching.Hybrid;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Umbraco.Cms.Core;
+using Umbraco.Cms.Core.Cache;
+using Umbraco.Cms.Core.Models;
+using Umbraco.Cms.Core.Models.PublishedContent;
+using Umbraco.Cms.Core.PublishedCache;
+using Umbraco.Cms.Core.Scoping;
+using Umbraco.Cms.Core.Services;
+using Umbraco.Cms.Infrastructure.HybridCache.Extensions;
+using Umbraco.Cms.Infrastructure.HybridCache.Factories;
+using Umbraco.Cms.Infrastructure.HybridCache.Persistence;
+using Umbraco.Cms.Infrastructure.HybridCache.Serialization;
+using Umbraco.Extensions;
 
 namespace Umbraco.Cms.Infrastructure.HybridCache.Services;
 
 internal sealed class MediaCacheService : IMediaCacheService, IMemoryCacheSizeReporter
-    private readonly IDatabaseCacheRepository _databaseCacheRepository
-    private readonly IIdKeyMap _idKeyMap
-    private readonly ICoreScopeProvider _scopeProvider
-    private readonly Microsoft.Extensions.Caching.Hybrid.HybridCache _hybridCache
-    private readonly IPublishedContentFactory _publishedContentFactory
-    private readonly ICacheNodeFactory _cacheNodeFactory
-    private readonly IEnumerable<IMediaSeedKeyProvider> _seedKeyProviders
-    private readonly IPublishedModelFactory _publishedModelFactory
-    private readonly ILogger<MediaCacheService> _logger
-    private readonly CacheSettings _cacheSettings
+    private readonly IDatabaseCacheRepository _databaseCacheRepository;
+    private readonly IIdKeyMap _idKeyMap;
+    private readonly ICoreScopeProvider _scopeProvider;
+    private readonly Microsoft.Extensions.Caching.Hybrid.HybridCache _hybridCache;
+    private readonly IPublishedContentFactory _publishedContentFactory;
+    private readonly ICacheNodeFactory _cacheNodeFactory;
+    private readonly IEnumerable<IMediaSeedKeyProvider> _seedKeyProviders;
+    private readonly IPublishedModelFactory _publishedModelFactory;
+    private readonly ILogger<MediaCacheService> _logger;
+    private readonly CacheSettings _cacheSettings;
 
-    private readonly IConvertedPublishedContentCache<Guid, IPublishedContent> _publishedContentCache
+    private readonly IConvertedPublishedContentCache<Guid, IPublishedContent> _publishedContentCache;
 
     // Monotonic counter bumped whenever the in-memory cache (L0/L1) is invalidated or refreshed.
     // GetNodeAsync captures it before reading the backing store and re-checks it before writing
@@ -45,9 +45,9 @@ internal sealed class MediaCacheService : IMediaCacheService, IMemoryCacheSizeRe
     // every mutated cache key, which is easy to get wrong and would silently reintroduce the clobber.
     // Global is correctness-robust; only revisit if read-through churn under heavy concurrent
     // refreshing ever shows up in profiling.
-    private long _cacheGeneration
+    private long _cacheGeneration;
 
-    private HashSet<Guid>? _seedKeys
+    private HashSet<Guid>? _seedKeys;
     raw csharp
         private HashSet<Guid> SeedKeys
         {
@@ -77,65 +77,65 @@ internal sealed class MediaCacheService : IMediaCacheService, IMemoryCacheSizeRe
         IOptions<CacheSettings> cacheSettings,
         ILogger<MediaCacheService> logger,
         IConvertedPublishedContentCacheFactory cacheFactory)
-        _databaseCacheRepository = databaseCacheRepository
-        _idKeyMap = idKeyMap
-        _scopeProvider = scopeProvider
-        _hybridCache = hybridCache
-        _publishedContentFactory = publishedContentFactory
-        _cacheNodeFactory = cacheNodeFactory
-        _seedKeyProviders = seedKeyProviders
-        _publishedModelFactory = publishedModelFactory
-        _cacheSettings = cacheSettings.Value
-        _logger = logger
-        _publishedContentCache = cacheFactory.Create<Guid, IPublishedContent>(_cacheSettings.Entry.Media.MaximumLocalCacheItems, CacheName)
+        _databaseCacheRepository = databaseCacheRepository;
+        _idKeyMap = idKeyMap;
+        _scopeProvider = scopeProvider;
+        _hybridCache = hybridCache;
+        _publishedContentFactory = publishedContentFactory;
+        _cacheNodeFactory = cacheNodeFactory;
+        _seedKeyProviders = seedKeyProviders;
+        _publishedModelFactory = publishedModelFactory;
+        _cacheSettings = cacheSettings.Value;
+        _logger = logger;
+        _publishedContentCache = cacheFactory.Create<Guid, IPublishedContent>(_cacheSettings.Entry.Media.MaximumLocalCacheItems, CacheName);
 
     /// <inheritdoc />
-    public string CacheName => "Published media (converted, L0)"
+    public string CacheName => "Published media (converted, L0)";
 
     /// <inheritdoc />
-    public long GetApproximateCount() => _publishedContentCache.Count
+    public long GetApproximateCount() => _publishedContentCache.Count;
 
     /// <inheritdoc />
-    public long? GetApproximateBytes() => _publishedContentCache.ApproximateSizeInBytes
+    public long? GetApproximateBytes() => _publishedContentCache.ApproximateSizeInBytes;
 
-    public Task<IPublishedContent?> GetByKeyAsync(Guid key) => GetNodeAsync(key)
+    public Task<IPublishedContent?> GetByKeyAsync(Guid key) => GetNodeAsync(key);
 
     public async Task<IPublishedContent?> GetByIdAsync(int id)
-        Attempt<Guid> keyAttempt = _idKeyMap.GetKeyForId(id, UmbracoObjectTypes.Media)
+        Attempt<Guid> keyAttempt = _idKeyMap.GetKeyForId(id, UmbracoObjectTypes.Media);
         if (keyAttempt.Success is false)
-            return null
+            return null;
 
-        Guid key = keyAttempt.Result
+        Guid key = keyAttempt.Result;
 
-        return await GetNodeAsync(key)
+        return await GetNodeAsync(key);
 
     public bool TryGetCached(Guid key, out IPublishedContent? content)
         // Mirror the L0 (published content cache) fast path in GetNodeAsync.
         if (_publishedContentCache.TryGet(key, out content))
-            return true
+            return true;
 
-        content = null
-        return false
+        content = null;
+        return false;
 
     private async Task<IPublishedContent?> GetNodeAsync(Guid key)
         if (_publishedContentCache.TryGet(key, out IPublishedContent? cached))
-            return cached
+            return cached;
 
         string cacheKey = GetCacheKey(key);
-        (bool exists, ContentCacheNode? contentCacheNode) = await _hybridCache.TryGetValueAsync<ContentCacheNode?>(cacheKey, CancellationToken.None)
+        (bool exists, ContentCacheNode? contentCacheNode) = await _hybridCache.TryGetValueAsync<ContentCacheNode?>(cacheKey, CancellationToken.None);
 
         // A value found in the backing store is already current, so it can always populate the caches
         // below; only a value built from the read-through DB fetch needs the generation guard.
-        bool snapshotIsCurrent = true
+        bool snapshotIsCurrent = true;
         if (exists is false)
             // Capture the cache generation before reading the backing store. If a concurrent refresh or
             // invalidation bumps the generation while we read and build below, the snapshot we hold is
             // stale and must not be written back over the refreshed entries (the clobber that leaves
             // memory permanently stale until a full clear).
-            long generation = Interlocked.Read(ref _cacheGeneration)
+            long generation = Interlocked.Read(ref _cacheGeneration);
 
-            contentCacheNode = await GetContentCacheNodeFromRepo()
-            snapshotIsCurrent = IsCacheGenerationCurrent(generation)
+            contentCacheNode = await GetContentCacheNodeFromRepo();
+            snapshotIsCurrent = IsCacheGenerationCurrent(generation);
 
             // We don't want to cache removed items, this may cause issues if the L2 serializer changes.
             // Skip the write when the generation moved — a refresh has superseded this snapshot.
@@ -147,9 +147,9 @@ internal sealed class MediaCacheService : IMediaCacheService, IMemoryCacheSizeRe
                     GenerateTags(contentCacheNode))
 
         if (contentCacheNode is null)
-            return null
+            return null;
 
-        IPublishedContent? result = _publishedContentFactory.ToIPublishedMedia(contentCacheNode).CreateModel(_publishedModelFactory)
+        IPublishedContent? result = _publishedContentFactory.ToIPublishedMedia(contentCacheNode).CreateModel(_publishedModelFactory);
 
         // Only populate the L0 cache when our snapshot is still current; otherwise a concurrent
         // refresh has already written fresher content and we must not overwrite it with this one.
@@ -157,49 +157,49 @@ internal sealed class MediaCacheService : IMediaCacheService, IMemoryCacheSizeRe
             // The size estimate runs unconditionally (not only when reporting is enabled): it is cheap
             // (O(properties), no IO/decompression) and only on the cache-miss path, and keeping the running
             // total always-current means it is accurate the moment debug reporting is switched on.
-            _publishedContentCache.Set(key, result, ContentCacheNodeSizeEstimator.EstimateBytes(contentCacheNode))
+            _publishedContentCache.Set(key, result, ContentCacheNodeSizeEstimator.EstimateBytes(contentCacheNode));
 
-        return result
+        return result;
 
         async Task<ContentCacheNode?> GetContentCacheNodeFromRepo()
-            using ICoreScope scope = _scopeProvider.CreateCoreScope()
-            ContentCacheNode? mediaCacheNode = await _databaseCacheRepository.GetMediaSourceAsync(key)
-            scope.Complete()
-            return mediaCacheNode
+            using ICoreScope scope = _scopeProvider.CreateCoreScope();
+            ContentCacheNode? mediaCacheNode = await _databaseCacheRepository.GetMediaSourceAsync(key);
+            scope.Complete();
+            return mediaCacheNode;
 
     // Bumped after every in-memory cache invalidation/refresh so in-flight read-through snapshots
     // (see GetNodeAsync) can detect they have been superseded and skip writing back stale content.
-    private void InvalidateMemoryCacheGeneration() => Interlocked.Increment(ref _cacheGeneration)
+    private void InvalidateMemoryCacheGeneration() => Interlocked.Increment(ref _cacheGeneration);
 
     private bool IsCacheGenerationCurrent(long capturedGeneration)
-        => Interlocked.Read(ref _cacheGeneration) == capturedGeneration
+        => Interlocked.Read(ref _cacheGeneration) == capturedGeneration;
 
     public async Task<bool> HasContentByIdAsync(int id)
-        Attempt<Guid> keyAttempt = _idKeyMap.GetKeyForId(id, UmbracoObjectTypes.Media)
+        Attempt<Guid> keyAttempt = _idKeyMap.GetKeyForId(id, UmbracoObjectTypes.Media);
         if (keyAttempt.Success is false)
-            return false
+            return false;
 
-        return await _hybridCache.ExistsAsync<ContentCacheNode?>(GetCacheKey(keyAttempt.Result), CancellationToken.None)
+        return await _hybridCache.ExistsAsync<ContentCacheNode?>(GetCacheKey(keyAttempt.Result), CancellationToken.None);
 
     public async Task RefreshMediaAsync(IMedia media)
-        using ICoreScope scope = _scopeProvider.CreateCoreScope()
+        using ICoreScope scope = _scopeProvider.CreateCoreScope();
 
         if (media.Trashed)
-            await _databaseCacheRepository.DeleteContentItemAsync(media.Id)
-            await RemoveFromMemoryCacheAsync(media.Key)
-            scope.Complete()
-            return
+            await _databaseCacheRepository.DeleteContentItemAsync(media.Id);
+            await RemoveFromMemoryCacheAsync(media.Key);
+            scope.Complete();
+            return;
 
-        var cacheNode = _cacheNodeFactory.ToContentCacheNode(media)
-        await _databaseCacheRepository.RefreshMediaAsync(cacheNode)
-        _publishedContentCache.Remove(media.Key)
-        InvalidateMemoryCacheGeneration()
-        scope.Complete()
+        var cacheNode = _cacheNodeFactory.ToContentCacheNode(media);
+        await _databaseCacheRepository.RefreshMediaAsync(cacheNode);
+        _publishedContentCache.Remove(media.Key);
+        InvalidateMemoryCacheGeneration();
+        scope.Complete();
 
     public async Task DeleteItemAsync(IContentBase media)
-        using ICoreScope scope = _scopeProvider.CreateCoreScope()
-        await _databaseCacheRepository.DeleteContentItemAsync(media.Id)
-        scope.Complete()
+        using ICoreScope scope = _scopeProvider.CreateCoreScope();
+        await _databaseCacheRepository.DeleteContentItemAsync(media.Id);
+        scope.Complete();
 
     public async Task SeedAsync(CancellationToken cancellationToken)
 #if DEBUG
@@ -208,27 +208,27 @@ internal sealed class MediaCacheService : IMediaCacheService, IMemoryCacheSizeRe
 #endif
 
         foreach (IEnumerable<Guid> group in SeedKeys.InGroupsOf(_cacheSettings.MediaSeedBatchSize))
-            var uncachedKeys = new HashSet<Guid>()
+            var uncachedKeys = new HashSet<Guid>();
             foreach (Guid key in group)
                 if (cancellationToken.IsCancellationRequested)
-                    break
+                    break;
 
-                var existsInCache = await _hybridCache.ExistsAsync<ContentCacheNode?>(GetCacheKey(key), CancellationToken.None)
+                var existsInCache = await _hybridCache.ExistsAsync<ContentCacheNode?>(GetCacheKey(key), CancellationToken.None);
                 if (existsInCache is false)
-                    uncachedKeys.Add(key)
+                    uncachedKeys.Add(key);
 
-            _logger.LogDebug("Uncached key count {KeyCount}", uncachedKeys.Count)
+            _logger.LogDebug("Uncached key count {KeyCount}", uncachedKeys.Count);
 
             if (uncachedKeys.Count == 0)
-                continue
+                continue;
 
-            using ICoreScope scope = _scopeProvider.CreateCoreScope()
+            using ICoreScope scope = _scopeProvider.CreateCoreScope();
 
-            IEnumerable<ContentCacheNode> cacheNodes = await _databaseCacheRepository.GetMediaSourcesAsync(uncachedKeys)
+            IEnumerable<ContentCacheNode> cacheNodes = await _databaseCacheRepository.GetMediaSourcesAsync(uncachedKeys);
 
-            scope.Complete()
+            scope.Complete();
 
-            _logger.LogDebug("Media nodes to cache {NodeCount}", cacheNodes.Count())
+            _logger.LogDebug("Media nodes to cache {NodeCount}", cacheNodes.Count());
 
             foreach (ContentCacheNode cacheNode in cacheNodes)
                 await _hybridCache.SetAsync(
@@ -247,51 +247,51 @@ internal sealed class MediaCacheService : IMediaCacheService, IMemoryCacheSizeRe
         ;
 
     public async Task RefreshMemoryCacheAsync(Guid key)
-        using ICoreScope scope = _scopeProvider.CreateCoreScope()
+        using ICoreScope scope = _scopeProvider.CreateCoreScope();
 
-        ContentCacheNode? publishedNode = await _databaseCacheRepository.GetMediaSourceAsync(key)
+        ContentCacheNode? publishedNode = await _databaseCacheRepository.GetMediaSourceAsync(key);
         if (publishedNode is not null)
-            await _hybridCache.SetAsync(GetCacheKey(publishedNode.Key), publishedNode, GetEntryOptions(publishedNode.Key))
-            _publishedContentCache.Remove(key)
-            InvalidateMemoryCacheGeneration()
+            await _hybridCache.SetAsync(GetCacheKey(publishedNode.Key), publishedNode, GetEntryOptions(publishedNode.Key));
+            _publishedContentCache.Remove(key);
+            InvalidateMemoryCacheGeneration();
         else
             // RemoveFromMemoryCacheAsync → ClearPublishedCacheAsync bumps the generation itself,
             // so this path is already covered.
-            await RemoveFromMemoryCacheAsync(key)
+            await RemoveFromMemoryCacheAsync(key);
 
-        scope.Complete()
+        scope.Complete();
 
     public async Task ClearMemoryCacheAsync(CancellationToken cancellationToken)
         // Bump first so any read-through that read the backing store before this clear is rejected
         // when it tries to write back, even while the reseed below is still running.
-        InvalidateMemoryCacheGeneration()
+        InvalidateMemoryCacheGeneration();
 
-        _publishedContentCache.Clear()
-        await _hybridCache.RemoveByTagAsync(Constants.Cache.Tags.Media, cancellationToken)
+        _publishedContentCache.Clear();
+        await _hybridCache.RemoveByTagAsync(Constants.Cache.Tags.Media, cancellationToken);
 
         // We have to run seeding again after the cache is cleared
-        await SeedAsync(cancellationToken)
+        await SeedAsync(cancellationToken);
 
     public async Task RemoveFromMemoryCacheAsync(Guid key)
-        => await ClearPublishedCacheAsync(key)
+        => await ClearPublishedCacheAsync(key);
 
     public async Task RebuildMemoryCacheByContentTypeAsync(IEnumerable<int> mediaTypeIds)
         // Clear the hybrid cache by media type tag for the affected media types.
-        var mediaTypeIdsAsArray = mediaTypeIds as int[] ?? mediaTypeIds.ToArray()
-        var mediaTypeIdTags = mediaTypeIdsAsArray.Select(MediaTypeIdTag).ToArray()
-        await _hybridCache.RemoveByTagAsync(mediaTypeIdTags)
+        var mediaTypeIdsAsArray = mediaTypeIds as int[] ?? mediaTypeIds.ToArray();
+        var mediaTypeIdTags = mediaTypeIdsAsArray.Select(MediaTypeIdTag).ToArray();
+        await _hybridCache.RemoveByTagAsync(mediaTypeIdTags);
 
         // Clear converted media for the affected types so entries are re-converted when next requested.
-        ClearConvertedContentCache(mediaTypeIdsAsArray)
+        ClearConvertedContentCache(mediaTypeIdsAsArray);
 
     public void ClearConvertedContentCache()
-        _publishedContentCache.Clear()
-        InvalidateMemoryCacheGeneration()
+        _publishedContentCache.Clear();
+        InvalidateMemoryCacheGeneration();
 
     public void ClearConvertedContentCache(IReadOnlyCollection<int> mediaTypeIds)
-        var ids = mediaTypeIds as int[] ?? mediaTypeIds.ToArray()
-        _publishedContentCache.RemoveWhere(content => ids.Contains(content.ContentType.Id))
-        InvalidateMemoryCacheGeneration()
+        var ids = mediaTypeIds as int[] ?? mediaTypeIds.ToArray();
+        _publishedContentCache.RemoveWhere(content => ids.Contains(content.ContentType.Id));
+        InvalidateMemoryCacheGeneration();
 
     public void Rebuild(IReadOnlyCollection<int> contentTypeIds)
         => _databaseCacheRepository.Rebuild(
@@ -307,9 +307,9 @@ internal sealed class MediaCacheService : IMediaCacheService, IMemoryCacheSizeRe
             );
 
     public IEnumerable<IPublishedContent> GetByContentType(IPublishedContentType contentType)
-        using ICoreScope scope = _scopeProvider.CreateCoreScope()
-        IEnumerable<ContentCacheNode> nodes = _databaseCacheRepository.GetContentByContentTypeKey([contentType.Key], ContentCacheDataSerializerEntityType.Media)
-        scope.Complete()
+        using ICoreScope scope = _scopeProvider.CreateCoreScope();
+        IEnumerable<ContentCacheNode> nodes = _databaseCacheRepository.GetContentByContentTypeKey([contentType.Key], ContentCacheDataSerializerEntityType.Media);
+        scope.Complete();
 
         return nodes
             .Select(x => _publishedContentFactory.ToIPublishedContent(x, x.IsDraft).CreateModel(_publishedModelFactory))
@@ -317,7 +317,7 @@ internal sealed class MediaCacheService : IMediaCacheService, IMemoryCacheSizeRe
 
     private HybridCacheEntryOptions GetEntryOptions(Guid key)
         if (SeedKeys.Contains(key))
-            return GetSeedEntryOptions()
+            return GetSeedEntryOptions();
 
         return new HybridCacheEntryOptions {
             Expiration = _cacheSettings.Entry.Media.RemoteCacheDuration,
@@ -327,18 +327,18 @@ internal sealed class MediaCacheService : IMediaCacheService, IMemoryCacheSizeRe
     private HybridCacheEntryOptions GetSeedEntryOptions() => new() {
             Expiration = _cacheSettings.Entry.Media.SeedCacheDuration,
             LocalCacheExpiration = _cacheSettings.Entry.Media.SeedCacheDuration,
-        }
+        };
 
-    private static string GetCacheKey(Guid key) => $"{key}"
+    private static string GetCacheKey(Guid key) => $"{key}";
 
     // Generates the cache tags for a given CacheNode.
     // We use the tags to be able to clear all cache entries that are related to a given content item.
-    private static HashSet<string> GenerateTags(ContentCacheNode? cacheNode) => cacheNode is null ? [] : [Constants.Cache.Tags.Media, MediaTypeIdTag(cacheNode.ContentTypeId)]
+    private static HashSet<string> GenerateTags(ContentCacheNode? cacheNode) => cacheNode is null ? [] : [Constants.Cache.Tags.Media, MediaTypeIdTag(cacheNode.ContentTypeId)];
 
     private async Task ClearPublishedCacheAsync(Guid key)
-        await _hybridCache.RemoveAsync(GetCacheKey(key))
-        _publishedContentCache.Remove(key)
-        InvalidateMemoryCacheGeneration()
+        await _hybridCache.RemoveAsync(GetCacheKey(key));
+        _publishedContentCache.Remove(key);
+        InvalidateMemoryCacheGeneration();
 
     private static string MediaTypeIdTag(int mediaTypeId)
-        => $"mt:{mediaTypeId}"
+        => $"mt:{mediaTypeId}";

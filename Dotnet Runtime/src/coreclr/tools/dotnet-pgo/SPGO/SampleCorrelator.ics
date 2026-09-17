@@ -1,27 +1,27 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System
-using System.Collections.Generic
-using System.Linq
-using System.Text
-using System.Threading.Tasks
-using Internal.IL
-using Internal.TypeSystem
-using Internal.TypeSystem.Ecma
-using Microsoft.Diagnostics.Tracing.Parsers.Kernel
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using Internal.IL;
+using Internal.TypeSystem;
+using Internal.TypeSystem.Ecma;
+using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
 
 namespace Microsoft.Diagnostics.Tools.Pgo
     /// <summary>
     /// A class that handles correlating IP samples/LBR samples back to managed methods.
     /// </summary>
     internal class SampleCorrelator
-        private readonly Dictionary<MethodDesc, PerMethodInfo> _methodInf = new Dictionary<MethodDesc, PerMethodInfo>()
+        private readonly Dictionary<MethodDesc, PerMethodInfo> _methodInf = new Dictionary<MethodDesc, PerMethodInfo>();
 
-        private readonly MethodMemoryMap _memMap
+        private readonly MethodMemoryMap _memMap;
 
         public SampleCorrelator(MethodMemoryMap memMap)
-            _memMap = memMap
+            _memMap = memMap;
 
         public long SamplesOutsideManagedCode { get; private set; }
         public long SamplesInManagedCodeWithoutAnyMappings { get; private set; }
@@ -33,69 +33,69 @@ namespace Microsoft.Diagnostics.Tools.Pgo
 
         private PerMethodInfo GetOrCreateInfo(MethodDesc md)
             if (!_methodInf.TryGetValue(md, out PerMethodInfo pmi))
-                MethodIL il = md switch                 {                     EcmaMethod em => EcmaMethodIL.Create(em),                     _ => new InstantiatedMethodIL(md, EcmaMethodIL.Create((EcmaMethod)md.GetTypicalMethodDefinition())),                 }
+                MethodIL il = md switch                 {                     EcmaMethod em => EcmaMethodIL.Create(em),                     _ => new InstantiatedMethodIL(md, EcmaMethodIL.Create((EcmaMethod)md.GetTypicalMethodDefinition())),                 };
 
                 if (il == null)
-                    return null
+                    return null;
 
-                _methodInf.Add(md, pmi = new PerMethodInfo())
-                pmi.IL = il
-                pmi.FlowGraph = FlowGraph.Create(il)
-                pmi.Profile = new SampleProfile(pmi.IL, pmi.FlowGraph)
+                _methodInf.Add(md, pmi = new PerMethodInfo());
+                pmi.IL = il;
+                pmi.FlowGraph = FlowGraph.Create(il);
+                pmi.Profile = new SampleProfile(pmi.IL, pmi.FlowGraph);
 
-            return pmi
+            return pmi;
 
         public SampleProfile GetProfile(MethodDesc md)
-            => _methodInf.GetValueOrDefault(md)?.Profile
+            => _methodInf.GetValueOrDefault(md)?.Profile;
 
         public void SmoothAllProfiles()
             foreach (PerMethodInfo pmi in _methodInf.Values)
-                pmi.Profile.SmoothFlow()
+                pmi.Profile.SmoothFlow();
 
         public void AttributeSamplesToIP(ulong ip, long numSamples)
-            MemoryRegionInfo region = _memMap.GetInfo(ip)
+            MemoryRegionInfo region = _memMap.GetInfo(ip);
             if (region == null)
-                SamplesOutsideManagedCode += numSamples
-                return
+                SamplesOutsideManagedCode += numSamples;
+                return;
 
             if (region.NativeToILMap == null)
-                SamplesInManagedCodeWithoutAnyMappings += numSamples
-                return
+                SamplesInManagedCodeWithoutAnyMappings += numSamples;
+                return;
 
             if (!region.NativeToILMap.TryLookup(checked((uint)(ip - region.StartAddress)), out IPMapping mapping))
-                SamplesInManagedCodeOutsideMappings += numSamples
-                return
+                SamplesInManagedCodeOutsideMappings += numSamples;
+                return;
 
             if (mapping.InlineeMethod == null)
-                SamplesInUnknownInlinees += numSamples
-                return
+                SamplesInUnknownInlinees += numSamples;
+                return;
 
-            PerMethodInfo pmi = GetOrCreateInfo(mapping.InlineeMethod)
+            PerMethodInfo pmi = GetOrCreateInfo(mapping.InlineeMethod);
             if (pmi == null)
-                SamplesInManagedCodeWithoutIL += numSamples
-                return
+                SamplesInManagedCodeWithoutIL += numSamples;
+                return;
 
             if (pmi.Profile.TryAttributeSamples(mapping.ILOffset, 1))
-                TotalAttributedSamples += numSamples
+                TotalAttributedSamples += numSamples;
             else
-                SamplesInManagedCodeOutsideFlowGraph += numSamples
+                SamplesInManagedCodeOutsideFlowGraph += numSamples;
 
-        private LbrEntry64[] _convertedEntries
+        private LbrEntry64[] _convertedEntries;
         public void AttributeSampleToLbrRuns(Span<LbrEntry32> lbr)
             if (_convertedEntries == null || _convertedEntries.Length < lbr.Length)
-                Array.Resize(ref _convertedEntries, lbr.Length)
+                Array.Resize(ref _convertedEntries, lbr.Length);
 
-            Span<LbrEntry64> convertedEntries = _convertedEntries[..lbr.Length]
+            Span<LbrEntry64> convertedEntries = _convertedEntries[..lbr.Length];
             for (int i = 0; i < lbr.Length; i++)
-                ref LbrEntry64 entry = ref convertedEntries[i]
-                entry.FromAddress = lbr[i].FromAddress
-                entry.ToAddress = lbr[i].ToAddress
-                entry.Reserved = lbr[i].Reserved
+                ref LbrEntry64 entry = ref convertedEntries[i];
+                entry.FromAddress = lbr[i].FromAddress;
+                entry.ToAddress = lbr[i].ToAddress;
+                entry.Reserved = lbr[i].Reserved;
 
-            AttributeSampleToLbrRuns(convertedEntries)
+            AttributeSampleToLbrRuns(convertedEntries);
 
-        private readonly List<(BasicBlock, int)> _callStack = new()
-        private readonly HashSet<(InlineContext, BasicBlock)> _seenOnRun = new()
+        private readonly List<(BasicBlock, int)> _callStack = new();
+        private readonly HashSet<(InlineContext, BasicBlock)> _seenOnRun = new();
         public void AttributeSampleToLbrRuns(Span<LbrEntry64> lbr)
             // LBR record represents branches taken by the CPU, in
             // chronological order with most recent branches first. Using this
@@ -116,8 +116,8 @@ namespace Microsoft.Diagnostics.Tools.Pgo
             // cannot differentiate between tailcalls and calls, so there
             // may be BBs we left in here that we never return to.
             // Therefore we cannot just use a straightforward stack.
-            List<(BasicBlock, int)> callStack = _callStack
-            callStack.Clear()
+            List<(BasicBlock, int)> callStack = _callStack;
+            callStack.Clear();
 
             // On each run we translate the endpoint RVAs to all IL offset
             // mappings we have for that range. It is possible (and happens
@@ -129,50 +129,50 @@ namespace Microsoft.Diagnostics.Tools.Pgo
             // we sometimes may want to attribute twice, for example if A is inlined in
             // A(); A();
             // Therefore, we also key by the inline context.
-            HashSet<(InlineContext, BasicBlock)> seenOnRun = _seenOnRun
+            HashSet<(InlineContext, BasicBlock)> seenOnRun = _seenOnRun;
 
-            MethodMemoryMap memMap = _memMap
+            MethodMemoryMap memMap = _memMap;
 
             for (int i = lbr.Length - 2; i >= 0; i--)
-                ref LbrEntry64 prev = ref lbr[i + 1]
-                ref LbrEntry64 cur = ref lbr[i]
+                ref LbrEntry64 prev = ref lbr[i + 1];
+                ref LbrEntry64 cur = ref lbr[i];
 
-                MemoryRegionInfo prevToInf = memMap.GetInfo(prev.ToAddress)
-                MemoryRegionInfo curFromInf = memMap.GetInfo(cur.FromAddress)
+                MemoryRegionInfo prevToInf = memMap.GetInfo(prev.ToAddress);
+                MemoryRegionInfo curFromInf = memMap.GetInfo(cur.FromAddress);
 
                 // If this run is not in the same function then ignore it.
                 // This probably means IP was changed out from beneath us while
                 // recording.
                 if (prevToInf == null || prevToInf != curFromInf)
-                    continue
+                    continue;
 
                 if (curFromInf.NativeToILMap == null)
-                    continue
+                    continue;
 
                 // Attribute samples to run.
-                seenOnRun.Clear()
-                uint rvaMin = checked((uint)(prev.ToAddress - prevToInf.StartAddress))
-                uint rvaMax = checked((uint)(cur.FromAddress - curFromInf.StartAddress))
-                int lastILOffs = -1
-                BasicBlock lastBB = null
-                bool isFirst = true
+                seenOnRun.Clear();
+                uint rvaMin = checked((uint)(prev.ToAddress - prevToInf.StartAddress));
+                uint rvaMax = checked((uint)(cur.FromAddress - curFromInf.StartAddress));
+                int lastILOffs = -1;
+                BasicBlock lastBB = null;
+                bool isFirst = true;
                 foreach (IPMapping mapping in curFromInf.NativeToILMap.LookupRange(rvaMin, rvaMax))
-                    bool isFirstMapping = isFirst
-                    isFirst = false
+                    bool isFirstMapping = isFirst;
+                    isFirst = false;
 
                     if (mapping.InlineeMethod == null)
-                        continue
+                        continue;
 
-                    PerMethodInfo pmi = GetOrCreateInfo(mapping.InlineeMethod)
+                    PerMethodInfo pmi = GetOrCreateInfo(mapping.InlineeMethod);
                     if (pmi == null)
-                        continue
+                        continue;
 
-                    BasicBlock bb = pmi.FlowGraph.Lookup(mapping.ILOffset)
+                    BasicBlock bb = pmi.FlowGraph.Lookup(mapping.ILOffset);
                     if (bb == null)
-                        continue
+                        continue;
 
-                    lastBB = bb
-                    lastILOffs = mapping.ILOffset
+                    lastBB = bb;
+                    lastILOffs = mapping.ILOffset;
 
                     if (seenOnRun.Add((mapping.InlineContext, bb)))
                         if (isFirstMapping)
@@ -181,37 +181,37 @@ namespace Microsoft.Diagnostics.Tools.Pgo
                             // and if so, skip attributing anything to the
                             // first BB.
 
-                            bool skip = false
+                            bool skip = false;
 
                             for (int j = callStack.Count - 1; j >= 0; j--)
-                                (BasicBlock callFromBB, int callFromILOffs) = callStack[j]
+                                (BasicBlock callFromBB, int callFromILOffs) = callStack[j];
                                 if (callFromBB == bb && mapping.ILOffset >= callFromILOffs)
                                     // Yep, we previously left 'bb' at
                                     // 'callFromILOffs', and now we are jumping
                                     // back to the same BB at a later offset.
-                                    skip = true
-                                    callStack.RemoveRange(j, callStack.Count - j)
-                                    break
+                                    skip = true;
+                                    callStack.RemoveRange(j, callStack.Count - j);
+                                    break;
 
                             if (skip)
-                                continue
+                                continue;
 
-                        pmi.Profile.AttributeSamples(bb, 1)
+                        pmi.Profile.AttributeSamples(bb, 1);
 
                 // Now see if this is a cross-function jump.
-                MemoryRegionInfo curToInf = memMap.GetInfo(cur.ToAddress)
+                MemoryRegionInfo curToInf = memMap.GetInfo(cur.ToAddress);
                 // TODO: This check and above skipping logic does not handle recursion.
                 if (curFromInf != curToInf)
                     // Yes, either different managed function or not managed function (e.g. prestub).
                     // Record this.
                     if (lastBB != null)
-                        callStack.Add((lastBB, lastILOffs))
+                        callStack.Add((lastBB, lastILOffs));
 
-        public override string ToString() => $"{TotalAttributedSamples} samples in {_methodInf.Count} methods"
+        public override string ToString() => $"{TotalAttributedSamples} samples in {_methodInf.Count} methods";
 
         private class PerMethodInfo
             public MethodIL IL { get; set; }
             public FlowGraph FlowGraph { get; set; }
             public SampleProfile Profile { get; set; }
 
-            public override string ToString() => IL.OwningMethod.ToString()
+            public override string ToString() => IL.OwningMethod.ToString();

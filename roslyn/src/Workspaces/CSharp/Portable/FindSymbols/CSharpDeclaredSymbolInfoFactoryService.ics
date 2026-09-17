@@ -2,28 +2,28 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System
-using System.Collections.Generic
-using System.Collections.Immutable
-using System.Composition
-using System.Diagnostics
-using System.Diagnostics.CodeAnalysis
-using System.Linq
-using System.Text
-using System.Threading
-using Microsoft.CodeAnalysis
-using Microsoft.CodeAnalysis.CSharp.Extensions
-using Microsoft.CodeAnalysis.CSharp.LanguageService
-using Microsoft.CodeAnalysis.CSharp.Syntax
-using Microsoft.CodeAnalysis.FindSymbols
-using Microsoft.CodeAnalysis.Host.Mef
-using Microsoft.CodeAnalysis.LanguageService
-using Microsoft.CodeAnalysis.PooledObjects
-using Roslyn.Utilities
+using System;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Composition;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Linq;
+using System.Text;
+using System.Threading;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Extensions;
+using Microsoft.CodeAnalysis.CSharp.LanguageService;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.FindSymbols;
+using Microsoft.CodeAnalysis.Host.Mef;
+using Microsoft.CodeAnalysis.LanguageService;
+using Microsoft.CodeAnalysis.PooledObjects;
+using Roslyn.Utilities;
 
 namespace Microsoft.CodeAnalysis.CSharp.FindSymbols;
 
-using static FindSymbolsUtilities
+using static FindSymbolsUtilities;
 
 [ExportLanguageService(typeof(IDeclaredSymbolInfoFactoryService), LanguageNames.CSharp), Shared]
 [method: ImportingConstructor]
@@ -42,9 +42,9 @@ internal sealed class CSharpDeclaredSymbolInfoFactoryService() : AbstractDeclare
     IdentifierNameSyntax>
     private static ImmutableArray<string> GetInheritanceNames(StringTable stringTable, BaseListSyntax? baseList)
         if (baseList == null)
-            return []
+            return [];
 
-        var builder = ArrayBuilder<string>.GetInstance(baseList.Types.Count)
+        var builder = ArrayBuilder<string>.GetInstance(baseList.Types.Count);
 
         // It's not sufficient to just store the textual names we see in the inheritance list
         // of a type.  For example if we have:
@@ -64,60 +64,60 @@ internal sealed class CSharpDeclaredSymbolInfoFactoryService() : AbstractDeclare
         // Each dictionary in this list is a mapping from alias name to the name of the thing
         // it aliases.  Then, each scope with alias mapping gets its own entry in this list.
         // For the above example, we would produce:  [{Z => Y}, {Y => X}]
-        var aliasMaps = AllocateAliasMapList()
+        var aliasMaps = AllocateAliasMapList();
         try
-            AddAliasMaps(baseList, aliasMaps)
+            AddAliasMaps(baseList, aliasMaps);
 
             foreach (var baseType in baseList.Types)
-                AddInheritanceName(builder, baseType.Type, aliasMaps)
+                AddInheritanceName(builder, baseType.Type, aliasMaps);
 
-            Intern(stringTable, builder)
-            return builder.ToImmutableAndFree()
+            Intern(stringTable, builder);
+            return builder.ToImmutableAndFree();
         finally
-            FreeAliasMapList(aliasMaps)
+            FreeAliasMapList(aliasMaps);
 
     private static void AddAliasMaps(SyntaxNode node, List<Dictionary<string, string>> aliasMaps)
         for (var current = node; current != null; current = current.Parent)
             if (current is BaseNamespaceDeclarationSyntax nsDecl)
-                ProcessUsings(aliasMaps, nsDecl.Usings)
+                ProcessUsings(aliasMaps, nsDecl.Usings);
             else if (current is CompilationUnitSyntax compilationUnit)
-                ProcessUsings(aliasMaps, compilationUnit.Usings)
+                ProcessUsings(aliasMaps, compilationUnit.Usings);
 
     private static void ProcessUsings(List<Dictionary<string, string>> aliasMaps, SyntaxList<UsingDirectiveSyntax> usings)
-        Dictionary<string, string>? aliasMap = null
+        Dictionary<string, string>? aliasMap = null;
 
         foreach (var usingDecl in usings)
             if (usingDecl.Alias != null)
-                var mappedName = GetTypeName(usingDecl.Name)
+                var mappedName = GetTypeName(usingDecl.Name);
                 if (mappedName != null)
-                    aliasMap ??= AllocateAliasMap()
+                    aliasMap ??= AllocateAliasMap();
 
                     // If we have:  using X = Goo, then we store a mapping from X -> Goo
                     // here.  That way if we see a class that inherits from X we also state
                     // that it inherits from Goo as well.
-                    aliasMap[usingDecl.Alias.Name.Identifier.ValueText] = mappedName
+                    aliasMap[usingDecl.Alias.Name.Identifier.ValueText] = mappedName;
 
         if (aliasMap != null)
-            aliasMaps.Add(aliasMap)
+            aliasMaps.Add(aliasMap);
 
     private static void AddInheritanceName(
         ArrayBuilder<string> builder, TypeSyntax type,
         List<Dictionary<string, string>> aliasMaps)
-        var name = GetTypeName(type)
+        var name = GetTypeName(type);
         if (name != null)
             // First, add the name that the typename that the type directly says it inherits from.
-            builder.Add(name)
+            builder.Add(name);
 
             // Now, walk the alias chain and add any names this alias may eventually map to.
-            var currentName = name
+            var currentName = name;
             foreach (var aliasMap in aliasMaps)
                 if (aliasMap.TryGetValue(currentName, out var mappedName))
                     // Looks like this could be an alias.  Also include the name the alias points to
-                    builder.Add(mappedName)
+                    builder.Add(mappedName);
 
                     // Keep on searching.  An alias in an inner namespcae can refer to an
                     // alias in an outer namespace.
-                    currentName = mappedName
+                    currentName = mappedName;
 
     protected override void AddLocalFunctionInfos(
         MemberDeclarationSyntax memberDeclaration,
@@ -126,15 +126,15 @@ internal sealed class CSharpDeclaredSymbolInfoFactoryService() : AbstractDeclare
         string containerDisplayName,
         string fullyQualifiedContainerName,
         CancellationToken cancellationToken)
-        using var pooledQueue = SharedPools.Default<Queue<SyntaxNodeOrToken>>().GetPooledObject()
-        var queue = pooledQueue.Object
-        queue.Enqueue(memberDeclaration)
+        using var pooledQueue = SharedPools.Default<Queue<SyntaxNodeOrToken>>().GetPooledObject();
+        var queue = pooledQueue.Object;
+        queue.Enqueue(memberDeclaration);
         while (!queue.IsEmpty())
-            cancellationToken.ThrowIfCancellationRequested()
-            var node = queue.Dequeue()
+            cancellationToken.ThrowIfCancellationRequested();
+            var node = queue.Dequeue();
             foreach (var child in node.ChildNodesAndTokens())
                 if (child.IsNode)
-                    queue.Enqueue(child)
+                    queue.Enqueue(child);
 
             if (node.AsNode() is LocalFunctionStatementSyntax localFunction)
                 declaredSymbolInfos.Add(DeclaredSymbolInfo.Create(
@@ -164,13 +164,13 @@ internal sealed class CSharpDeclaredSymbolInfoFactoryService() : AbstractDeclare
         if (typeDeclaration.Modifiers.Any(SyntaxKind.PartialKeyword) &&
             typeDeclaration.Members.Any() &&
             typeDeclaration.Members.All(m => m is BaseTypeDeclarationSyntax))
-            return null
+            return null;
 
         // Extensions don't declare a type of their own.  As they have no name, it's not something someone could search
         // for with navigate-to.  Instead, they just act as a loose block around a set of actual extension members.  So
         // just return null here to avoid creating anything in this case.
         if (typeDeclaration.Kind() == SyntaxKind.ExtensionBlockDeclaration)
-            return null
+            return null;
 
         return DeclaredSymbolInfo.Create(
             stringTable,
@@ -213,10 +213,10 @@ internal sealed class CSharpDeclaredSymbolInfoFactoryService() : AbstractDeclare
         ArrayBuilder<DeclaredSymbolInfo> declaredSymbolInfos,
         string containerDisplayName,
         string fullyQualifiedContainerName)
-        Contract.ThrowIfTrue(node is TypeDeclarationSyntax)
+        Contract.ThrowIfTrue(node is TypeDeclarationSyntax);
         switch (node.Kind())
             case SyntaxKind.ConstructorDeclaration:
-                var ctorDecl = (ConstructorDeclarationSyntax)node
+                var ctorDecl = (ConstructorDeclarationSyntax)node;
                 declaredSymbolInfos.Add(DeclaredSymbolInfo.Create(
                     stringTable,
                     ctorDecl.Identifier.ValueText,
@@ -230,9 +230,9 @@ internal sealed class CSharpDeclaredSymbolInfoFactoryService() : AbstractDeclare
                     ctorDecl.Identifier.Span,
                     inheritanceNames: [],
                     parameterCount: ctorDecl.ParameterList?.Parameters.Count ?? 0))
-                return
+                return;
             case SyntaxKind.DelegateDeclaration:
-                var delegateDecl = (DelegateDeclarationSyntax)node
+                var delegateDecl = (DelegateDeclarationSyntax)node;
                 declaredSymbolInfos.Add(DeclaredSymbolInfo.Create(
                     stringTable,
                     delegateDecl.Identifier.ValueText,
@@ -245,9 +245,9 @@ internal sealed class CSharpDeclaredSymbolInfoFactoryService() : AbstractDeclare
                     GetAccessibility(container, delegateDecl.Modifiers),
                     delegateDecl.Identifier.Span,
                     inheritanceNames: []))
-                return
+                return;
             case SyntaxKind.EnumMemberDeclaration:
-                var enumMember = (EnumMemberDeclarationSyntax)node
+                var enumMember = (EnumMemberDeclarationSyntax)node;
                 declaredSymbolInfos.Add(DeclaredSymbolInfo.Create(
                     stringTable,
                     enumMember.Identifier.ValueText, null,
@@ -259,9 +259,9 @@ internal sealed class CSharpDeclaredSymbolInfoFactoryService() : AbstractDeclare
                     Accessibility.Public,
                     enumMember.Identifier.Span,
                     inheritanceNames: []))
-                return
+                return;
             case SyntaxKind.EventDeclaration:
-                var eventDecl = (EventDeclarationSyntax)node
+                var eventDecl = (EventDeclarationSyntax)node;
                 declaredSymbolInfos.Add(DeclaredSymbolInfo.Create(
                     stringTable,
                     eventDecl.Identifier.ValueText, null,
@@ -273,9 +273,9 @@ internal sealed class CSharpDeclaredSymbolInfoFactoryService() : AbstractDeclare
                     GetAccessibility(container, eventDecl.Modifiers),
                     eventDecl.Identifier.Span,
                     inheritanceNames: []))
-                return
+                return;
             case SyntaxKind.IndexerDeclaration:
-                var indexerDecl = (IndexerDeclarationSyntax)node
+                var indexerDecl = (IndexerDeclarationSyntax)node;
                 declaredSymbolInfos.Add(DeclaredSymbolInfo.Create(
                     stringTable,
                     "this", GetIndexerSuffix(indexerDecl),
@@ -287,10 +287,10 @@ internal sealed class CSharpDeclaredSymbolInfoFactoryService() : AbstractDeclare
                     GetAccessibility(container, indexerDecl.Modifiers),
                     indexerDecl.ThisKeyword.Span,
                     inheritanceNames: []))
-                return
+                return;
             case SyntaxKind.MethodDeclaration:
-                var method = (MethodDeclarationSyntax)node
-                var isExtensionMethod = IsExtensionMethod(method)
+                var method = (MethodDeclarationSyntax)node;
+                var isExtensionMethod = IsExtensionMethod(method);
                 declaredSymbolInfos.Add(DeclaredSymbolInfo.Create(
                     stringTable,
                     method.Identifier.ValueText, GetMethodSuffix(method),
@@ -304,9 +304,9 @@ internal sealed class CSharpDeclaredSymbolInfoFactoryService() : AbstractDeclare
                     inheritanceNames: [],
                     parameterCount: method.ParameterList?.Parameters.Count ?? 0,
                     typeParameterCount: method.TypeParameterList?.Parameters.Count ?? 0))
-                return
+                return;
             case SyntaxKind.PropertyDeclaration:
-                var property = (PropertyDeclarationSyntax)node
+                var property = (PropertyDeclarationSyntax)node;
                 declaredSymbolInfos.Add(DeclaredSymbolInfo.Create(
                     stringTable,
                     property.Identifier.ValueText, null,
@@ -318,10 +318,10 @@ internal sealed class CSharpDeclaredSymbolInfoFactoryService() : AbstractDeclare
                     GetAccessibility(container, property.Modifiers),
                     property.Identifier.Span,
                     inheritanceNames: []))
-                return
+                return;
             case SyntaxKind.FieldDeclaration:
             case SyntaxKind.EventFieldDeclaration:
-                var fieldDeclaration = (BaseFieldDeclarationSyntax)node
+                var fieldDeclaration = (BaseFieldDeclarationSyntax)node;
                 foreach (var variableDeclarator in fieldDeclaration.Declaration.Variables)
                     var kind = fieldDeclaration is EventFieldDeclarationSyntax
                         ? DeclaredSymbolInfoKind.Event
@@ -341,7 +341,7 @@ internal sealed class CSharpDeclaredSymbolInfoFactoryService() : AbstractDeclare
                         variableDeclarator.Identifier.Span,
                         inheritanceNames: []))
 
-                return
+                return;
 
     protected override void AddSynthesizedDeclaredSymbolInfos(
         SyntaxNode container,
@@ -354,17 +354,17 @@ internal sealed class CSharpDeclaredSymbolInfoFactoryService() : AbstractDeclare
         // Add synthesized properties for record primary constructors that are not backed by an existing field
         // or property.
         if (memberDeclaration is RecordDeclarationSyntax { ParameterList: { Parameters.Count: > 0 } parameterList } recordDeclaration)
-            using var _ = PooledHashSet<string>.GetInstance(out var existingFieldPropNames)
+            using var _ = PooledHashSet<string>.GetInstance(out var existingFieldPropNames);
 
             foreach (var member in recordDeclaration.Members)
                 switch (member)
                     case PropertyDeclarationSyntax property:
-                        existingFieldPropNames.Add(property.Identifier.ValueText)
-                        continue
+                        existingFieldPropNames.Add(property.Identifier.ValueText);
+                        continue;
                     case FieldDeclarationSyntax fieldDeclaration:
                         foreach (var variable in fieldDeclaration.Declaration.Variables)
-                            existingFieldPropNames.Add(variable.Identifier.ValueText)
-                        continue
+                            existingFieldPropNames.Add(variable.Identifier.ValueText);
+                        continue;
 
             foreach (var parameter in parameterList.Parameters)
                 if (!existingFieldPropNames.Contains(parameter.Identifier.ValueText))
@@ -381,40 +381,40 @@ internal sealed class CSharpDeclaredSymbolInfoFactoryService() : AbstractDeclare
                         inheritanceNames: []))
 
     protected override SyntaxList<MemberDeclarationSyntax> GetChildren(CompilationUnitSyntax node)
-        => node.Members
+        => node.Members;
 
     protected override SyntaxList<MemberDeclarationSyntax> GetChildren(BaseNamespaceDeclarationSyntax node)
-        => node.Members
+        => node.Members;
 
     protected override SyntaxList<MemberDeclarationSyntax> GetChildren(TypeDeclarationSyntax node)
-        => node.Members
+        => node.Members;
 
     protected override IEnumerable<MemberDeclarationSyntax> GetChildren(EnumDeclarationSyntax node)
-        => node.Members
+        => node.Members;
 
     protected override SyntaxList<UsingDirectiveSyntax> GetUsingAliases(CompilationUnitSyntax node)
-        => node.Usings
+        => node.Usings;
 
     protected override SyntaxList<UsingDirectiveSyntax> GetUsingAliases(BaseNamespaceDeclarationSyntax node)
-        => node.Usings
+        => node.Usings;
 
     protected override NameSyntax GetName(BaseNamespaceDeclarationSyntax node)
-        => node.Name
+        => node.Name;
 
     protected override NameSyntax GetLeft(QualifiedNameSyntax node)
-        => node.Left
+        => node.Left;
 
     protected override NameSyntax GetRight(QualifiedNameSyntax node)
-        => node.Right
+        => node.Right;
 
     protected override SyntaxToken GetIdentifier(IdentifierNameSyntax node)
-        => node.Identifier
+        => node.Identifier;
 
     private static bool IsNestedType(BaseTypeDeclarationSyntax typeDecl)
-        => typeDecl.Parent is BaseTypeDeclarationSyntax
+        => typeDecl.Parent is BaseTypeDeclarationSyntax;
 
     private static string GetConstructorSuffix(ConstructorDeclarationSyntax constructor)
-        => constructor.Modifiers.Any(SyntaxKind.StaticKeyword)         ? ".static " + constructor.Identifier + "()"         : GetSuffix('(', ')', constructor.ParameterList.Parameters)
+        => constructor.Modifiers.Any(SyntaxKind.StaticKeyword)         ? ".static " + constructor.Identifier + "()"         : GetSuffix('(', ')', constructor.ParameterList.Parameters);
 
     private static string GetMethodSuffix(MethodDeclarationSyntax method)
         => GetTypeParameterSuffix(method.TypeParameterList) +
@@ -425,28 +425,28 @@ internal sealed class CSharpDeclaredSymbolInfoFactoryService() : AbstractDeclare
             GetSuffix('(', ')', method.ParameterList.Parameters)
 
     private static string GetIndexerSuffix(IndexerDeclarationSyntax indexer)
-        => GetSuffix('[', ']', indexer.ParameterList.Parameters)
+        => GetSuffix('[', ']', indexer.ParameterList.Parameters);
 
     private static string? GetTypeParameterSuffix(TypeParameterListSyntax? typeParameterList)
         if (typeParameterList == null)
-            return null
+            return null;
 
-        var pooledBuilder = PooledStringBuilder.GetInstance()
+        var pooledBuilder = PooledStringBuilder.GetInstance();
 
-        var builder = pooledBuilder.Builder
-        builder.Append('<')
+        var builder = pooledBuilder.Builder;
+        builder.Append('<');
 
-        var first = true
+        var first = true;
         foreach (var parameter in typeParameterList.Parameters)
             if (!first)
-                builder.Append(", ")
+                builder.Append(", ");
 
-            builder.Append(parameter.Identifier.Text)
-            first = false
+            builder.Append(parameter.Identifier.Text);
+            first = false;
 
-        builder.Append('>')
+        builder.Append('>');
 
-        return pooledBuilder.ToStringAndFree()
+        return pooledBuilder.ToStringAndFree();
 
     /// <summary>
     /// Builds up the suffix to show for something with parameters in navigate-to.
@@ -463,132 +463,132 @@ internal sealed class CSharpDeclaredSymbolInfoFactoryService() : AbstractDeclare
     /// </summary>
     private static string GetSuffix(
         char openBrace, char closeBrace, SeparatedSyntaxList<ParameterSyntax> parameters)
-        var pooledBuilder = PooledStringBuilder.GetInstance()
+        var pooledBuilder = PooledStringBuilder.GetInstance();
 
-        var builder = pooledBuilder.Builder
-        builder.Append(openBrace)
-        AppendParameters(parameters, builder)
-        builder.Append(closeBrace)
+        var builder = pooledBuilder.Builder;
+        builder.Append(openBrace);
+        AppendParameters(parameters, builder);
+        builder.Append(closeBrace);
 
-        return pooledBuilder.ToStringAndFree()
+        return pooledBuilder.ToStringAndFree();
 
     private static void AppendParameters(SeparatedSyntaxList<ParameterSyntax> parameters, StringBuilder builder)
-        var first = true
+        var first = true;
         foreach (var parameter in parameters)
             if (!first)
-                builder.Append(", ")
+                builder.Append(", ");
 
             foreach (var modifier in parameter.Modifiers)
-                builder.Append(modifier.Text)
-                builder.Append(' ')
+                builder.Append(modifier.Text);
+                builder.Append(' ');
 
             if (parameter.Type != null)
-                builder.Append(parameter.Type.ConvertToSingleLine().ToString())
+                builder.Append(parameter.Type.ConvertToSingleLine().ToString());
             else
-                builder.Append(parameter.Identifier.Text)
+                builder.Append(parameter.Identifier.Text);
 
-            first = false
+            first = false;
 
     protected override string GetContainerDisplayName(MemberDeclarationSyntax node)
-        => CSharpSyntaxFacts.Instance.GetDisplayName(node, DisplayNameOptions.IncludeTypeParameters)
+        => CSharpSyntaxFacts.Instance.GetDisplayName(node, DisplayNameOptions.IncludeTypeParameters);
 
     protected override string GetFullyQualifiedContainerName(MemberDeclarationSyntax node, string rootNamespace)
-        => CSharpSyntaxFacts.Instance.GetDisplayName(node, DisplayNameOptions.IncludeNamespaces)
+        => CSharpSyntaxFacts.Instance.GetDisplayName(node, DisplayNameOptions.IncludeNamespaces);
 
     private static string? GetTypeName(TypeSyntax? type)
         if (type is SimpleNameSyntax simpleName)
-            return GetSimpleTypeName(simpleName)
+            return GetSimpleTypeName(simpleName);
         else if (type is QualifiedNameSyntax qualifiedName)
-            return GetSimpleTypeName(qualifiedName.Right)
+            return GetSimpleTypeName(qualifiedName.Right);
         else if (type is AliasQualifiedNameSyntax aliasName)
-            return GetSimpleTypeName(aliasName.Name)
+            return GetSimpleTypeName(aliasName.Name);
 
-        return null
+        return null;
 
     private static string GetSimpleTypeName(SimpleNameSyntax name)
-        => name.Identifier.ValueText
+        => name.Identifier.ValueText;
 
     private static bool IsExtensionMethod(MethodDeclarationSyntax method)
-        => method.ParameterList.Parameters is[var parameter, ..] && parameter.Modifiers.Any(SyntaxKind.ThisKeyword)
+        => method.ParameterList.Parameters is[var parameter, ..] && parameter.Modifiers.Any(SyntaxKind.ThisKeyword);
 
     // Root namespace is a VB only concept, which basically means root namespace is always global in C#.
     protected override string GetRootNamespace(CompilationOptions compilationOptions)
-        => string.Empty
+        => string.Empty;
 
     protected override bool TryGetAliasesFromUsingDirective(
         UsingDirectiveSyntax usingDirectiveNode, out ImmutableArray<(string aliasName, string name)> aliases)
         if (usingDirectiveNode.Alias != null)
             if (TryGetSimpleTypeName(usingDirectiveNode.Alias.Name, typeParameterNames: null, out var aliasName, out _) &&
                 TryGetSimpleTypeName(usingDirectiveNode.NamespaceOrType, typeParameterNames: null, out var name, out _))
-                aliases = [(aliasName, name)]
-                return true
+                aliases = [(aliasName, name)];
+                return true;
 
-        aliases = default
-        return false
+        aliases = default;
+        return false;
 
     protected override string GetExtensionReceiverTypeName(MethodDeclarationSyntax methodDeclaration)
-        Debug.Assert(IsExtensionMethod(methodDeclaration))
+        Debug.Assert(IsExtensionMethod(methodDeclaration));
 
-        var typeParameterNames = methodDeclaration.TypeParameterList?.Parameters.SelectAsArray(p => p.Identifier.Text)
-        TryGetSimpleTypeName(methodDeclaration.ParameterList.Parameters[0].Type, typeParameterNames, out var targetTypeName, out var isArray)
-        return CreateReceiverTypeString(targetTypeName, isArray)
+        var typeParameterNames = methodDeclaration.TypeParameterList?.Parameters.SelectAsArray(p => p.Identifier.Text);
+        TryGetSimpleTypeName(methodDeclaration.ParameterList.Parameters[0].Type, typeParameterNames, out var targetTypeName, out var isArray);
+        return CreateReceiverTypeString(targetTypeName, isArray);
 
     protected override string? GetExtensionReceiverTypeName(TypeDeclarationSyntax node)
         if (node is not ExtensionBlockDeclarationSyntax { ParameterList.Parameters:[{ Type: var parameterType }, ..] } extensionBlockDeclaration)
-            return null
+            return null;
 
-        var typeParameterNames = extensionBlockDeclaration.TypeParameterList?.Parameters.SelectAsArray(p => p.Identifier.Text)
-        TryGetSimpleTypeName(parameterType, typeParameterNames, out var targetTypeName, out var isArray)
-        return CreateReceiverTypeString(targetTypeName, isArray)
+        var typeParameterNames = extensionBlockDeclaration.TypeParameterList?.Parameters.SelectAsArray(p => p.Identifier.Text);
+        TryGetSimpleTypeName(parameterType, typeParameterNames, out var targetTypeName, out var isArray);
+        return CreateReceiverTypeString(targetTypeName, isArray);
 
     private static bool TryGetSimpleTypeName(
         SyntaxNode? node, ImmutableArray<string>? typeParameterNames,
         [NotNullWhen(true)] out string? simpleTypeName,
         out bool isArray)
-        isArray = false
+        isArray = false;
 
         if (node is TypeSyntax typeNode)
             switch (typeNode)
                 case IdentifierNameSyntax identifierNameNode:
                     // We consider it a complex method if the receiver type is a type parameter.
-                    var text = identifierNameNode.Identifier.Text
-                    simpleTypeName = typeParameterNames?.Contains(text) == true ? null : text
-                    return simpleTypeName != null
+                    var text = identifierNameNode.Identifier.Text;
+                    simpleTypeName = typeParameterNames?.Contains(text) == true ? null : text;
+                    return simpleTypeName != null;
 
                 case ArrayTypeSyntax arrayTypeNode:
-                    isArray = true
-                    return TryGetSimpleTypeName(arrayTypeNode.ElementType, typeParameterNames, out simpleTypeName, out _)
+                    isArray = true;
+                    return TryGetSimpleTypeName(arrayTypeNode.ElementType, typeParameterNames, out simpleTypeName, out _);
 
                 case GenericNameSyntax genericNameNode:
-                    var name = genericNameNode.Identifier.Text
-                    var arity = genericNameNode.Arity
-                    simpleTypeName = arity == 0 ? name : name + ArityUtilities.GetMetadataAritySuffix(arity)
-                    return true
+                    var name = genericNameNode.Identifier.Text;
+                    var arity = genericNameNode.Arity;
+                    simpleTypeName = arity == 0 ? name : name + ArityUtilities.GetMetadataAritySuffix(arity);
+                    return true;
 
                 case PredefinedTypeSyntax predefinedTypeNode:
-                    simpleTypeName = GetSpecialTypeName(predefinedTypeNode)
-                    return simpleTypeName != null
+                    simpleTypeName = GetSpecialTypeName(predefinedTypeNode);
+                    return simpleTypeName != null;
 
                 case AliasQualifiedNameSyntax aliasQualifiedNameNode:
-                    return TryGetSimpleTypeName(aliasQualifiedNameNode.Name, typeParameterNames, out simpleTypeName, out _)
+                    return TryGetSimpleTypeName(aliasQualifiedNameNode.Name, typeParameterNames, out simpleTypeName, out _);
 
                 case QualifiedNameSyntax qualifiedNameNode:
                     // For an identifier to the right of a '.', it can't be a type parameter,
                     // so we don't need to check for it further.
-                    return TryGetSimpleTypeName(qualifiedNameNode.Right, typeParameterNames: null, out simpleTypeName, out _)
+                    return TryGetSimpleTypeName(qualifiedNameNode.Right, typeParameterNames: null, out simpleTypeName, out _);
 
                 case NullableTypeSyntax nullableNode:
                     // Ignore nullability, becase nullable reference type might not be enabled universally.
                     // In the worst case we just include more methods to check in out filter.
-                    return TryGetSimpleTypeName(nullableNode.ElementType, typeParameterNames, out simpleTypeName, out isArray)
+                    return TryGetSimpleTypeName(nullableNode.ElementType, typeParameterNames, out simpleTypeName, out isArray);
 
                 case TupleTypeSyntax tupleType:
-                    simpleTypeName = CreateValueTupleTypeString(tupleType.Elements.Count)
-                    return true
+                    simpleTypeName = CreateValueTupleTypeString(tupleType.Elements.Count);
+                    return true;
 
-        simpleTypeName = null
-        return false
+        simpleTypeName = null;
+        return false;
 
     private static string? GetSpecialTypeName(PredefinedTypeSyntax predefinedTypeNode)
-        var kind = predefinedTypeNode.Keyword.Kind()
-        return kind switch         {             SyntaxKind.BoolKeyword => "Boolean",             SyntaxKind.ByteKeyword => "Byte",             SyntaxKind.SByteKeyword => "SByte",             SyntaxKind.ShortKeyword => "Int16",             SyntaxKind.UShortKeyword => "UInt16",             SyntaxKind.IntKeyword => "Int32",             SyntaxKind.UIntKeyword => "UInt32",             SyntaxKind.LongKeyword => "Int64",             SyntaxKind.ULongKeyword => "UInt64",             SyntaxKind.DoubleKeyword => "Double",             SyntaxKind.FloatKeyword => "Single",             SyntaxKind.DecimalKeyword => "Decimal",             SyntaxKind.StringKeyword => "String",             SyntaxKind.CharKeyword => "Char",             SyntaxKind.ObjectKeyword => "Object",             _ => null,         }
+        var kind = predefinedTypeNode.Keyword.Kind();
+        return kind switch         {             SyntaxKind.BoolKeyword => "Boolean",             SyntaxKind.ByteKeyword => "Byte",             SyntaxKind.SByteKeyword => "SByte",             SyntaxKind.ShortKeyword => "Int16",             SyntaxKind.UShortKeyword => "UInt16",             SyntaxKind.IntKeyword => "Int32",             SyntaxKind.UIntKeyword => "UInt32",             SyntaxKind.LongKeyword => "Int64",             SyntaxKind.ULongKeyword => "UInt64",             SyntaxKind.DoubleKeyword => "Double",             SyntaxKind.FloatKeyword => "Single",             SyntaxKind.DecimalKeyword => "Decimal",             SyntaxKind.StringKeyword => "String",             SyntaxKind.CharKeyword => "Char",             SyntaxKind.ObjectKeyword => "Object",             _ => null,         };

@@ -1,30 +1,30 @@
 // Copyright (c) .NET Foundation and contributors. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-using System
-using System.Collections.Generic
-using System.Diagnostics
-using System.Diagnostics.CodeAnalysis
-using System.Reflection
-using ILLink.RoslynAnalyzer
-using ILLink.RoslynAnalyzer.DataFlow
-using ILLink.RoslynAnalyzer.TrimAnalysis
-using ILLink.Shared.DataFlow
-using ILLink.Shared.TypeSystemProxy
-using Microsoft.CodeAnalysis
-using Microsoft.CodeAnalysis.Operations
-using MultiValue = ILLink.Shared.DataFlow.ValueSet<ILLink.Shared.DataFlow.SingleValue>
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Reflection;
+using ILLink.RoslynAnalyzer;
+using ILLink.RoslynAnalyzer.DataFlow;
+using ILLink.RoslynAnalyzer.TrimAnalysis;
+using ILLink.Shared.DataFlow;
+using ILLink.Shared.TypeSystemProxy;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Operations;
+using MultiValue = ILLink.Shared.DataFlow.ValueSet<ILLink.Shared.DataFlow.SingleValue>;
 
 namespace ILLink.Shared.TrimAnalysis
     internal partial struct HandleCallAction
         #pragma warning disable CA1822 // Mark members as static - the other partial implementations might need to be instance methods
         #pragma warning disable IDE0060 // Unused parameters - the other partial implementation may need the parameter
 
-        private readonly ISymbol _owningSymbol
-        private readonly IOperation _operation
-        private readonly ReflectionAccessAnalyzer _reflectionAccessAnalyzer
-        private readonly TypeNameResolver _typeNameResolver
-        private ValueSetLattice<SingleValue> _multiValueLattice
+        private readonly ISymbol _owningSymbol;
+        private readonly IOperation _operation;
+        private readonly ReflectionAccessAnalyzer _reflectionAccessAnalyzer;
+        private readonly TypeNameResolver _typeNameResolver;
+        private ValueSetLattice<SingleValue> _multiValueLattice;
 
         public HandleCallAction(
             RequiresUnreferencedCodeAnalyzer? trimAnalyzer,
@@ -35,43 +35,43 @@ namespace ILLink.Shared.TrimAnalysis
             IOperation operation,
             ValueSetLattice<SingleValue> multiValueLattice,
             Action<Diagnostic>? reportDiagnostic)
-            _owningSymbol = owningSymbol
-            _operation = operation
-            _isNewObj = operation.Kind == OperationKind.ObjectCreation
-            _diagnosticContext = new DiagnosticContext(location, reportDiagnostic, typeNameResolver.Compilation)
-            _annotations = FlowAnnotations.Instance
-            _reflectionAccessAnalyzer = new(reportDiagnostic, typeNameResolver, typeHierarchyType: null)
-            _typeNameResolver = typeNameResolver
-            _requireDynamicallyAccessedMembersAction = new(trimAnalyzer, featureContext, typeNameResolver, location, reportDiagnostic, _reflectionAccessAnalyzer, _owningSymbol)
-            _multiValueLattice = multiValueLattice
+            _owningSymbol = owningSymbol;
+            _operation = operation;
+            _isNewObj = operation.Kind == OperationKind.ObjectCreation;
+            _diagnosticContext = new DiagnosticContext(location, reportDiagnostic, typeNameResolver.Compilation);
+            _annotations = FlowAnnotations.Instance;
+            _reflectionAccessAnalyzer = new(reportDiagnostic, typeNameResolver, typeHierarchyType: null);
+            _typeNameResolver = typeNameResolver;
+            _requireDynamicallyAccessedMembersAction = new(trimAnalyzer, featureContext, typeNameResolver, location, reportDiagnostic, _reflectionAccessAnalyzer, _owningSymbol);
+            _multiValueLattice = multiValueLattice;
 
         private sealed class HasGenericTypeSymbolsVisitor : SymbolVisitor<bool>
-            internal static readonly HasGenericTypeSymbolsVisitor Instance = new()
+            internal static readonly HasGenericTypeSymbolsVisitor Instance = new();
 
-            public override bool VisitArrayType(IArrayTypeSymbol symbol) => Visit(symbol.ElementType)
+            public override bool VisitArrayType(IArrayTypeSymbol symbol) => Visit(symbol.ElementType);
 
-            public override bool VisitPointerType(IPointerTypeSymbol symbol) => Visit(symbol.PointedAtType)
+            public override bool VisitPointerType(IPointerTypeSymbol symbol) => Visit(symbol.PointedAtType);
 
-            public override bool VisitTypeParameter(ITypeParameterSymbol symbol) => true
+            public override bool VisitTypeParameter(ITypeParameterSymbol symbol) => true;
 
             public override bool VisitFunctionPointerType(IFunctionPointerTypeSymbol symbol)
-                IMethodSymbol signature = symbol.Signature
+                IMethodSymbol signature = symbol.Signature;
 
                 if (Visit(signature.ReturnType))
-                    return true
+                    return true;
 
                 foreach (var param in signature.Parameters)
                     if (Visit(param.Type))
-                        return true
+                        return true;
 
-                return false
+                return false;
 
             public override bool VisitNamedType(INamedTypeSymbol symbol)
                 foreach (var arg in symbol.TypeArguments)
                     if (Visit(arg))
-                        return true
+                        return true;
 
-                return false
+                return false;
 
         private partial bool TryHandleIntrinsic(
             MethodProxy calledMethod,
@@ -79,24 +79,24 @@ namespace ILLink.Shared.TrimAnalysis
             IReadOnlyList<MultiValue> argumentValues,
             IntrinsicId intrinsicId,
             out MultiValue? methodReturnValue)
-            MultiValue? maybeMethodReturnValue = methodReturnValue = null
-            ValueSetLattice<SingleValue> multiValueLattice = _multiValueLattice
+            MultiValue? maybeMethodReturnValue = methodReturnValue = null;
+            ValueSetLattice<SingleValue> multiValueLattice = _multiValueLattice;
 
             switch (intrinsicId)
                 case IntrinsicId.Array_Empty:
-                    AddReturnValue(ArrayValue.Create(0))
-                    break
+                    AddReturnValue(ArrayValue.Create(0));
+                    break;
 
                 case IntrinsicId.TypeDelegator_Ctor:
                     if (_operation is IObjectCreationOperation)
-                        AddReturnValue(argumentValues[0])
+                        AddReturnValue(argumentValues[0]);
 
-                    break
+                    break;
 
                 case IntrinsicId.Object_GetType:
                         if (instanceValue.IsEmpty())
-                            AddReturnValue(MultiValueLattice.Top)
-                            break
+                            AddReturnValue(MultiValueLattice.Top);
+                            break;
 
                         foreach (var valueNode in instanceValue.AsEnumerable())
                             // Note that valueNode can be statically typed as some generic argument type.
@@ -113,20 +113,20 @@ namespace ILLink.Shared.TrimAnalysis
                             // In this case to get correct results, trimmer would have to mark all public methods on Derived. Which
                             // currently it won't do.
 
-                            ITypeSymbol? staticType = (valueNode as IValueWithStaticType)?.StaticType?.Type
-                            ITypeSymbol? staticTypeDef = staticType?.OriginalDefinition
+                            ITypeSymbol? staticType = (valueNode as IValueWithStaticType)?.StaticType?.Type;
+                            ITypeSymbol? staticTypeDef = staticType?.OriginalDefinition;
                             if (staticType is null || staticTypeDef is null || staticType is ITypeParameterSymbol)
-                                DynamicallyAccessedMemberTypes annotation = default
+                                DynamicallyAccessedMemberTypes annotation = default;
                                 if (staticType is ITypeParameterSymbol genericParam)
                                     foreach (var constraintType in genericParam.ConstraintTypes)
                                         if (constraintType.IsTypeOf("System", "Enum"))
-                                            annotation = DynamicallyAccessedMemberTypes.PublicFields
+                                            annotation = DynamicallyAccessedMemberTypes.PublicFields;
 
                                 if (annotation != default)
-                                    AddReturnValue(FlowAnnotations.Instance.GetMethodReturnValue(calledMethod, _isNewObj, annotation))
+                                    AddReturnValue(FlowAnnotations.Instance.GetMethodReturnValue(calledMethod, _isNewObj, annotation));
                                 else
                                     // We don't know anything about the type GetType was called on. Track this as a usual "result of a method call without any annotations"
-                                    AddReturnValue(FlowAnnotations.Instance.GetMethodReturnValue(calledMethod, _isNewObj))
+                                    AddReturnValue(FlowAnnotations.Instance.GetMethodReturnValue(calledMethod, _isNewObj));
                             else if (staticType.IsSealed || staticType.IsTypeOf("System", "Delegate") || staticType.TypeKind == TypeKind.Array)
                                 // We can treat this one the same as if it was a typeof() expression
 
@@ -143,22 +143,22 @@ namespace ILLink.Shared.TrimAnalysis
                                 // This can be seen a little bit as a violation of the annotation, but we already have similar cases
                                 // where a parameter is annotated and if something in the method sets a specific known type to it
                                 // we will also make it just work, even if the annotation doesn't match the usage.
-                                AddReturnValue(new SystemTypeValue(new(staticType)))
+                                AddReturnValue(new SystemTypeValue(new(staticType)));
                             else if (staticType.IsTypeOf("System", "Enum"))
-                                AddReturnValue(FlowAnnotations.Instance.GetMethodReturnValue(calledMethod, _isNewObj, DynamicallyAccessedMemberTypes.PublicFields))
+                                AddReturnValue(FlowAnnotations.Instance.GetMethodReturnValue(calledMethod, _isNewObj, DynamicallyAccessedMemberTypes.PublicFields));
                             else
-                                var annotation = FlowAnnotations.GetTypeAnnotation(staticType)
-                                AddReturnValue(FlowAnnotations.Instance.GetMethodReturnValue(calledMethod, _isNewObj, annotation))
-                        break
+                                var annotation = FlowAnnotations.GetTypeAnnotation(staticType);
+                                AddReturnValue(FlowAnnotations.Instance.GetMethodReturnValue(calledMethod, _isNewObj, annotation));
+                        break;
 
                 case IntrinsicId.TypeMapping_GetOrCreateProxyTypeMapping:
                 case IntrinsicId.TypeMapping_GetOrCreateExternalTypeMapping:
-                        ITypeSymbol typeMapGroup = calledMethod.Method.TypeArguments[0]
+                        ITypeSymbol typeMapGroup = calledMethod.Method.TypeArguments[0];
                         if (HasGenericTypeSymbolsVisitor.Instance.Visit(typeMapGroup))
                             // We only support GetOrCreateExternalTypeMapping or GetOrCreateProxyTypeMapping for a fully specified type.
                             _diagnosticContext.AddDiagnostic(DiagnosticId.TypeMapGroupTypeCannotBeStaticallyDetermined,
                                 typeMapGroup.GetDisplayName());
-                        break
+                        break;
 
                 // Some intrinsics are unimplemented by the analyzer.
                 // These will fall back to the usual return-value handling.
@@ -176,51 +176,51 @@ namespace ILLink.Shared.TrimAnalysis
                 case IntrinsicId.Marshal_PtrToStructure:
                 case IntrinsicId.Marshal_SizeOf:
                 case IntrinsicId.RuntimeReflectionExtensions_GetMethodInfo:
-                    break
+                    break;
 
 
                 default:
-                    return false
+                    return false;
 
-            methodReturnValue = maybeMethodReturnValue
-            return true
+            methodReturnValue = maybeMethodReturnValue;
+            return true;
 
             void AddReturnValue(MultiValue value)
-                maybeMethodReturnValue = (maybeMethodReturnValue is null) ? value : multiValueLattice.Meet((MultiValue)maybeMethodReturnValue, value)
+                maybeMethodReturnValue = (maybeMethodReturnValue is null) ? value : multiValueLattice.Meet((MultiValue)maybeMethodReturnValue, value);
 
         private partial IEnumerable<SystemReflectionMethodBaseValue> GetMethodsOnTypeHierarchy(TypeProxy type, string name, BindingFlags? bindingFlags)
             foreach (var method in type.Type.GetMethodsOnTypeHierarchy(m => m.Name == name, bindingFlags))
-                yield return new SystemReflectionMethodBaseValue(new MethodProxy(method))
+                yield return new SystemReflectionMethodBaseValue(new MethodProxy(method));
 
         private partial IEnumerable<SystemTypeValue> GetNestedTypesOnType(TypeProxy type, string name, BindingFlags? bindingFlags)
             foreach (var nestedType in type.Type.GetNestedTypesOnType(t => t.Name == name, bindingFlags))
-                yield return new SystemTypeValue(new TypeProxy(nestedType))
+                yield return new SystemTypeValue(new TypeProxy(nestedType));
 
         private partial bool MethodIsTypeConstructor(MethodProxy method)
             if (!method.Method.IsConstructor())
-                return false
-            var type = method.Method.ContainingType
+                return false;
+            var type = method.Method.ContainingType;
             while (type is not null)
                 if (type.IsTypeOf(WellKnownType.System_Type))
-                    return true
-                type = type.BaseType
-            return false
+                    return true;
+                type = type.BaseType;
+            return false;
 
         private partial bool TryGetBaseType(TypeProxy type, out TypeProxy? baseType)
             if (type.Type.BaseType is not null)
-                baseType = new TypeProxy(type.Type.BaseType)
-                return true
+                baseType = new TypeProxy(type.Type.BaseType);
+                return true;
 
-            baseType = null
-            return false
+            baseType = null;
+            return false;
 
         private partial bool TryResolveTypeNameForCreateInstanceAndMark(in MethodProxy calledMethod, string assemblyName, string typeName, out TypeProxy resolvedType)
             // Intentionally never resolve anything. Analyzer can really only see types from the current compilation unit. For other assemblies
             // it typically only sees reference assemblies and thus just public API. It's not worth (at least for now) to try to resolve
             // the assembly name and type name as it should be rare this is actually ever used and even rarer to have problems (Warnings).
             // In any case the trimmer will process this correctly as it has a global view.
-            resolvedType = default
-            return false
+            resolvedType = default;
+            return false;
 
         private partial string? GetAssemblyName(TypeProxy type)
             => type.Type switch {
@@ -231,42 +231,42 @@ namespace ILLink.Shared.TrimAnalysis
                         _ when type.Type.IsTypeOf(WellKnownType.System_Array)
                             => null,
                         _ => type.Type.ContainingAssembly?.Name,
-                    }
+                    };
 
         private partial bool TryResolveTypeNameInAssemblyAndMark(string assemblyName, string typeName, out TypeProxy resolvedType)
             if (_typeNameResolver.TryResolveTypeNameInAssembly(assemblyName, typeName, out ITypeSymbol? foundType))
-                resolvedType = new TypeProxy(foundType)
-                return true
+                resolvedType = new TypeProxy(foundType);
+                return true;
 
-            resolvedType = default
-            return false
+            resolvedType = default;
+            return false;
 
         private partial void MarkStaticConstructor(TypeProxy type)
-            => _reflectionAccessAnalyzer.GetReflectionAccessDiagnosticsForConstructorsOnType(_diagnosticContext.Location, type.Type, BindingFlags.Static, parameterCount: 0)
+            => _reflectionAccessAnalyzer.GetReflectionAccessDiagnosticsForConstructorsOnType(_diagnosticContext.Location, type.Type, BindingFlags.Static, parameterCount: 0);
 
         private partial void ReportRequiresUnreferencedCode(MethodProxy calledMethod)
             if (calledMethod.Method.TryGetRequiresUnreferencedCodeAttribute(out var requiresAttribute))
-                var message = RequiresUnreferencedCodeUtils.GetMessageFromAttribute(requiresAttribute)
-                var url = RequiresAnalyzerBase.GetUrlFromAttribute(requiresAttribute)
-                _diagnosticContext.AddDiagnostic(DiagnosticId.RequiresUnreferencedCode, calledMethod.GetDisplayName(), message, url)
+                var message = RequiresUnreferencedCodeUtils.GetMessageFromAttribute(requiresAttribute);
+                var url = RequiresAnalyzerBase.GetUrlFromAttribute(requiresAttribute);
+                _diagnosticContext.AddDiagnostic(DiagnosticId.RequiresUnreferencedCode, calledMethod.GetDisplayName(), message, url);
 
         private partial void MarkEventsOnTypeHierarchy(TypeProxy type, string name, BindingFlags? bindingFlags)
-            => _reflectionAccessAnalyzer.GetReflectionAccessDiagnosticsForEventsOnTypeHierarchy(_diagnosticContext.Location, type.Type, name, bindingFlags)
+            => _reflectionAccessAnalyzer.GetReflectionAccessDiagnosticsForEventsOnTypeHierarchy(_diagnosticContext.Location, type.Type, name, bindingFlags);
 
         private partial void MarkFieldsOnTypeHierarchy(TypeProxy type, string name, BindingFlags? bindingFlags)
-            => _reflectionAccessAnalyzer.GetReflectionAccessDiagnosticsForFieldsOnTypeHierarchy(_diagnosticContext.Location, type.Type, name, bindingFlags)
+            => _reflectionAccessAnalyzer.GetReflectionAccessDiagnosticsForFieldsOnTypeHierarchy(_diagnosticContext.Location, type.Type, name, bindingFlags);
 
         private partial void MarkPropertiesOnTypeHierarchy(TypeProxy type, string name, BindingFlags? bindingFlags)
-            => _reflectionAccessAnalyzer.GetReflectionAccessDiagnosticsForPropertiesOnTypeHierarchy(_diagnosticContext.Location, type.Type, name, bindingFlags)
+            => _reflectionAccessAnalyzer.GetReflectionAccessDiagnosticsForPropertiesOnTypeHierarchy(_diagnosticContext.Location, type.Type, name, bindingFlags);
 
         private partial void MarkPublicParameterlessConstructorOnType(TypeProxy type)
-            => _reflectionAccessAnalyzer.GetReflectionAccessDiagnosticsForPublicParameterlessConstructor(_diagnosticContext.Location, type.Type)
+            => _reflectionAccessAnalyzer.GetReflectionAccessDiagnosticsForPublicParameterlessConstructor(_diagnosticContext.Location, type.Type);
 
         private partial void MarkConstructorsOnType(TypeProxy type, BindingFlags? bindingFlags, int? parameterCount)
-            => _reflectionAccessAnalyzer.GetReflectionAccessDiagnosticsForConstructorsOnType(_diagnosticContext.Location, type.Type, bindingFlags, parameterCount)
+            => _reflectionAccessAnalyzer.GetReflectionAccessDiagnosticsForConstructorsOnType(_diagnosticContext.Location, type.Type, bindingFlags, parameterCount);
 
         private partial void MarkMethod(MethodProxy method)
-            => _reflectionAccessAnalyzer.GetReflectionAccessDiagnosticsForMethod(_diagnosticContext.Location, method.Method)
+            => _reflectionAccessAnalyzer.GetReflectionAccessDiagnosticsForMethod(_diagnosticContext.Location, method.Method);
 
         // TODO: Does the analyzer need to do something here?
         private partial void MarkType(TypeProxy type)
@@ -274,11 +274,11 @@ namespace ILLink.Shared.TrimAnalysis
 
         private partial bool MarkAssociatedProperty(MethodProxy method)
             if (method.Method.MethodKind == MethodKind.PropertyGet || method.Method.MethodKind == MethodKind.PropertySet)
-                var property = (IPropertySymbol)method.Method.AssociatedSymbol!
-                Debug.Assert(property != null)
-                _reflectionAccessAnalyzer.GetReflectionAccessDiagnosticsForProperty(_diagnosticContext.Location, property!)
-                return true
+                var property = (IPropertySymbol)method.Method.AssociatedSymbol!;
+                Debug.Assert(property != null);
+                _reflectionAccessAnalyzer.GetReflectionAccessDiagnosticsForProperty(_diagnosticContext.Location, property!);
+                return true;
 
-            return false
+            return false;
 
-        private partial string GetContainingSymbolDisplayName() => _operation.FindContainingSymbol(_owningSymbol).GetDisplayName()
+        private partial string GetContainingSymbolDisplayName() => _operation.FindContainingSymbol(_owningSymbol).GetDisplayName();

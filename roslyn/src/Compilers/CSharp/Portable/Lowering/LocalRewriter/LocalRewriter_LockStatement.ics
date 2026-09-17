@@ -2,11 +2,11 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System.Collections.Immutable
-using System.Diagnostics
-using Microsoft.CodeAnalysis.CSharp.Symbols
-using Microsoft.CodeAnalysis.CSharp.Syntax
-using Microsoft.CodeAnalysis.Text
+using System.Collections.Immutable;
+using System.Diagnostics;
+using Microsoft.CodeAnalysis.CSharp.Symbols;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Text;
 
 namespace Microsoft.CodeAnalysis.CSharp
     internal sealed partial class LocalRewriter
@@ -18,18 +18,18 @@ namespace Microsoft.CodeAnalysis.CSharp
         /// </list>
         /// </summary>
         public override BoundNode VisitLockStatement(BoundLockStatement node)
-            LockStatementSyntax lockSyntax = (LockStatementSyntax)node.Syntax
+            LockStatementSyntax lockSyntax = (LockStatementSyntax)node.Syntax;
 
-            BoundExpression rewrittenArgument = VisitExpression(node.Argument)
-            BoundStatement? rewrittenBody = VisitStatement(node.Body)
-            Debug.Assert(rewrittenBody is { })
+            BoundExpression rewrittenArgument = VisitExpression(node.Argument);
+            BoundStatement? rewrittenBody = VisitStatement(node.Body);
+            Debug.Assert(rewrittenBody is { });
 
-            TypeSymbol? argumentType = rewrittenArgument.Type
+            TypeSymbol? argumentType = rewrittenArgument.Type;
             if (argumentType is null)
                 // This isn't particularly elegant, but hopefully locking on null is
                 // not very common.
-                Debug.Assert(rewrittenArgument.ConstantValueOpt == ConstantValue.Null)
-                argumentType = _compilation.GetSpecialType(SpecialType.System_Object)
+                Debug.Assert(rewrittenArgument.ConstantValueOpt == ConstantValue.Null);
+                argumentType = _compilation.GetSpecialType(SpecialType.System_Object);
                 rewrittenArgument = MakeLiteral(
                     rewrittenArgument.Syntax,
                     rewrittenArgument.ConstantValueOpt,
@@ -45,7 +45,7 @@ namespace Microsoft.CodeAnalysis.CSharp
 
                 // lock (x) { body } -> using (x.EnterScope()) { body }
 
-                var tryBlock = rewrittenBody is BoundBlock block ? block : BoundBlock.SynthesizedNoLocals(lockSyntax, rewrittenBody)
+                var tryBlock = rewrittenBody is BoundBlock block ? block : BoundBlock.SynthesizedNoLocals(lockSyntax, rewrittenBody);
 
                 var enterScopeCall = BoundCall.Synthesized(
                     rewrittenArgument.Syntax,
@@ -59,7 +59,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                     syntaxOpt: lockSyntax,
                     kind: SynthesizedLocalKind.Using);
 
-                var expressionStatement = new BoundExpressionStatement(rewrittenArgument.Syntax, tempAssignment)
+                var expressionStatement = new BoundExpressionStatement(rewrittenArgument.Syntax, tempAssignment);
 
                 BoundStatement tryFinally = RewriteUsingStatementTryFinally(
                     rewrittenArgument.Syntax,
@@ -78,7 +78,7 @@ namespace Microsoft.CodeAnalysis.CSharp
             if (argumentType.Kind == SymbolKind.TypeParameter)
                 // If the argument has a type parameter type, then we'll box it right away
                 // so that the same object is passed to both Monitor.Enter and Monitor.Exit.
-                argumentType = _compilation.GetSpecialType(SpecialType.System_Object)
+                argumentType = _compilation.GetSpecialType(SpecialType.System_Object);
 
                 rewrittenArgument = MakeConversionNode(
                     rewrittenArgument.Syntax,
@@ -88,13 +88,13 @@ namespace Microsoft.CodeAnalysis.CSharp
                     @checked: false,
                     constantValueOpt: rewrittenArgument.ConstantValueOpt)
 
-            BoundAssignmentOperator assignmentToLockTemp
-            BoundLocal boundLockTemp = _factory.StoreToTemp(rewrittenArgument, out assignmentToLockTemp, syntaxOpt: lockSyntax, kind: SynthesizedLocalKind.Lock)
+            BoundAssignmentOperator assignmentToLockTemp;
+            BoundLocal boundLockTemp = _factory.StoreToTemp(rewrittenArgument, out assignmentToLockTemp, syntaxOpt: lockSyntax, kind: SynthesizedLocalKind.Lock);
 
-            BoundStatement boundLockTempInit = new BoundExpressionStatement(lockSyntax, assignmentToLockTemp)
-            BoundExpression exitCallExpr
+            BoundStatement boundLockTempInit = new BoundExpressionStatement(lockSyntax, assignmentToLockTemp);
+            BoundExpression exitCallExpr;
 
-            MethodSymbol? exitMethod
+            MethodSymbol? exitMethod;
             if (TryGetWellKnownTypeMember(lockSyntax, WellKnownMember.System_Threading_Monitor__Exit, out exitMethod))
                 exitCallExpr = BoundCall.Synthesized(
                     lockSyntax,
@@ -103,11 +103,11 @@ namespace Microsoft.CodeAnalysis.CSharp
                     exitMethod,
                     boundLockTemp)
             else
-                exitCallExpr = new BoundBadExpression(lockSyntax, LookupResultKind.NotInvocable, ImmutableArray<Symbol?>.Empty, ImmutableArray.Create<BoundExpression>(boundLockTemp), ErrorTypeSymbol.UnknownResultType)
+                exitCallExpr = new BoundBadExpression(lockSyntax, LookupResultKind.NotInvocable, ImmutableArray<Symbol?>.Empty, ImmutableArray.Create<BoundExpression>(boundLockTemp), ErrorTypeSymbol.UnknownResultType);
 
-            BoundStatement exitCall = new BoundExpressionStatement(lockSyntax, exitCallExpr)
+            BoundStatement exitCall = new BoundExpressionStatement(lockSyntax, exitCallExpr);
 
-            MethodSymbol? enterMethod
+            MethodSymbol? enterMethod;
 
             if ((TryGetWellKnownTypeMember(lockSyntax, WellKnownMember.System_Threading_Monitor__Enter2, out enterMethod, isOptional: true) ||
                 TryGetWellKnownTypeMember(lockSyntax, WellKnownMember.System_Threading_Monitor__Enter, out enterMethod)) && // If we didn't find the overload introduced in .NET 4.0, then use the older one.
@@ -125,8 +125,8 @@ namespace Microsoft.CodeAnalysis.CSharp
                 //     if ($lockTaken) Monitor.Exit($lock);
                 // }
 
-                TypeSymbol boolType = _compilation.GetSpecialType(SpecialType.System_Boolean)
-                BoundAssignmentOperator assignmentToLockTakenTemp
+                TypeSymbol boolType = _compilation.GetSpecialType(SpecialType.System_Boolean);
+                BoundAssignmentOperator assignmentToLockTakenTemp;
 
                 BoundLocal boundLockTakenTemp = _factory.StoreToTemp(
                     MakeLiteral(rewrittenArgument.Syntax, ConstantValue.False, boolType),
@@ -134,7 +134,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                     syntaxOpt: lockSyntax,
                     kind: SynthesizedLocalKind.LockTaken)
 
-                BoundStatement boundLockTakenTempInit = new BoundExpressionStatement(lockSyntax, assignmentToLockTakenTemp)
+                BoundStatement boundLockTakenTempInit = new BoundExpressionStatement(lockSyntax, assignmentToLockTakenTemp);
 
                 BoundStatement enterCall = new BoundExpressionStatement(
                     lockSyntax,
@@ -179,10 +179,10 @@ namespace Microsoft.CodeAnalysis.CSharp
                 //     Monitor.Exit($lock);        // hidden sequence point
                 // }
 
-                BoundExpression enterCallExpr
+                BoundExpression enterCallExpr;
 
                 if ((object?)enterMethod != null)
-                    Debug.Assert(enterMethod.ParameterCount == 1)
+                    Debug.Assert(enterMethod.ParameterCount == 1);
 
                     enterCallExpr = BoundCall.Synthesized(
                         lockSyntax,
@@ -191,7 +191,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                         enterMethod,
                         boundLockTemp)
                 else
-                    enterCallExpr = new BoundBadExpression(lockSyntax, LookupResultKind.NotInvocable, ImmutableArray<Symbol?>.Empty, ImmutableArray.Create<BoundExpression>(boundLockTemp), ErrorTypeSymbol.UnknownResultType)
+                    enterCallExpr = new BoundBadExpression(lockSyntax, LookupResultKind.NotInvocable, ImmutableArray<Symbol?>.Empty, ImmutableArray.Create<BoundExpression>(boundLockTemp), ErrorTypeSymbol.UnknownResultType);
 
                 BoundStatement enterCall = new BoundExpressionStatement(
                     lockSyntax,

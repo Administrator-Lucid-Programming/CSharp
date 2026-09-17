@@ -2,25 +2,25 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System
-using System.Collections.Generic
-using System.Collections.Immutable
-using System.Diagnostics
-using System.Linq
-using System.Threading
-using System.Threading.Tasks
-using System.Text.RegularExpressions
-using Microsoft.CodeAnalysis.Collections
-using Microsoft.CodeAnalysis.EmbeddedLanguages.RegularExpressions
-using Microsoft.CodeAnalysis.EmbeddedLanguages.VirtualChars
-using Microsoft.CodeAnalysis.FindSymbols
-using Microsoft.CodeAnalysis.PatternMatching
-using Microsoft.CodeAnalysis.PooledObjects
-using Microsoft.CodeAnalysis.Shared.Collections
-using Microsoft.CodeAnalysis.Shared.Extensions
-using Microsoft.CodeAnalysis.Storage
-using Microsoft.CodeAnalysis.Text
-using Roslyn.Utilities
+using System;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Diagnostics;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Text.RegularExpressions;
+using Microsoft.CodeAnalysis.Collections;
+using Microsoft.CodeAnalysis.EmbeddedLanguages.RegularExpressions;
+using Microsoft.CodeAnalysis.EmbeddedLanguages.VirtualChars;
+using Microsoft.CodeAnalysis.FindSymbols;
+using Microsoft.CodeAnalysis.PatternMatching;
+using Microsoft.CodeAnalysis.PooledObjects;
+using Microsoft.CodeAnalysis.Shared.Collections;
+using Microsoft.CodeAnalysis.Shared.Extensions;
+using Microsoft.CodeAnalysis.Storage;
+using Microsoft.CodeAnalysis.Text;
+using Roslyn.Utilities;
 
 namespace Microsoft.CodeAnalysis.NavigateTo;
 
@@ -42,7 +42,7 @@ internal abstract partial class AbstractNavigateToSearchService
             // inside a candidate at a non-word-boundary, e.g. "line" in "Readline"). NavigateToMatchKind has
             // no dedicated bucket for it, so we map it to Fuzzy as the closest available quality tier.
             (PatternMatchKind.LowercaseSubstring, NavigateToMatchKind.Fuzzy),
-        ]
+        ];
 
     /// <summary>
     /// Determines the name and container from a search pattern, using regex-aware splitting when
@@ -53,12 +53,12 @@ internal abstract partial class AbstractNavigateToSearchService
     /// </summary>
     private static SearchPatternInfo? ProcessSearchPattern(string searchPattern)
         if (RegexPatternDetector.IsRegexPattern(searchPattern))
-            var sequence = VirtualCharSequence.Create(0, searchPattern)
-            var tree = RegexParser.TryParse(sequence, RegexOptions.None)
+            var sequence = VirtualCharSequence.Create(0, searchPattern);
+            var tree = RegexParser.TryParse(sequence, RegexOptions.None);
             if (tree is not { Diagnostics:[] })
-                return null
+                return null;
 
-            var (container, name) = RegexPatternDetector.SplitOnContainerDot(searchPattern, tree)
+            var (container, name) = RegexPatternDetector.SplitOnContainerDot(searchPattern, tree);
 
             // Reuse the already-parsed tree when the full pattern is the name (no split).
             // When a split occurred, the name is a substring that needs its own parse.
@@ -75,12 +75,12 @@ internal abstract partial class AbstractNavigateToSearchService
             // and can reject documents — the pre-filter will never degenerate to "accept
             // everything."
             if (regexQuery is null)
-                return null
+                return null;
 
-            return new SearchPatternInfo(name, container, regexQuery)
+            return new SearchPatternInfo(name, container, regexQuery);
 
-        var (patternName, containerOpt) = PatternMatcher.GetNameAndContainer(searchPattern)
-        return new SearchPatternInfo(patternName, containerOpt, RegexQuery: null)
+        var (patternName, containerOpt) = PatternMatcher.GetNameAndContainer(searchPattern);
+        return new SearchPatternInfo(patternName, containerOpt, RegexQuery: null);
 
     private static async ValueTask SearchSingleDocumentAsync(
         Document document,
@@ -89,22 +89,22 @@ internal abstract partial class AbstractNavigateToSearchService
         Action<RoslynNavigateToItem> onItemFound,
         CancellationToken cancellationToken)
         if (cancellationToken.IsCancellationRequested)
-            return
+            return;
 
         // First, load the lightweight filter index to check if this document could possibly match.
         // This avoids loading the much larger TopLevelSyntaxTreeIndex for non-matching documents.
-        var filterIndex = await NavigateToSearchIndex.GetRequiredIndexAsync(document, cancellationToken).ConfigureAwait(false)
+        var filterIndex = await NavigateToSearchIndex.GetRequiredIndexAsync(document, cancellationToken).ConfigureAwait(false);
         if (!CouldContainMatch(filterIndex, patternInfo, out var matchKinds))
-            return
+            return;
 
         // The filter passed — now load the full index with all declared symbols.
-        var index = await TopLevelSyntaxTreeIndex.GetRequiredIndexAsync(document, cancellationToken).ConfigureAwait(false)
-        using var _ = ArrayBuilder<(TopLevelSyntaxTreeIndex, ProjectId)>.GetInstance(out var linkedIndices)
+        var index = await TopLevelSyntaxTreeIndex.GetRequiredIndexAsync(document, cancellationToken).ConfigureAwait(false);
+        using var _ = ArrayBuilder<(TopLevelSyntaxTreeIndex, ProjectId)>.GetInstance(out var linkedIndices);
 
         foreach (var linkedDocumentId in document.GetLinkedDocumentIds())
-            var linkedDocument = document.Project.Solution.GetRequiredDocument(linkedDocumentId)
-            var linkedIndex = await TopLevelSyntaxTreeIndex.GetRequiredIndexAsync(linkedDocument, cancellationToken).ConfigureAwait(false)
-            linkedIndices.Add((linkedIndex, linkedDocumentId.ProjectId))
+            var linkedDocument = document.Project.Solution.GetRequiredDocument(linkedDocumentId);
+            var linkedIndex = await TopLevelSyntaxTreeIndex.GetRequiredIndexAsync(linkedDocument, cancellationToken).ConfigureAwait(false);
+            linkedIndices.Add((linkedIndex, linkedDocumentId.ProjectId));
 
         ProcessIndex(
             DocumentKey.ToDocumentKey(document), document, patternInfo, kinds,
@@ -120,7 +120,7 @@ internal abstract partial class AbstractNavigateToSearchService
             else
                 matchKinds = filterIndex.CouldContainNavigateToMatch(patternInfo.Name, patternInfo.Container);
 
-        return matchKinds != PatternMatcherKind.None
+        return matchKinds != PatternMatcherKind.None;
 
     private static void ProcessIndex(
         DocumentKey documentKey,
@@ -133,32 +133,32 @@ internal abstract partial class AbstractNavigateToSearchService
         Action<RoslynNavigateToItem> onItemFound,
         CancellationToken cancellationToken)
         if (cancellationToken.IsCancellationRequested)
-            return
+            return;
 
         using var nameMatcher = PatternMatcher.CreateNameMatcher(
             patternInfo.Name, patternInfo.IsRegex, includeMatchedSpans: true, matchKinds)
         if (nameMatcher is null)
-            return
+            return;
 
         using var containerMatcher = PatternMatcher.CreateContainerMatcher(
             patternInfo.Container, patternInfo.IsRegex, includeMatchedSpans: true)
 
         foreach (var declaredSymbolInfo in index.DeclaredSymbolInfos)
             if (cancellationToken.IsCancellationRequested)
-                return
+                return;
 
             // Namespaces are never returned in nav-to as they're too common and have too many locations.
             if (declaredSymbolInfo.Kind == DeclaredSymbolInfoKind.Namespace)
-                continue
+                continue;
 
-            using var nameMatches = TemporaryArray<PatternMatch>.Empty
-            using var containerMatches = TemporaryArray<PatternMatch>.Empty
+            using var nameMatches = TemporaryArray<PatternMatch>.Empty;
+            using var containerMatches = TemporaryArray<PatternMatch>.Empty;
 
             if (kinds.Contains(declaredSymbolInfo.Kind) &&
                 nameMatcher.AddMatches(declaredSymbolInfo.Name, ref nameMatches.AsRef()) &&
                 containerMatcher?.AddMatches(declaredSymbolInfo.FullyQualifiedContainerName, ref containerMatches.AsRef()) != false)
                 if (cancellationToken.IsCancellationRequested)
-                    return
+                    return;
 
                 // See if we have a match in a linked file.  If so, see if we have the same match in
                 // other projects that this file is linked in.  If so, include the full set of projects
@@ -173,7 +173,7 @@ internal abstract partial class AbstractNavigateToSearchService
 
                 var result = ConvertResult(
                     documentKey, document, declaredSymbolInfo, nameMatches, containerMatches, additionalMatchingProjects)
-                onItemFound(result)
+                onItemFound(result);
 
     private static RoslynNavigateToItem ConvertResult(
         DocumentKey documentKey,
@@ -182,20 +182,20 @@ internal abstract partial class AbstractNavigateToSearchService
         in TemporaryArray<PatternMatch> nameMatches,
         in TemporaryArray<PatternMatch> containerMatches,
         ImmutableArray<ProjectId> additionalMatchingProjects)
-        var matchKind = GetNavigateToMatchKind(nameMatches)
+        var matchKind = GetNavigateToMatchKind(nameMatches);
 
         // A match is considered to be case sensitive if all its constituent pattern matches are
         // case sensitive.
-        var isCaseSensitive = nameMatches.All(m => m.IsCaseSensitive) && containerMatches.All(m => m.IsCaseSensitive)
-        var kind = GetItemKind(declaredSymbolInfo)
+        var isCaseSensitive = nameMatches.All(m => m.IsCaseSensitive) && containerMatches.All(m => m.IsCaseSensitive);
+        var kind = GetItemKind(declaredSymbolInfo);
 
-        using var matchedSpans = TemporaryArray<TextSpan>.Empty
+        using var matchedSpans = TemporaryArray<TextSpan>.Empty;
         foreach (var match in nameMatches)
-            matchedSpans.AddRange(match.MatchedSpans)
+            matchedSpans.AddRange(match.MatchedSpans);
 
-        using var allPatternMatches = TemporaryArray<PatternMatch>.Empty
-        allPatternMatches.AddRange(containerMatches)
-        allPatternMatches.AddRange(nameMatches)
+        using var allPatternMatches = TemporaryArray<PatternMatch>.Empty;
+        allPatternMatches.AddRange(containerMatches);
+        allPatternMatches.AddRange(nameMatches);
 
         // If we were not given a Document instance, then we're finding matches in cached data
         // and thus could be 'stale'.
@@ -215,57 +215,57 @@ internal abstract partial class AbstractNavigateToSearchService
         DeclaredSymbolInfo declaredSymbolInfo,
         ArrayBuilder<(TopLevelSyntaxTreeIndex, ProjectId)>? linkedIndices)
         if (document == null || linkedIndices is null || linkedIndices.Count == 0)
-            return []
+            return [];
 
-        using var result = TemporaryArray<ProjectId>.Empty
+        using var result = TemporaryArray<ProjectId>.Empty;
 
         foreach (var (index, projectId) in linkedIndices)
             // See if the index for the other file also contains this same info.  If so, merge the results so the
             // user only sees them as a single hit in the UI.
             if (index.DeclaredSymbolInfoSet.Contains(declaredSymbolInfo))
-                result.Add(projectId)
+                result.Add(projectId);
 
-        return result.ToImmutableAndClear()
+        return result.ToImmutableAndClear();
 
     private static string GetItemKind(DeclaredSymbolInfo declaredSymbolInfo)
         switch (declaredSymbolInfo.Kind)
             case DeclaredSymbolInfoKind.Class:
             case DeclaredSymbolInfoKind.Record:
-                return NavigateToItemKind.Class
+                return NavigateToItemKind.Class;
             case DeclaredSymbolInfoKind.RecordStruct:
-                return NavigateToItemKind.Structure
+                return NavigateToItemKind.Structure;
             case DeclaredSymbolInfoKind.Constant:
-                return NavigateToItemKind.Constant
+                return NavigateToItemKind.Constant;
             case DeclaredSymbolInfoKind.Delegate:
-                return NavigateToItemKind.Delegate
+                return NavigateToItemKind.Delegate;
             case DeclaredSymbolInfoKind.Enum:
-                return NavigateToItemKind.Enum
+                return NavigateToItemKind.Enum;
             case DeclaredSymbolInfoKind.EnumMember:
-                return NavigateToItemKind.EnumItem
+                return NavigateToItemKind.EnumItem;
             case DeclaredSymbolInfoKind.Event:
-                return NavigateToItemKind.Event
+                return NavigateToItemKind.Event;
             case DeclaredSymbolInfoKind.Field:
-                return NavigateToItemKind.Field
+                return NavigateToItemKind.Field;
             case DeclaredSymbolInfoKind.Interface:
-                return NavigateToItemKind.Interface
+                return NavigateToItemKind.Interface;
             case DeclaredSymbolInfoKind.Constructor:
             case DeclaredSymbolInfoKind.ExtensionMethod:
             case DeclaredSymbolInfoKind.Method:
-                return NavigateToItemKind.Method
+                return NavigateToItemKind.Method;
             case DeclaredSymbolInfoKind.Module:
-                return NavigateToItemKind.Module
+                return NavigateToItemKind.Module;
             case DeclaredSymbolInfoKind.Indexer:
             case DeclaredSymbolInfoKind.Property:
-                return NavigateToItemKind.Property
+                return NavigateToItemKind.Property;
             case DeclaredSymbolInfoKind.Struct:
             // Tracked by https://github.com/dotnet/roslyn/issues/82607
             // Consider having a separate NavigateToItemKind category for unions
             case DeclaredSymbolInfoKind.Union:
-                return NavigateToItemKind.Structure
+                return NavigateToItemKind.Structure;
             case DeclaredSymbolInfoKind.Operator:
-                return NavigateToItemKind.OtherSymbol
+                return NavigateToItemKind.OtherSymbol;
             default:
-                throw ExceptionUtilities.UnexpectedValue(declaredSymbolInfo.Kind)
+                throw ExceptionUtilities.UnexpectedValue(declaredSymbolInfo.Kind);
 
     private static NavigateToMatchKind GetNavigateToMatchKind(in TemporaryArray<PatternMatch> nameMatches)
         // work backwards through the match kinds.  That way our result is as bad as our worst match part.  For
@@ -274,81 +274,81 @@ internal abstract partial class AbstractNavigateToSearchService
         // thus as good as `Console.Write`.
 
         for (var i = s_kindPairs.Length - 1; i >= 0; i--)
-            var (roslynKind, vsKind) = s_kindPairs[i]
+            var (roslynKind, vsKind) = s_kindPairs[i];
             foreach (var match in nameMatches)
                 if (match.Kind == roslynKind)
-                    return vsKind
+                    return vsKind;
 
-        return NavigateToMatchKind.Regular
+        return NavigateToMatchKind.Regular;
 
     private readonly struct DeclaredSymbolInfoKindSet
-        private readonly ImmutableArray<bool> _lookupTable
+        private readonly ImmutableArray<bool> _lookupTable;
 
         public DeclaredSymbolInfoKindSet(IEnumerable<string> navigateToItemKinds)
             // The 'Contains' method implementation assumes that the DeclaredSymbolInfoKind type is unsigned.
-            Debug.Assert(Enum.GetUnderlyingType(typeof(DeclaredSymbolInfoKind)) == typeof(byte))
+            Debug.Assert(Enum.GetUnderlyingType(typeof(DeclaredSymbolInfoKind)) == typeof(byte));
 
-            var lookupTable = new bool[Enum.GetValues<DeclaredSymbolInfoKind>().Length]
+            var lookupTable = new bool[Enum.GetValues<DeclaredSymbolInfoKind>().Length];
             foreach (var navigateToItemKind in navigateToItemKinds)
                 switch (navigateToItemKind)
                     case NavigateToItemKind.Class:
-                        lookupTable[(int)DeclaredSymbolInfoKind.Class] = true
-                        lookupTable[(int)DeclaredSymbolInfoKind.Record] = true
-                        break
+                        lookupTable[(int)DeclaredSymbolInfoKind.Class] = true;
+                        lookupTable[(int)DeclaredSymbolInfoKind.Record] = true;
+                        break;
                     case NavigateToItemKind.Constant:
-                        lookupTable[(int)DeclaredSymbolInfoKind.Constant] = true
-                        break
+                        lookupTable[(int)DeclaredSymbolInfoKind.Constant] = true;
+                        break;
 
                     case NavigateToItemKind.Delegate:
-                        lookupTable[(int)DeclaredSymbolInfoKind.Delegate] = true
-                        break
+                        lookupTable[(int)DeclaredSymbolInfoKind.Delegate] = true;
+                        break;
 
                     case NavigateToItemKind.Enum:
-                        lookupTable[(int)DeclaredSymbolInfoKind.Enum] = true
-                        break
+                        lookupTable[(int)DeclaredSymbolInfoKind.Enum] = true;
+                        break;
 
                     case NavigateToItemKind.EnumItem:
-                        lookupTable[(int)DeclaredSymbolInfoKind.EnumMember] = true
-                        break
+                        lookupTable[(int)DeclaredSymbolInfoKind.EnumMember] = true;
+                        break;
 
                     case NavigateToItemKind.Event:
-                        lookupTable[(int)DeclaredSymbolInfoKind.Event] = true
-                        break
+                        lookupTable[(int)DeclaredSymbolInfoKind.Event] = true;
+                        break;
 
                     case NavigateToItemKind.Field:
-                        lookupTable[(int)DeclaredSymbolInfoKind.Field] = true
-                        break
+                        lookupTable[(int)DeclaredSymbolInfoKind.Field] = true;
+                        break;
 
                     case NavigateToItemKind.Interface:
-                        lookupTable[(int)DeclaredSymbolInfoKind.Interface] = true
-                        break
+                        lookupTable[(int)DeclaredSymbolInfoKind.Interface] = true;
+                        break;
 
                     case NavigateToItemKind.Method:
-                        lookupTable[(int)DeclaredSymbolInfoKind.Constructor] = true
-                        lookupTable[(int)DeclaredSymbolInfoKind.ExtensionMethod] = true
-                        lookupTable[(int)DeclaredSymbolInfoKind.Method] = true
-                        break
+                        lookupTable[(int)DeclaredSymbolInfoKind.Constructor] = true;
+                        lookupTable[(int)DeclaredSymbolInfoKind.ExtensionMethod] = true;
+                        lookupTable[(int)DeclaredSymbolInfoKind.Method] = true;
+                        break;
 
                     case NavigateToItemKind.Module:
-                        lookupTable[(int)DeclaredSymbolInfoKind.Module] = true
-                        break
+                        lookupTable[(int)DeclaredSymbolInfoKind.Module] = true;
+                        break;
 
                     case NavigateToItemKind.Property:
-                        lookupTable[(int)DeclaredSymbolInfoKind.Indexer] = true
-                        lookupTable[(int)DeclaredSymbolInfoKind.Property] = true
-                        break
+                        lookupTable[(int)DeclaredSymbolInfoKind.Indexer] = true;
+                        lookupTable[(int)DeclaredSymbolInfoKind.Property] = true;
+                        break;
 
                     case NavigateToItemKind.Structure:
-                        lookupTable[(int)DeclaredSymbolInfoKind.Struct] = true
-                        lookupTable[(int)DeclaredSymbolInfoKind.RecordStruct] = true
-                        lookupTable[(int)DeclaredSymbolInfoKind.Union] = true
-                        break
+                        lookupTable[(int)DeclaredSymbolInfoKind.Struct] = true;
+                        lookupTable[(int)DeclaredSymbolInfoKind.RecordStruct] = true;
+                        lookupTable[(int)DeclaredSymbolInfoKind.Union] = true;
+                        break;
 
                     default:
                         // Not a recognized symbol info kind
-                        break
+                        break;
 
-            _lookupTable = [.. lookupTable]
+            _lookupTable = [.. lookupTable];
 
         public bool Contains(DeclaredSymbolInfoKind item)
-            return (int)item < _lookupTable.Length                 && _lookupTable[(int)item]
+            return (int)item < _lookupTable.Length                 && _lookupTable[(int)item];

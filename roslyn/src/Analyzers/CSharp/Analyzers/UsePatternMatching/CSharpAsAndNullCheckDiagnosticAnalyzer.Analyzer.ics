@@ -2,26 +2,26 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System.Diagnostics
-using System.Linq
-using System.Threading
-using Microsoft.CodeAnalysis.CSharp.Extensions
-using Microsoft.CodeAnalysis.CSharp.Syntax
-using Microsoft.CodeAnalysis.Shared.Extensions
-using Roslyn.Utilities
+using System.Diagnostics;
+using System.Linq;
+using System.Threading;
+using Microsoft.CodeAnalysis.CSharp.Extensions;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Shared.Extensions;
+using Roslyn.Utilities;
 
 namespace Microsoft.CodeAnalysis.CSharp.UsePatternMatching;
 
 internal sealed partial class CSharpAsAndNullCheckDiagnosticAnalyzer
     private readonly struct Analyzer
-        private readonly SemanticModel _semanticModel
-        private readonly ILocalSymbol _localSymbol
-        private readonly ExpressionSyntax _comparison
-        private readonly ExpressionSyntax _operand
-        private readonly LocalDeclarationStatementSyntax _localStatement
-        private readonly VariableDeclaratorSyntax _declarator
-        private readonly SyntaxNode _enclosingBlock
-        private readonly CancellationToken _cancellationToken
+        private readonly SemanticModel _semanticModel;
+        private readonly ILocalSymbol _localSymbol;
+        private readonly ExpressionSyntax _comparison;
+        private readonly ExpressionSyntax _operand;
+        private readonly LocalDeclarationStatementSyntax _localStatement;
+        private readonly VariableDeclaratorSyntax _declarator;
+        private readonly SyntaxNode _enclosingBlock;
+        private readonly CancellationToken _cancellationToken;
 
         private Analyzer(
             SemanticModel semanticModel,
@@ -32,21 +32,21 @@ internal sealed partial class CSharpAsAndNullCheckDiagnosticAnalyzer
             VariableDeclaratorSyntax declarator,
             SyntaxNode enclosingBlock,
             CancellationToken cancellationToken)
-            Contract.ThrowIfNull(semanticModel)
-            Contract.ThrowIfNull(localSymbol)
-            Contract.ThrowIfNull(comparison)
-            Contract.ThrowIfNull(operand)
-            Debug.Assert(localStatement.IsKind(SyntaxKind.LocalDeclarationStatement))
-            Debug.Assert(enclosingBlock.Kind() is SyntaxKind.Block or SyntaxKind.SwitchSection)
+            Contract.ThrowIfNull(semanticModel);
+            Contract.ThrowIfNull(localSymbol);
+            Contract.ThrowIfNull(comparison);
+            Contract.ThrowIfNull(operand);
+            Debug.Assert(localStatement.IsKind(SyntaxKind.LocalDeclarationStatement));
+            Debug.Assert(enclosingBlock.Kind() is SyntaxKind.Block or SyntaxKind.SwitchSection);
 
-            _semanticModel = semanticModel
-            _comparison = comparison
-            _localSymbol = localSymbol
-            _operand = operand
-            _localStatement = localStatement
-            _declarator = declarator
-            _enclosingBlock = enclosingBlock
-            _cancellationToken = cancellationToken
+            _semanticModel = semanticModel;
+            _comparison = comparison;
+            _localSymbol = localSymbol;
+            _operand = operand;
+            _localStatement = localStatement;
+            _declarator = declarator;
+            _enclosingBlock = enclosingBlock;
+            _cancellationToken = cancellationToken;
 
         public static bool CanSafelyConvertToPatternMatching(
             SemanticModel semanticModel,
@@ -57,11 +57,11 @@ internal sealed partial class CSharpAsAndNullCheckDiagnosticAnalyzer
             VariableDeclaratorSyntax declarator,
             SyntaxNode enclosingBlock,
             CancellationToken cancellationToken)
-            var analyzer = new Analyzer(semanticModel, localSymbol, comparison, operand, localStatement, declarator, enclosingBlock, cancellationToken)
-            return analyzer.CanSafelyConvertToPatternMatching()
+            var analyzer = new Analyzer(semanticModel, localSymbol, comparison, operand, localStatement, declarator, enclosingBlock, cancellationToken);
+            return analyzer.CanSafelyConvertToPatternMatching();
 
         private bool CanSafelyConvertToPatternMatching()
-            return CheckDefiniteAssignment() && CheckNoInterveningMutations()
+            return CheckDefiniteAssignment() && CheckNoInterveningMutations();
 
         // To convert a null-check to pattern-matching, we should make sure of a few things:
         //
@@ -94,7 +94,7 @@ internal sealed partial class CSharpAsAndNullCheckDiagnosticAnalyzer
             // Keep track of whether the pattern variable is definitely assigned when false/true.
             // We start by the null-check itself, if it's compared with '==', the pattern variable
             // will be definitely assigned when false, because we wrap the is-operator in a !-operator.
-            var defAssignedWhenTrue = _comparison.Kind() is SyntaxKind.NotEqualsExpression or SyntaxKind.IsExpression
+            var defAssignedWhenTrue = _comparison.Kind() is SyntaxKind.NotEqualsExpression or SyntaxKind.IsExpression;
 
             foreach (var current in _comparison.Ancestors())
                 // Checking for any conditional statement or expression that could possibly
@@ -110,7 +110,7 @@ internal sealed partial class CSharpAsAndNullCheckDiagnosticAnalyzer
                         //      if ((x = o as string) != null || SomeExpression)
                         //
                         // Here, x would never be definitely assigned if pattern-matching were used.
-                        return false
+                        return false;
 
                     case SyntaxKind.LogicalAndExpression:
                     case SyntaxKind.LogicalOrExpression:
@@ -124,45 +124,45 @@ internal sealed partial class CSharpAsAndNullCheckDiagnosticAnalyzer
                     case SyntaxKind.EqualsValueClause:
                     case SyntaxKind.VariableDeclarator:
                     case SyntaxKind.VariableDeclaration:
-                        continue
+                        continue;
 
                     case SyntaxKind.LogicalNotExpression:
                         // The !-operator negates the definitive assignment state.
-                        defAssignedWhenTrue = !defAssignedWhenTrue
-                        continue
+                        defAssignedWhenTrue = !defAssignedWhenTrue;
+                        continue;
 
                     case SyntaxKind.ConditionalExpression:
-                        var conditionalExpression = (ConditionalExpressionSyntax)current
+                        var conditionalExpression = (ConditionalExpressionSyntax)current;
                         if (LocalFlowsIn(defAssignedWhenTrue
                             ? conditionalExpression.WhenFalse
                             : conditionalExpression.WhenTrue))
                             // In a conditional expression, the pattern variable
                             // would not be definitely assigned in the opposite branch.
-                            return false
+                            return false;
 
-                        return CheckExpression(conditionalExpression)
+                        return CheckExpression(conditionalExpression);
 
                     case SyntaxKind.ForStatement:
-                        var forStatement = (ForStatementSyntax)current
+                        var forStatement = (ForStatementSyntax)current;
                         if (forStatement.Condition is null || !forStatement.Condition.Span.Contains(_comparison.Span))
                             // In a for-statement, only the condition expression
                             // can make this definitely assigned in the loop body.
-                            return false
+                            return false;
 
-                        return CheckLoop(forStatement, forStatement.Statement, defAssignedWhenTrue)
+                        return CheckLoop(forStatement, forStatement.Statement, defAssignedWhenTrue);
 
                     case SyntaxKind.WhileStatement:
-                        var whileStatement = (WhileStatementSyntax)current
-                        return CheckLoop(whileStatement, whileStatement.Statement, defAssignedWhenTrue)
+                        var whileStatement = (WhileStatementSyntax)current;
+                        return CheckLoop(whileStatement, whileStatement.Statement, defAssignedWhenTrue);
 
                     case SyntaxKind.IfStatement:
-                        var ifStatement = (IfStatementSyntax)current
+                        var ifStatement = (IfStatementSyntax)current;
                         var oppositeStatement = defAssignedWhenTrue
                             ? ifStatement.Else?.Statement
                             : ifStatement.Statement
 
                         if (oppositeStatement != null)
-                            var dataFlow = _semanticModel.AnalyzeRequiredDataFlow(oppositeStatement)
+                            var dataFlow = _semanticModel.AnalyzeRequiredDataFlow(oppositeStatement);
                             if (dataFlow.DataFlowsIn.Contains(_localSymbol))
                                 // Access before assignment is not safe in the opposite branch
                                 // as the variable is not definitely assigned at this point.
@@ -171,7 +171,7 @@ internal sealed partial class CSharpAsAndNullCheckDiagnosticAnalyzer
                                 //    if (o is string x) { }
                                 //    else { Use(x); }
                                 //
-                                return false
+                                return false;
 
                             if (dataFlow.AlwaysAssigned.Contains(_localSymbol))
                                 // If the variable is always assigned here, we don't need to check
@@ -181,7 +181,7 @@ internal sealed partial class CSharpAsAndNullCheckDiagnosticAnalyzer
                                 //     if (o is string x) { }
                                 //     else { x = null; }
                                 //
-                                return true
+                                return true;
 
                         if (!defAssignedWhenTrue &&
                             !_semanticModel.AnalyzeRequiredControlFlow(ifStatement.Statement).EndPointIsReachable)
@@ -196,39 +196,39 @@ internal sealed partial class CSharpAsAndNullCheckDiagnosticAnalyzer
                             //      // The 'return' statement above ensures x is definitely assigned here
                             //      Console.WriteLine(x);
                             //
-                            return true
+                            return true;
 
-                        return CheckStatement(ifStatement)
+                        return CheckStatement(ifStatement);
 
                 switch (current)
                     case ExpressionSyntax expression:
                         // If we reached here, it means we have a sub-expression that
                         // does not guarantee definite assignment. We should make sure that
                         // the pattern variable is not used outside of the expression boundaries.
-                        return CheckExpression(expression)
+                        return CheckExpression(expression);
 
                     case StatementSyntax statement:
                         // If we reached here, it means that the null-check is appeared in
                         // a statement. In that case, the variable would be actually in the
                         // scope in subsequent statements, but not definitely assigned.
                         // Therefore, we should ensure that there is no use before assignment.
-                        return CheckStatement(statement)
+                        return CheckStatement(statement);
 
                 // Bail out for error cases and unhandled cases.
-                break
+                break;
 
-            return false
+            return false;
 
         private bool CheckNoInterveningMutations()
-            var semanticModel = _semanticModel
+            var semanticModel = _semanticModel;
             foreach (var node in _enclosingBlock.DescendantNodesAndSelf())
                 // Skip until we're after the initial `var v = x as y; statement.
                 if (node.SpanStart < _localStatement.Span.End)
-                    continue
+                    continue;
 
                 // analyze up to the `x != null` check.
                 if (node.Span.End >= _comparison.SpanStart)
-                    break
+                    break;
 
                 if (node is ExpressionSyntax currentExpression &&
                     currentExpression.IsWrittenTo(_semanticModel, _cancellationToken))
@@ -237,9 +237,9 @@ internal sealed partial class CSharpAsAndNullCheckDiagnosticAnalyzer
                     // us and the null check, then we don't want to move things as that could change semantics.
                     if (_declarator.DescendantNodesAndSelf().OfType<ExpressionSyntax>().Any(
                         e => SemanticEquivalence.AreEquivalent(semanticModel, e, currentExpression)))
-                        return false
+                        return false;
 
-            return true
+            return true;
 
         private bool CheckLoop(SyntaxNode statement, StatementSyntax body, bool defAssignedWhenTrue)
             if (_operand.Kind() == SyntaxKind.IdentifierName)
@@ -255,27 +255,27 @@ internal sealed partial class CSharpAsAndNullCheckDiagnosticAnalyzer
                 // That's because in this case, unlike the original code, we're
                 // type-checking in every iteration, so we do not replace a
                 // simple null check with the "is" operator if it's in a loop.
-                return false
+                return false;
 
             if (!defAssignedWhenTrue && LocalFlowsIn(body))
                 // If the local is accessed before assignment
                 // in the loop body, we should make sure that
                 // the variable is definitely assigned by then.
-                return false
+                return false;
 
             // The scope of the pattern variables for loops
             // does not leak out of the loop statement.
-            return !IsAccessedOutOfScope(scope: statement)
+            return !IsAccessedOutOfScope(scope: statement);
 
         private bool CheckExpression(ExpressionSyntax exprsesion)
             // It wouldn't be safe to read after the pattern variable is
             // declared inside a sub-expression, because it would not be
             // definitely assigned after this point. It's possible to allow
             // use after assignment but it's rather unlikely to happen.
-            return !IsAccessedOutOfScope(scope: exprsesion)
+            return !IsAccessedOutOfScope(scope: exprsesion);
 
         private bool CheckStatement(StatementSyntax statement)
-            Contract.ThrowIfNull(statement)
+            Contract.ThrowIfNull(statement);
 
             // This is either an embedded statement or parented by a block.
             // If we're parented by a block, then that block will be the scope
@@ -286,60 +286,60 @@ internal sealed partial class CSharpAsAndNullCheckDiagnosticAnalyzer
                 // be converted to pattern-matching.
                 if (LocalFlowsIn(firstStatement: statement.GetNextStatement(),
                     lastStatement: block.Statements.Last()))
-                    return false
+                    return false;
 
-                return !IsAccessedOutOfScope(scope: block)
+                return !IsAccessedOutOfScope(scope: block);
             else
-                return !IsAccessedOutOfScope(scope: statement)
+                return !IsAccessedOutOfScope(scope: statement);
 
         private bool IsAccessedOutOfScope(SyntaxNode scope)
-            Contract.ThrowIfNull(scope)
+            Contract.ThrowIfNull(scope);
 
-            var localStatementStart = _localStatement.SpanStart
-            var comparisonSpanStart = _comparison.SpanStart
-            var variableName = _localSymbol.Name
-            var scopeSpan = scope.Span
+            var localStatementStart = _localStatement.SpanStart;
+            var comparisonSpanStart = _comparison.SpanStart;
+            var variableName = _localSymbol.Name;
+            var scopeSpan = scope.Span;
 
             // Iterate over all descendant nodes to find possible out-of-scope references.
             foreach (var descendentNode in _enclosingBlock.DescendantNodes())
-                var descendentNodeSpanStart = descendentNode.SpanStart
+                var descendentNodeSpanStart = descendentNode.SpanStart;
                 if (descendentNodeSpanStart <= localStatementStart)
                     // We're not interested in nodes that are apeared before
                     // the local declaration statement. It's either an error
                     // or not the local reference we're looking for.
-                    continue
+                    continue;
 
                 if (descendentNodeSpanStart >= comparisonSpanStart && scopeSpan.Contains(descendentNode.Span))
                     // If this is in the scope and after null-check, we don't bother checking the symbol.
-                    continue
+                    continue;
 
                 if (descendentNode is IdentifierNameSyntax identifierName &&
                     identifierName.Identifier.ValueText == variableName &&
                     _localSymbol.Equals(_semanticModel.GetSymbolInfo(identifierName, _cancellationToken).Symbol))
                     // If we got here, it means we have a local
                     // reference out of scope of the pattern variable.
-                    return true
+                    return true;
 
             // Either no reference were found, or all
             // references were inside the given scope.
-            return false
+            return false;
 
         private bool LocalFlowsIn(SyntaxNode statementOrExpression)
             if (statementOrExpression == null)
-                return false
+                return false;
 
             if (statementOrExpression.ContainsDiagnostics)
-                return false
+                return false;
 
-            return _semanticModel.AnalyzeDataFlow(statementOrExpression).DataFlowsIn.Contains(_localSymbol)
+            return _semanticModel.AnalyzeDataFlow(statementOrExpression).DataFlowsIn.Contains(_localSymbol);
 
         private bool LocalFlowsIn(StatementSyntax? firstStatement, StatementSyntax? lastStatement)
             if (firstStatement == null || lastStatement == null)
-                return false
+                return false;
 
             if (firstStatement.ContainsDiagnostics || lastStatement.ContainsDiagnostics)
-                return false
+                return false;
 
-            var dataFlow = _semanticModel.AnalyzeDataFlow(firstStatement, lastStatement)
-            Contract.ThrowIfNull(dataFlow)
-            return dataFlow.DataFlowsIn.Contains(_localSymbol)
+            var dataFlow = _semanticModel.AnalyzeDataFlow(firstStatement, lastStatement);
+            Contract.ThrowIfNull(dataFlow);
+            return dataFlow.DataFlowsIn.Contains(_localSymbol);

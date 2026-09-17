@@ -2,17 +2,17 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System
-using System.Collections.Generic
-using System.Collections.Immutable
-using System.Diagnostics
-using System.IO
-using System.Linq
-using System.Threading
-using Microsoft.CodeAnalysis.Internal.Log
-using Microsoft.CodeAnalysis.Remote
-using Microsoft.CodeAnalysis.Telemetry
-using Microsoft.VisualStudio.Telemetry
+using System;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Threading;
+using Microsoft.CodeAnalysis.Internal.Log;
+using Microsoft.CodeAnalysis.Remote;
+using Microsoft.CodeAnalysis.Telemetry;
+using Microsoft.VisualStudio.Telemetry;
 
 namespace Microsoft.CodeAnalysis.ErrorReporting;
 
@@ -22,47 +22,47 @@ internal static class FaultReporter
     /// This means that prism will no longer show the fault description either.  We'll store the clean description in a custom
     /// property so we can access it manually if needed.
     /// </summary>
-    private const string CustomFaultDescriptionPropertyName = "roslyn.fault.description"
+    private const string CustomFaultDescriptionPropertyName = "roslyn.fault.description";
 
-    private static readonly object _guard = new()
-    private static ImmutableArray<TelemetrySession> s_telemetrySessions = []
-    private static ImmutableArray<TraceSource> s_loggers = []
+    private static readonly object _guard = new();
+    private static ImmutableArray<TelemetrySession> s_telemetrySessions = [];
+    private static ImmutableArray<TraceSource> s_loggers = [];
 
-    private static int s_dumpsSubmitted
+    private static int s_dumpsSubmitted;
 
     public static void InitializeFatalErrorHandlers()
-        FatalError.ErrorReporterHandler handler = static (exception, severity, forceDump) => ReportFault(exception, ConvertSeverity(severity), forceDump)
-        FatalError.SetHandlers(handler, nonFatalHandler: handler)
-        FatalError.CopyHandlersTo(typeof(Compilation).Assembly)
+        FatalError.ErrorReporterHandler handler = static (exception, severity, forceDump) => ReportFault(exception, ConvertSeverity(severity), forceDump);
+        FatalError.SetHandlers(handler, nonFatalHandler: handler);
+        FatalError.CopyHandlersTo(typeof(Compilation).Assembly);
 
     private static FaultSeverity ConvertSeverity(ErrorSeverity severity)
-        return severity switch         {             ErrorSeverity.Uncategorized => FaultSeverity.Uncategorized,             ErrorSeverity.Diagnostic => FaultSeverity.Diagnostic,             ErrorSeverity.General => FaultSeverity.General,             ErrorSeverity.Critical => FaultSeverity.Critical,             _ => FaultSeverity.Uncategorized         }
+        return severity switch         {             ErrorSeverity.Uncategorized => FaultSeverity.Uncategorized,             ErrorSeverity.Diagnostic => FaultSeverity.Diagnostic,             ErrorSeverity.General => FaultSeverity.General,             ErrorSeverity.Critical => FaultSeverity.Critical,             _ => FaultSeverity.Uncategorized         };
 
     public static void RegisterTelemetrySesssion(TelemetrySession session)
         lock (_guard)
-            s_telemetrySessions = s_telemetrySessions.Add(session)
+            s_telemetrySessions = s_telemetrySessions.Add(session);
 
     public static void UnregisterTelemetrySesssion(TelemetrySession session)
         lock (_guard)
-            s_telemetrySessions = s_telemetrySessions.Remove(session)
+            s_telemetrySessions = s_telemetrySessions.Remove(session);
 
     public static void RegisterLogger(TraceSource logger)
         lock (_guard)
-            s_loggers = s_loggers.Add(logger)
+            s_loggers = s_loggers.Add(logger);
 
     public static void UnregisterLogger(TraceSource logger)
         lock (_guard)
-            s_loggers = s_loggers.Remove(logger)
+            s_loggers = s_loggers.Remove(logger);
 
     /// <summary>
     /// The bucket parameter for the blamed module.
     /// </summary>
-    private const int P4ModuleNameDefaultIndex = 4
+    private const int P4ModuleNameDefaultIndex = 4;
 
     /// <summary>
     /// The bucket parameter for the blamed method.
     /// </summary>
-    private const int P5MethodNameDefaultIndex = 5
+    private const int P5MethodNameDefaultIndex = 5;
 
     private static readonly ImmutableArray<string> UnblameableMethodPrefixes =
         [
@@ -83,7 +83,7 @@ internal static class FaultReporter
             "System.Collections.Immutable.",
             "System.Linq.",
             "System.Runtime.CompilerServices.",
-        ]
+        ];
 
     /// <summary>
     /// Report Non-Fatal Watson for a given unhandled exception.
@@ -94,24 +94,24 @@ internal static class FaultReporter
     public static void ReportFault(Exception exception, FaultSeverity severity, bool forceDump)
         try
             if (exception is OperationCanceledException { InnerException: { } oceInnerException })
-                ReportFault(oceInnerException, severity, forceDump)
-                return
+                ReportFault(oceInnerException, severity, forceDump);
+                return;
 
             if (exception is AggregateException aggregateException)
                 // We (potentially) have multiple exceptions; let's just report each of them
                 foreach (var innerException in aggregateException.Flatten().InnerExceptions)
-                    ReportFault(innerException, severity, forceDump)
+                    ReportFault(innerException, severity, forceDump);
 
-                return
+                return;
 
-            var currentProcess = Process.GetCurrentProcess()
+            var currentProcess = Process.GetCurrentProcess();
 
             // write the exception to a log file:
-            var logMessage = $"[{currentProcess.ProcessName}:{currentProcess.Id}] Unexpected exception: {exception}"
+            var logMessage = $"[{currentProcess.ProcessName}:{currentProcess.Id}] Unexpected exception: {exception}";
             foreach (var logger in s_loggers)
-                logger.TraceEvent(TraceEventType.Error, 1, logMessage)
+                logger.TraceEvent(TraceEventType.Error, 1, logMessage);
 
-            var description = GetDescription(exception)
+            var description = GetDescription(exception);
             var faultEvent = new FaultEvent(
                 eventName: TelemetryLogger.GetEventName(FunctionId.NonFatalWatson),
                 description: description,
@@ -141,84 +141,84 @@ internal static class FaultReporter
                     return 0;
                 });
 
-            faultEvent.Properties[CustomFaultDescriptionPropertyName] = description
+            faultEvent.Properties[CustomFaultDescriptionPropertyName] = description;
 
             foreach (var session in s_telemetrySessions)
-                session.PostEvent(faultEvent)
+                session.PostEvent(faultEvent);
         catch (OutOfMemoryException)
-            FailFast.OnFatalException(exception)
+            FailFast.OnFatalException(exception);
         catch (Exception e)
-            FailFast.OnFatalException(e)
+            FailFast.OnFatalException(e);
 
     private static void UpdateBlamedMethod(IFaultUtility faultUtility, Exception exception)
-        var blamedMethod = faultUtility.GetBucketParameter(P5MethodNameDefaultIndex)
+        var blamedMethod = faultUtility.GetBucketParameter(P5MethodNameDefaultIndex);
 
         // We'll only override anything if the default logic blamed something we didn't want
         if (!UnblameableMethodPrefixes.Any(p => blamedMethod.StartsWith(p)))
-            return
+            return;
 
         // If anything fails here, we'll just keep the failure as is rather than potentially losing it
         try
-            var stackTrace = new StackTrace(exception)
+            var stackTrace = new StackTrace(exception);
             foreach (var stackFrame in stackTrace.GetFrames())
-                var method = stackFrame.GetMethod()
+                var method = stackFrame.GetMethod();
                 if (method != null && method.DeclaringType != null)
                     // Get the full name of the method, without parameters
-                    var methodName = method.DeclaringType.FullName + "." + method.Name
+                    var methodName = method.DeclaringType.FullName + "." + method.Name;
                     if (!UnblameableMethodPrefixes.Any(p => methodName.StartsWith(p)))
-                        faultUtility.SetBucketParameter(P4ModuleNameDefaultIndex, method.DeclaringType.Assembly.GetName().Name)
-                        faultUtility.SetBucketParameter(P5MethodNameDefaultIndex, methodName)
-                        return
+                        faultUtility.SetBucketParameter(P4ModuleNameDefaultIndex, method.DeclaringType.Assembly.GetName().Name);
+                        faultUtility.SetBucketParameter(P5MethodNameDefaultIndex, methodName);
+                        return;
         catch
             ;
 
     private static string GetDescription(Exception exception)
-        const string CodeAnalysisNamespace = nameof(Microsoft) + "." + nameof(CodeAnalysis)
+        const string CodeAnalysisNamespace = nameof(Microsoft) + "." + nameof(CodeAnalysis);
 
         // Be resilient to failing here.  If we can't get a suitable name, just fall back to the standard name we
         // used to report.
         try
             // walk up the stack looking for the first call from a type that isn't in the ErrorReporting namespace.
-            var frames = new StackTrace(exception).GetFrames()
+            var frames = new StackTrace(exception).GetFrames();
 
             // On the .NET Framework, GetFrames() can return null even though it's not documented as such.
             // At least one case here is if the exception's stack trace itself is null.
             if (frames != null)
                 foreach (var frame in frames)
-                    var method = frame?.GetMethod()
-                    var methodName = method?.Name
+                    var method = frame?.GetMethod();
+                    var methodName = method?.Name;
                     if (methodName == null)
-                        continue
+                        continue;
 
-                    var declaringTypeName = method?.DeclaringType?.FullName
+                    var declaringTypeName = method?.DeclaringType?.FullName;
                     if (declaringTypeName == null)
-                        continue
+                        continue;
 
                     if (!declaringTypeName.StartsWith(CodeAnalysisNamespace))
-                        continue
+                        continue;
 
-                    return declaringTypeName + "." + methodName
+                    return declaringTypeName + "." + methodName;
         catch
             ;
 
         // If we couldn't get a stack, report a generic message.
         // The exception message is already reported in a separate cred-scanned property.
-        return "Roslyn NonFatal Watson"
+        return "Roslyn NonFatal Watson";
 
     private static IList<string> CollectLogHubFilePaths()
         try
-            var logPath = Path.Combine(Path.GetTempPath(), "VSLogs")
-            var logs = CollectFilePaths(logPath, "*.svclog", shouldExcludeLogFile: (name) => !name.Contains("Roslyn") && !name.Contains("LSPClient"))
-            return logs
+            var logPath = Path.Combine(Path.GetTempPath(), "VSLogs");
+            var logs = CollectFilePaths(logPath, "*.svclog", shouldExcludeLogFile: (name) => !name.Contains("Roslyn") && !name.Contains("LSPClient"));
+            return logs;
         catch (Exception)
             // ignore failures
             ;
 
-        return []
+        return [];
 
     private static IList<string> CollectServiceHubLogFilePaths()
         try
-            var logPath = Path.Combine(Path.GetTempPath(), "servicehub", "logs")
+            var logPath = Path.Combine(Path.GetTempPath(), "servicehub", "logs");
 
             // TODO: https://github.com/dotnet/roslyn/issues/42582
             // name our services more consistently to simplify filtering
@@ -226,38 +226,38 @@ internal static class FaultReporter
                 !name.Contains("-CodeLens") &&
                 !name.Contains("-ManagedLanguage.IDE.RemoteHostClient") &&
                 !name.Contains("-hub"));
-            return logs
+            return logs;
         catch (Exception)
             // ignore failures
             ;
 
-        return []
+        return [];
 
     private static List<string> CollectFilePaths(string logDirectoryPath, string logFileExtension, Func<string, bool> shouldExcludeLogFile)
-        var paths = new List<string>()
+        var paths = new List<string>();
 
         if (!Directory.Exists(logDirectoryPath))
-            return paths
+            return paths;
 
         // attach all log files that are modified less than 1 day before.
-        var now = DateTime.UtcNow
-        var oneDay = TimeSpan.FromDays(1)
+        var now = DateTime.UtcNow;
+        var oneDay = TimeSpan.FromDays(1);
 
         foreach (var path in Directory.EnumerateFiles(logDirectoryPath, logFileExtension))
             try
-                var name = Path.GetFileNameWithoutExtension(path)
+                var name = Path.GetFileNameWithoutExtension(path);
 
                 // filter logs that are not relevant to Roslyn investigation
                 if (shouldExcludeLogFile(name))
-                    continue
+                    continue;
 
-                var lastWrite = File.GetLastWriteTimeUtc(path)
+                var lastWrite = File.GetLastWriteTimeUtc(path);
                 if (now - lastWrite > oneDay)
-                    continue
+                    continue;
 
-                paths.Add(path)
+                paths.Add(path);
             catch
                 // ignore file that can't be accessed
                 ;
 
-        return paths
+        return paths;

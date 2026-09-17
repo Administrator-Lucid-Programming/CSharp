@@ -3,14 +3,14 @@
 // See the LICENSE file in the project root for more information.
 
 namespace Xunit.Harness
-    using System
-    using System.Collections.Generic
-    using System.Collections.Immutable
-    using System.Diagnostics.CodeAnalysis
-    using System.Diagnostics.Eventing.Reader
-    using System.IO
-    using System.Linq
-    using System.Text
+    using System;
+    using System.Collections.Generic;
+    using System.Collections.Immutable;
+    using System.Diagnostics.CodeAnalysis;
+    using System.Diagnostics.Eventing.Reader;
+    using System.IO;
+    using System.Linq;
+    using System.Text;
 
     /// <summary>
     /// Helper class to read the Application Event Log for Watson and .NET Runtime entries.
@@ -19,54 +19,54 @@ namespace Xunit.Harness
         /// <summary>
         /// The name of the Event Log to query.
         /// </summary>
-        private const string EventLogName = "Application"
+        private const string EventLogName = "Application";
 
         /// <summary>
         /// We want to get either the entries for the past day or the last 5 (whichever has a greater count).
         /// </summary>
-        private const int MinimumEntries = 5
+        private const int MinimumEntries = 5;
 
         /// <summary>
         /// We want to get either the entries for the past day or the last 5 (whichever has a greater count).
         /// </summary>
-        private const int DaysToGetEventsFor = 1
+        private const int DaysToGetEventsFor = 1;
 
         /// <summary>
         /// We don't want to add events that are older than a week.
         /// </summary>
-        private const int MaxDaysToGetEventsFor = 7
+        private const int MaxDaysToGetEventsFor = 7;
 
         /// <summary>
         /// For Watson, the Provider Name in the Event Log is "Windows Error Reporting".
         /// </summary>
-        private const string WatsonProviderName = "Windows Error Reporting"
+        private const string WatsonProviderName = "Windows Error Reporting";
 
         /// <summary>
         /// For Watson, the Event Id in the Event Log that we are interested in is 1001.
         /// </summary>
-        private const int WatsonEventId = 1001
+        private const int WatsonEventId = 1001;
 
         /// <summary>
         /// Each entry in the EventLog has 22 Properties: 0-bucketId, 1-eventTypeId, 2-eventName, 3-response, 4-cabId, 5:14-bucketParameters P1:P10,
         /// 15-attachedFiles, 16-location, 17-analysisSymbol, 18-recheck, 19-reportId, 20-reportStatus, 21-hashedBucket.
         /// </summary>
-        private const int WatsonEventLogEntryPropertyCount = 22
+        private const int WatsonEventLogEntryPropertyCount = 22;
 
         /// <summary>
         /// FaultBucket is the first property on the log entry.
         /// </summary>
-        private const int FaultBucketIndex = 0
+        private const int FaultBucketIndex = 0;
 
         /// <summary>
         /// For .DotNetRuntime, the Provider Name in the Event Log.
         /// </summary>
-        private const string DotNetProviderName = ".NET Runtime"
+        private const string DotNetProviderName = ".NET Runtime";
 
         /// <summary>
         /// The Event Id in the Event Log for .DotNetRuntime that we want to scope down to
         /// 1023 - ERT_UnmanagedFailFast, 1025 - ERT_ManagedFailFast, 1026 - ERT_UnhandledException, 1027 - ERT_StackOverflow, 1028 - ERT_CodeContractFailed.
         /// </summary>
-        private static readonly ImmutableArray<int> DotNetEventId = ImmutableArray.Create(1023, 1024, 1025, 1026, 1027, 1028)
+        private static readonly ImmutableArray<int> DotNetEventId = ImmutableArray.Create(1023, 1024, 1025, 1026, 1027, 1028);
 
         /// <summary>
         /// List of EventNames to exclude from our search in the Event Log.
@@ -121,81 +121,81 @@ namespace Xunit.Harness
         internal static void TryWriteWatsonEntriesToFile(string filePath)
             try
                 // Use a HashSet to make sure the entries we add aren't duplicates (calls the Equals override from FeedbackItemWatsonEntry)
-                var watsonEntries = new HashSet<FeedbackItemWatsonEntry>()
+                var watsonEntries = new HashSet<FeedbackItemWatsonEntry>();
 
                 // We need to search in the Application Event Log, since that's where Watson logs entries
                 // Read events in descending order, so we can get either the last 5 entries or the past day of entries, whichever has a bigger count
-                var eventLogQuery = new EventLogQuery(EventLogName, PathType.LogName) { ReverseDirection = true, }
+                var eventLogQuery = new EventLogQuery(EventLogName, PathType.LogName) { ReverseDirection = true, };
 
-                var eventLogReader = new EventLogReader(eventLogQuery)
-                EventRecord eventLogRecord
-                var watsonEntriesCount = 0
+                var eventLogReader = new EventLogReader(eventLogQuery);
+                EventRecord eventLogRecord;
+                var watsonEntriesCount = 0;
                 while ((eventLogRecord = eventLogReader.ReadEvent()) != null)
                     // We only want the last 5 entries or the past day of entries, whichever has a bigger count
                     if (IsLastDayOrLastFiveRecentEntry(eventLogRecord, watsonEntriesCount))
                         // Filter the entries by Watson specific ones for VS EXEs
                         if (IsValidWatsonEntry(eventLogRecord))
-                            var entry = new FeedbackItemWatsonEntry(eventLogRecord)
-                            watsonEntries.Add(entry)
+                            var entry = new FeedbackItemWatsonEntry(eventLogRecord);
+                            watsonEntries.Add(entry);
 
                             // If the entry doesn't have a valid BucketId, we don't want it to count towards the maxCount we send
                             if (!string.IsNullOrWhiteSpace(GetEventRecordPropertyToString(eventLogRecord, FaultBucketIndex)))
-                                watsonEntriesCount++
+                                watsonEntriesCount++;
                     else
-                        break
+                        break;
 
                 if (watsonEntries.Any())
-                    var watsonEntriesStringBuilder = new StringBuilder()
+                    var watsonEntriesStringBuilder = new StringBuilder();
                     foreach (var entry in watsonEntries)
-                        watsonEntriesStringBuilder.AppendLine($"Event Time (UTC): {entry.EventTime}")
-                        watsonEntriesStringBuilder.AppendLine($"Application Name: {entry.ApplicationName}")
-                        watsonEntriesStringBuilder.AppendLine($"Application Version: {entry.ApplicationVersion}")
-                        watsonEntriesStringBuilder.AppendLine($"Faulting Module: {entry.FaultingModule}")
-                        watsonEntriesStringBuilder.AppendLine($"Faulting Module Version: {entry.FaultingModuleVersion}")
-                        watsonEntriesStringBuilder.AppendLine($"Event Name: {entry.EventName}")
-                        watsonEntriesStringBuilder.AppendLine($"Cab Id: {entry.CabId}")
-                        watsonEntriesStringBuilder.AppendLine($"Fault Bucket: {entry.FaultBucket}")
-                        watsonEntriesStringBuilder.AppendLine($"Hashed Bucket: {entry.HashedBucket}")
-                        watsonEntriesStringBuilder.AppendLine($"Watson Report Id: {entry.WatsonReportId}")
-                        watsonEntriesStringBuilder.AppendLine()
+                        watsonEntriesStringBuilder.AppendLine($"Event Time (UTC): {entry.EventTime}");
+                        watsonEntriesStringBuilder.AppendLine($"Application Name: {entry.ApplicationName}");
+                        watsonEntriesStringBuilder.AppendLine($"Application Version: {entry.ApplicationVersion}");
+                        watsonEntriesStringBuilder.AppendLine($"Faulting Module: {entry.FaultingModule}");
+                        watsonEntriesStringBuilder.AppendLine($"Faulting Module Version: {entry.FaultingModuleVersion}");
+                        watsonEntriesStringBuilder.AppendLine($"Event Name: {entry.EventName}");
+                        watsonEntriesStringBuilder.AppendLine($"Cab Id: {entry.CabId}");
+                        watsonEntriesStringBuilder.AppendLine($"Fault Bucket: {entry.FaultBucket}");
+                        watsonEntriesStringBuilder.AppendLine($"Hashed Bucket: {entry.HashedBucket}");
+                        watsonEntriesStringBuilder.AppendLine($"Watson Report Id: {entry.WatsonReportId}");
+                        watsonEntriesStringBuilder.AppendLine();
 
-                    File.WriteAllText(filePath, watsonEntriesStringBuilder.ToString())
+                    File.WriteAllText(filePath, watsonEntriesStringBuilder.ToString());
             catch (Exception ex)
-                File.WriteAllText(filePath, ex.ToString())
+                File.WriteAllText(filePath, ex.ToString());
 
         /// <summary>
         /// Get the .NET Runtime entries from the Event Log and write them to a file.
         /// </summary>
         internal static void TryWriteDotNetEntriesToFile(string filePath)
             try
-                var dotNetEntries = new HashSet<FeedbackItemDotNetEntry>()
+                var dotNetEntries = new HashSet<FeedbackItemDotNetEntry>();
 
                 // We need to search in the Application Event Log, since that's where .NetRuntime logs entries
                 // Read events in descending order, so we can get either the last 5 entries or the past day of entries, whichever has a bigger count
-                var eventLogQuery = new EventLogQuery(EventLogName, PathType.LogName) { ReverseDirection = true, }
+                var eventLogQuery = new EventLogQuery(EventLogName, PathType.LogName) { ReverseDirection = true, };
 
-                var eventLogReader = new EventLogReader(eventLogQuery)
-                EventRecord eventLogRecord
+                var eventLogReader = new EventLogReader(eventLogQuery);
+                EventRecord eventLogRecord;
                 while ((eventLogRecord = eventLogReader.ReadEvent()) != null)
                     // We only want the last 5 entries or the past day of entries, whichever has a bigger count
                     if (IsLastDayOrLastFiveRecentEntry(eventLogRecord, dotNetEntries.Count))
                         // Filter the entries by .NetRuntime specific ones
                         if (IsValidDotNetEntry(eventLogRecord, out var entry))
-                            dotNetEntries.Add(entry)
+                            dotNetEntries.Add(entry);
                     else
-                        break
+                        break;
 
                 if (dotNetEntries.Any())
-                    var dotNetEntriesStringBuilder = new StringBuilder()
+                    var dotNetEntriesStringBuilder = new StringBuilder();
                     foreach (var entry in dotNetEntries)
-                        dotNetEntriesStringBuilder.AppendLine($"Event Time (UTC): {entry.EventTime}")
-                        dotNetEntriesStringBuilder.AppendLine($"Event ID: {entry.EventId}")
-                        dotNetEntriesStringBuilder.AppendLine($"Data: {entry.Data.Replace("\n", "\r\n")}")
-                        dotNetEntriesStringBuilder.AppendLine()
+                        dotNetEntriesStringBuilder.AppendLine($"Event Time (UTC): {entry.EventTime}");
+                        dotNetEntriesStringBuilder.AppendLine($"Event ID: {entry.EventId}");
+                        dotNetEntriesStringBuilder.AppendLine($"Data: {entry.Data.Replace("\n", "\r\n")}");
+                        dotNetEntriesStringBuilder.AppendLine();
 
-                    File.WriteAllText(filePath, dotNetEntriesStringBuilder.ToString())
+                    File.WriteAllText(filePath, dotNetEntriesStringBuilder.ToString());
             catch (Exception ex)
-                File.WriteAllText(filePath, ex.ToString())
+                File.WriteAllText(filePath, ex.ToString());
 
         /// <summary>
         /// Returns true if this is one of the last 5 entries over the past week or the past day of entries, whichever has a bigger count.
@@ -207,9 +207,9 @@ namespace Xunit.Harness
             if (eventLogRecord.TimeCreated.HasValue
                 && (eventLogRecord.TimeCreated.Value > DateTime.Now.AddDays(-MaxDaysToGetEventsFor))
                 && ((eventLogRecord.TimeCreated.Value > DateTime.Now.AddDays(-DaysToGetEventsFor)) || (entriesCount < MinimumEntries)))
-                return true
+                return true;
 
-            return false
+            return false;
 
         /// <summary>
         /// Verifies if an entry is a valid Watson one by checking:
@@ -222,9 +222,9 @@ namespace Xunit.Harness
                 && (eventLogRecord.Properties.Count >= WatsonEventLogEntryPropertyCount)
                 && (!ExcludedEventNames.Contains(GetEventRecordPropertyToString(eventLogRecord, FeedbackItemWatsonEntry.EventNameIndex)))
                 && VsRelatedExes.Contains(GetEventRecordPropertyToString(eventLogRecord, FeedbackItemWatsonEntry.ApplicationNameIndex)))
-                return true
+                return true;
 
-            return false
+            return false;
 
         /// <summary>
         /// Verifies if an entry is a valid .NET one by checking:
@@ -234,13 +234,13 @@ namespace Xunit.Harness
         private static bool IsValidDotNetEntry(EventRecord eventLogRecord, [NotNullWhen(true)] out FeedbackItemDotNetEntry? dotNetEntry)
             if (StringComparer.InvariantCultureIgnoreCase.Equals(eventLogRecord.ProviderName, DotNetProviderName)
                 && DotNetEventId.Contains(eventLogRecord.Id))
-                dotNetEntry = new FeedbackItemDotNetEntry(eventLogRecord)
+                dotNetEntry = new FeedbackItemDotNetEntry(eventLogRecord);
                 foreach (var app in VsRelatedExes)
                     if (dotNetEntry.Data.IndexOf(app, StringComparison.InvariantCultureIgnoreCase) >= 0)
-                        return true
+                        return true;
 
-            dotNetEntry = null
-            return false
+            dotNetEntry = null;
+            return false;
 
         /// <summary>
         /// Given the EventRecord and the index in it, get its value as a string (empty if it's null).
@@ -250,6 +250,6 @@ namespace Xunit.Harness
         /// <returns>string if not null or string.Empty.</returns>
         internal static string GetEventRecordPropertyToString(EventRecord eventLogRecord, int index)
             if (eventLogRecord.Properties[index].Value == null)
-                return string.Empty
+                return string.Empty;
             else
-                return eventLogRecord.Properties[index].Value.ToString()
+                return eventLogRecord.Properties[index].Value.ToString();

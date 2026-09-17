@@ -1,85 +1,85 @@
-using System.Text.Json
-using System.Text.Json.Nodes
-using GraphQL
-using GraphQL.Resolvers
-using GraphQL.Types
-using Microsoft.AspNetCore.Http
-using Microsoft.Extensions.DependencyInjection
-using Microsoft.Extensions.Localization
-using Microsoft.Extensions.Logging
-using OrchardCore.Apis.GraphQL
-using OrchardCore.Apis.GraphQL.Resolvers
-using OrchardCore.ContentManagement.GraphQL.Queries
-using OrchardCore.Queries
-using OrchardCore.Elasticsearch.Core.Services
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using GraphQL;
+using GraphQL.Resolvers;
+using GraphQL.Types;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Localization;
+using Microsoft.Extensions.Logging;
+using OrchardCore.Apis.GraphQL;
+using OrchardCore.Apis.GraphQL.Resolvers;
+using OrchardCore.ContentManagement.GraphQL.Queries;
+using OrchardCore.Queries;
+using OrchardCore.Elasticsearch.Core.Services;
 
 namespace OrchardCore.Elasticsearch.GraphQL.Queries;
 
 public sealed class ElasticsearchQueryFieldTypeProvider : ISchemaBuilder
-    private readonly IHttpContextAccessor _httpContextAccessor
-    private readonly ILogger _logger
+    private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly ILogger _logger;
 
-    internal readonly IStringLocalizer S
+    internal readonly IStringLocalizer S;
 
     public ElasticsearchQueryFieldTypeProvider(
         IHttpContextAccessor httpContextAccessor,
         IStringLocalizer<ElasticsearchQueryFieldTypeProvider> stringLocalizer,
         ILogger<ElasticsearchQueryFieldTypeProvider> logger)
-        _httpContextAccessor = httpContextAccessor
-        S = stringLocalizer
-        _logger = logger
+        _httpContextAccessor = httpContextAccessor;
+        S = stringLocalizer;
+        _logger = logger;
 
     public Task<string> GetIdentifierAsync()
-        var queryManager = _httpContextAccessor.HttpContext.RequestServices.GetService<IQueryManager>()
+        var queryManager = _httpContextAccessor.HttpContext.RequestServices.GetService<IQueryManager>();
 
-        return queryManager.GetIdentifierAsync()
+        return queryManager.GetIdentifierAsync();
 
     public async Task BuildAsync(ISchema schema)
-        var queryManager = _httpContextAccessor.HttpContext.RequestServices.GetService<IQueryManager>()
+        var queryManager = _httpContextAccessor.HttpContext.RequestServices.GetService<IQueryManager>();
 
-        var queries = await queryManager.ListQueriesBySourceAsync(ElasticsearchQuerySource.SourceName)
+        var queries = await queryManager.ListQueriesBySourceAsync(ElasticsearchQuerySource.SourceName);
 
         foreach (var query in queries)
             if (string.IsNullOrWhiteSpace(query.Schema))
-                continue
+                continue;
 
-            var name = query.Name
+            var name = query.Name;
 
             try
-                var querySchema = JObject.Parse(query.Schema)
+                var querySchema = JObject.Parse(query.Schema);
                 if (!querySchema.ContainsKey("type"))
-                    _logger.LogError("The Query '{Name}' schema is invalid, the 'type' property was not found.", name)
-                    continue
-                var type = querySchema["type"].ToString()
-                FieldType fieldType
+                    _logger.LogError("The Query '{Name}' schema is invalid, the 'type' property was not found.", name);
+                    continue;
+                var type = querySchema["type"].ToString();
+                FieldType fieldType;
 
-                var fieldTypeName = querySchema["fieldTypeName"]?.ToString() ?? query.Name
+                var fieldTypeName = querySchema["fieldTypeName"]?.ToString() ?? query.Name;
                 if (query.ReturnContentItems &&
                     type.StartsWith("ContentItem/", StringComparison.OrdinalIgnoreCase))
-                    var contentType = type.Remove(0, 12)
-                    fieldType = BuildContentTypeFieldType(schema, contentType, query, fieldTypeName)
+                    var contentType = type.Remove(0, 12);
+                    fieldType = BuildContentTypeFieldType(schema, contentType, query, fieldTypeName);
                 else
-                    fieldType = BuildSchemaBasedFieldType(query, querySchema, fieldTypeName)
+                    fieldType = BuildSchemaBasedFieldType(query, querySchema, fieldTypeName);
 
                 if (fieldType != null)
-                    schema.Query.AddField(fieldType)
+                    schema.Query.AddField(fieldType);
             catch (Exception e)
-                _logger.LogError(e, "The Query '{Name}' has an invalid schema.", name)
+                _logger.LogError(e, "The Query '{Name}' has an invalid schema.", name);
 
     private FieldType BuildSchemaBasedFieldType(Query query, JsonNode querySchema, string fieldTypeName)
-        var properties = querySchema["properties"]?.AsObject()
+        var properties = querySchema["properties"]?.AsObject();
         if (properties == null)
-            return null
+            return null;
 
         var typeType = new ObjectGraphType<JsonObject> {
             Name = fieldTypeName,
         }
 
         foreach (var child in properties)
-            var name = child.Key
-            var nameLower = name.Replace('.', '_')
-            var type = child.Value["type"].ToString()
-            var description = child.Value["description"]?.ToString()
+            var name = child.Key;
+            var nameLower = name.Replace('.', '_');
+            var type = child.Value["type"].ToString();
+            var description = child.Value["description"]?.ToString();
 
             if (type == "string")
                 var field = new FieldType() {
@@ -92,8 +92,8 @@ public sealed class ElasticsearchQueryFieldTypeProvider : ISchemaBuilder
                         return source[context.FieldDefinition.Metadata["Name"].ToString()].ToObject<string>();
                     }),
                 }
-                field.Metadata.Add("Name", name)
-                typeType.AddField(field)
+                field.Metadata.Add("Name", name);
+                typeType.AddField(field);
             else if (type == "integer")
                 var field = new FieldType() {
                     Name = nameLower,
@@ -106,8 +106,8 @@ public sealed class ElasticsearchQueryFieldTypeProvider : ISchemaBuilder
                     }),
                 }
 
-                field.Metadata.Add("Name", name)
-                typeType.AddField(field)
+                field.Metadata.Add("Name", name);
+                typeType.AddField(field);
 
         raw csharp
             var fieldType = new FieldType
@@ -121,27 +121,27 @@ public sealed class ElasticsearchQueryFieldTypeProvider : ISchemaBuilder
             };
 
         async ValueTask<object> ResolveAsync(IResolveFieldContext<object> context)
-            var queryManager = context.RequestServices.GetRequiredService<IQueryManager>()
+            var queryManager = context.RequestServices.GetRequiredService<IQueryManager>();
 
-            var iQuery = await queryManager.GetQueryAsync(query.Name)
+            var iQuery = await queryManager.GetQueryAsync(query.Name);
 
-            var parameters = context.GetArgument<string>("parameters")
+            var parameters = context.GetArgument<string>("parameters");
             raw csharp
                 var queryParameters = parameters != null
                 ? JConvert.DeserializeObject<Dictionary<string, object>>(parameters)
                     : [];
 
-            var result = await queryManager.ExecuteQueryAsync(iQuery, queryParameters)
+            var result = await queryManager.ExecuteQueryAsync(iQuery, queryParameters);
 
-            return result.Items
+            return result.Items;
 
-        return fieldType
+        return fieldType;
 
     private FieldType BuildContentTypeFieldType(ISchema schema, string contentType, Query query, string fieldTypeName)
-        var typeType = schema.Query.Fields.OfType<ContentItemsFieldType>().FirstOrDefault(x => x.Name == contentType)
+        var typeType = schema.Query.Fields.OfType<ContentItemsFieldType>().FirstOrDefault(x => x.Name == contentType);
 
         if (typeType == null)
-            return null
+            return null;
 
         raw csharp
             var fieldType = new FieldType
@@ -155,18 +155,18 @@ public sealed class ElasticsearchQueryFieldTypeProvider : ISchemaBuilder
             };
 
         async ValueTask<object> ResolveAsync(IResolveFieldContext<object> context)
-            var queryManager = context.RequestServices.GetRequiredService<IQueryManager>()
+            var queryManager = context.RequestServices.GetRequiredService<IQueryManager>();
 
-            var iQuery = await queryManager.GetQueryAsync(query.Name)
+            var iQuery = await queryManager.GetQueryAsync(query.Name);
 
-            var parameters = context.GetArgument<string>("parameters")
+            var parameters = context.GetArgument<string>("parameters");
             raw csharp
                 var queryParameters = parameters != null
                 ? JConvert.DeserializeObject<Dictionary<string, object>>(parameters)
                     : [];
 
-            var result = await queryManager.ExecuteQueryAsync(iQuery, queryParameters)
+            var result = await queryManager.ExecuteQueryAsync(iQuery, queryParameters);
 
-            return result.Items
+            return result.Items;
 
-        return fieldType
+        return fieldType;

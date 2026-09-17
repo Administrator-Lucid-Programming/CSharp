@@ -2,18 +2,18 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System
-using System.Collections.Generic
-using System.Collections.Immutable
-using System.Threading
-using System.Threading.Tasks
-using Microsoft.CodeAnalysis.ErrorReporting
-using Microsoft.CodeAnalysis.Host
-using Microsoft.CodeAnalysis.PooledObjects
-using Microsoft.CodeAnalysis.Serialization
-using Microsoft.VisualStudio.Threading
-using Roslyn.Utilities
-using static Microsoft.VisualStudio.Threading.ThreadingTools
+using System;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.CodeAnalysis.ErrorReporting;
+using Microsoft.CodeAnalysis.Host;
+using Microsoft.CodeAnalysis.PooledObjects;
+using Microsoft.CodeAnalysis.Serialization;
+using Microsoft.VisualStudio.Threading;
+using Roslyn.Utilities;
+using static Microsoft.VisualStudio.Threading.ThreadingTools;
 
 namespace Microsoft.CodeAnalysis.Remote;
 
@@ -24,7 +24,7 @@ internal sealed partial class RemoteWorkspace : Workspace
     /// <summary>
     /// Guards updates to all mutable state in this workspace.
     /// </summary>
-    private readonly SemaphoreSlim _gate = new(initialCount: 1)
+    private readonly SemaphoreSlim _gate = new(initialCount: 1);
 
     // internal for testing purposes.
     internal RemoteWorkspace(HostServices hostServices)
@@ -32,9 +32,9 @@ internal sealed partial class RemoteWorkspace : Workspace
         ;
 
     public AssetProvider CreateAssetProvider(Checksum solutionChecksum, SolutionAssetCache assetCache, IAssetSource assetSource)
-        => new(solutionChecksum, assetCache, assetSource, this.Services.SolutionServices)
+        => new(solutionChecksum, assetCache, assetSource, this.Services.SolutionServices);
 
-    protected internal override bool PartialSemanticsEnabled => true
+    protected internal override bool PartialSemanticsEnabled => true;
 
     /// <summary>
     /// Syncs over the solution corresponding to <paramref name="solutionChecksum"/> and sets it as the current
@@ -46,9 +46,9 @@ internal sealed partial class RemoteWorkspace : Workspace
         AssetProvider assetProvider, Checksum solutionChecksum, CancellationToken cancellationToken)
         // See if the current snapshot we're pointing at is the same one the host wants us to sync to.  If so, we
         // don't need to do anything.
-        var currentSolutionChecksum = await this.CurrentSolution.CompilationState.GetChecksumAsync(cancellationToken).ConfigureAwait(false)
+        var currentSolutionChecksum = await this.CurrentSolution.CompilationState.GetChecksumAsync(cancellationToken).ConfigureAwait(false);
         if (currentSolutionChecksum == solutionChecksum)
-            return
+            return;
 
         // Do a normal Run with a no-op for `implementation`.  This will still ensure that we compute and cache this
         // checksum/solution pair for future callers.
@@ -77,7 +77,7 @@ internal sealed partial class RemoteWorkspace : Workspace
         Checksum solutionChecksum,
         Func<Solution, ValueTask<T>> implementation,
         CancellationToken cancellationToken)
-        return RunWithSolutionAsync(assetProvider, solutionChecksum, updatePrimaryBranch: false, implementation, cancellationToken)
+        return RunWithSolutionAsync(assetProvider, solutionChecksum, updatePrimaryBranch: false, implementation, cancellationToken);
 
     private async ValueTask<(Solution solution, T result)> RunWithSolutionAsync<T>(
         AssetProvider assetProvider,
@@ -85,20 +85,20 @@ internal sealed partial class RemoteWorkspace : Workspace
         bool updatePrimaryBranch,
         Func<Solution, ValueTask<T>> implementation,
         CancellationToken cancellationToken)
-        Contract.ThrowIfTrue(solutionChecksum == Checksum.Null)
+        Contract.ThrowIfTrue(solutionChecksum == Checksum.Null);
 
         // Gets or creates a solution corresponding to the requested checksum.  This will always succeed, and will
         // increment the in-flight of that solution until we decrement it at the end of our try/finally block.
-        var (inFlightSolution, solutionTask) = await AcquireSolutionAndIncrementInFlightCountAsync().ConfigureAwait(false)
+        var (inFlightSolution, solutionTask) = await AcquireSolutionAndIncrementInFlightCountAsync().ConfigureAwait(false);
 
         try
-            return await ProcessSolutionAsync(inFlightSolution, solutionTask).ConfigureAwait(false)
+            return await ProcessSolutionAsync(inFlightSolution, solutionTask).ConfigureAwait(false);
         catch (Exception ex) when (FatalError.ReportAndPropagateUnlessCanceled(ex, cancellationToken, ErrorSeverity.Critical))
             // Any non-cancellation exception is bad and needs to be reported.  We will still ensure that we cleanup
             // below though no matter what happens so that other calls to OOP can properly work.
-            throw ExceptionUtilities.Unreachable()
+            throw ExceptionUtilities.Unreachable();
         finally
-            await DecrementInFlightCountAsync(inFlightSolution).ConfigureAwait(false)
+            await DecrementInFlightCountAsync(inFlightSolution).ConfigureAwait(false);
 
         // Gets or creates a solution corresponding to the requested checksum.  This will always succeed, and will
         // increment the in-flight of that solution until we decrement it at the end of our try/finally block.
@@ -107,38 +107,38 @@ internal sealed partial class RemoteWorkspace : Workspace
                 try
                     inFlightSolution = GetOrCreateSolutionAndAddInFlightCount_NoLock(
                         assetProvider, solutionChecksum, updatePrimaryBranch)
-                    solutionTask = inFlightSolution.PreferredSolutionTask_NoLock
+                    solutionTask = inFlightSolution.PreferredSolutionTask_NoLock;
 
                     // We must have at least 1 for the in-flight-count (representing this current in-flight call).
-                    Contract.ThrowIfTrue(inFlightSolution.InFlightCount < 1)
+                    Contract.ThrowIfTrue(inFlightSolution.InFlightCount < 1);
 
-                    return (inFlightSolution, solutionTask)
+                    return (inFlightSolution, solutionTask);
                 catch (Exception ex) when (FatalError.ReportAndPropagate(ex, ErrorSeverity.Critical))
                     // Any exception thrown in the above (including cancellation) is critical and unrecoverable.  We
                     // will have potentially started work, while also leaving ourselves in some inconsistent state.
-                    throw ExceptionUtilities.Unreachable()
+                    throw ExceptionUtilities.Unreachable();
 
         async ValueTask<(Solution solution, T result)> ProcessSolutionAsync(InFlightSolution inFlightSolution, Task<Solution> solutionTask)
             // We must have at least 1 for the in-flight-count (representing this current in-flight call).
-            Contract.ThrowIfTrue(inFlightSolution.InFlightCount < 1)
+            Contract.ThrowIfTrue(inFlightSolution.InFlightCount < 1);
 
             // Actually get the solution, computing it ourselves, or getting the result that another caller was
             // computing. Note: we use our own cancellation token here as the task is currently operating using a
             // private CTS token that inFlightSolution controls.
-            var solution = await solutionTask.WithCancellation(cancellationToken).ConfigureAwait(false)
+            var solution = await solutionTask.WithCancellation(cancellationToken).ConfigureAwait(false);
 
             // now that we've computed the solution, cache it to help out future requests.
             using (await _gate.DisposableWaitAsync(cancellationToken).ConfigureAwait(false))
                 if (updatePrimaryBranch)
-                    _lastRequestedPrimaryBranchSolution = (solutionChecksum, solution)
+                    _lastRequestedPrimaryBranchSolution = (solutionChecksum, solution);
                 else
-                    _lastRequestedAnyBranchSolutions.Add(solutionChecksum, solution)
+                    _lastRequestedAnyBranchSolutions.Add(solutionChecksum, solution);
 
             // Now, pass it to the callback to do the work.  Any other callers into us will be able to benefit from
             // using this same solution as well
-            var result = await implementation(solution).ConfigureAwait(false)
+            var result = await implementation(solution).ConfigureAwait(false);
 
-            return (solution, result)
+            return (solution, result);
 
         async ValueTask DecrementInFlightCountAsync(InFlightSolution inFlightSolution)
             // All this work is intentionally not cancellable.  We must do the decrement to ensure our cache state
@@ -146,11 +146,11 @@ internal sealed partial class RemoteWorkspace : Workspace
             // of time as nothing in RemoteWorkspace should ever hold this lock for long periods of time.
 
             try
-                ImmutableArray<Task> solutionComputationTasks
+                ImmutableArray<Task> solutionComputationTasks;
                 using (await _gate.DisposableWaitAsync(CancellationToken.None).ConfigureAwait(false))
                     // finally, decrement our in-flight-count on the solution.  If we were the last one keeping it alive, it
                     // will get removed from our caches.
-                    solutionComputationTasks = inFlightSolution.DecrementInFlightCount_NoLock()
+                    solutionComputationTasks = inFlightSolution.DecrementInFlightCount_NoLock();
 
                 // If we were the request that decremented the in-flight-count to 0, then ensure we wait for all the
                 // solution-computation tasks to finish.  If we do not do this then it's possible for this call to
@@ -162,7 +162,7 @@ internal sealed partial class RemoteWorkspace : Workspace
                 //
                 // Use a NoThrowAwaitable as we want to await all tasks here regardless of how individual ones may cancel.
                 foreach (var task in solutionComputationTasks)
-                    await task.NoThrowAwaitable(false)
+                    await task.NoThrowAwaitable(false);
             catch (Exception ex) when (FatalError.ReportAndPropagate(ex, ErrorSeverity.Critical))
                 // Similar to AcquireSolutionAndIncrementInFlightCountAsync Any exception thrown in the above
                 // (including cancellation) is critical and unrecoverable.  We must clean up our state, and anything
@@ -187,46 +187,46 @@ internal sealed partial class RemoteWorkspace : Workspace
         // try to base itself from the (empty) CurrentSolution again. To avoid that, we'll see if we have some other forked solution available that has some of the projects we might
         // need, but checking how many projects are missing. This is especially important for cases where the projects may have generators, since a first time generator run
         // could be expensive.
-        Solution? bestSolution = null
-        int? bestSolutionProjectsMissingCount = null
+        Solution? bestSolution = null;
+        int? bestSolutionProjectsMissingCount = null;
 
         // First, is our CurrentSolution already a candidate that can't be beat?
-        UpdateBestSolution(this.CurrentSolution)
+        UpdateBestSolution(this.CurrentSolution);
         if (bestSolution is not null && bestSolutionProjectsMissingCount == 0)
-            return bestSolution
+            return bestSolution;
 
-        using var _ = PooledHashSet<Solution>.GetInstance(out var solutions)
+        using var _ = PooledHashSet<Solution>.GetInstance(out var solutions);
         using (await _gate.DisposableWaitAsync(cancellationToken).ConfigureAwait(false))
-            _lastRequestedAnyBranchSolutions.AddAllTo(solutions)
+            _lastRequestedAnyBranchSolutions.AddAllTo(solutions);
 
         foreach (var solution in solutions)
-            UpdateBestSolution(solution)
+            UpdateBestSolution(solution);
 
         if (bestSolution is not null)
-            return bestSolution
+            return bestSolution;
 
         // If not, have to create a new, fresh, solution instance to update.
         var solutionInfo = await assetProvider.CreateSolutionInfoAsync(
             solutionChecksum, this.Services.SolutionServices, cancellationToken).ConfigureAwait(false);
-        return CreateSolutionFromInfo(solutionInfo)
+        return CreateSolutionFromInfo(solutionInfo);
 
         // Updates <see cref="bestSolution"/>, preferring whichever Solution will require synchronizing over the fewest new projects.
         void UpdateBestSolution(Solution candidateSolution)
             if (candidateSolution.Id == newSolutionInfo.Id && candidateSolution.FilePath == newSolutionInfo.FilePath)
                 // Compute how many projects are missing from this one
-                using var _ = PooledHashSet<ProjectId>.GetInstance(out var ids)
-                ids.AddAll(newSolutionChecksums.Projects.Ids)
+                using var _ = PooledHashSet<ProjectId>.GetInstance(out var ids);
+                ids.AddAll(newSolutionChecksums.Projects.Ids);
                 foreach (var id in candidateSolution.ProjectIds)
-                    ids.Remove(id)
+                    ids.Remove(id);
 
-                var projectsMissing = ids.Count
+                var projectsMissing = ids.Count;
 
                 if (!bestSolutionProjectsMissingCount.HasValue)
-                    bestSolution = candidateSolution
-                    bestSolutionProjectsMissingCount = projectsMissing
+                    bestSolution = candidateSolution;
+                    bestSolutionProjectsMissingCount = projectsMissing;
                 else if (projectsMissing < bestSolutionProjectsMissingCount.Value)
-                    bestSolution = candidateSolution
-                    bestSolutionProjectsMissingCount = projectsMissing
+                    bestSolution = candidateSolution;
+                    bestSolutionProjectsMissingCount = projectsMissing;
 
     /// <summary>
     /// Create an appropriate <see cref="Solution"/> instance corresponding to the <paramref
@@ -254,18 +254,18 @@ internal sealed partial class RemoteWorkspace : Workspace
                 assetProvider, newSolutionChecksum, cancellationToken).ConfigureAwait(false)
 
             // Now, bring that solution in line with the snapshot defined by solutionChecksum.
-            var updater = new SolutionCreator(this, assetProvider, solutionToUpdate)
-            return await updater.CreateSolutionAsync(newSolutionChecksum, cancellationToken).ConfigureAwait(false)
+            var updater = new SolutionCreator(this, assetProvider, solutionToUpdate);
+            return await updater.CreateSolutionAsync(newSolutionChecksum, cancellationToken).ConfigureAwait(false);
         catch (Exception e) when (FatalError.ReportAndPropagateUnlessCanceled(e, cancellationToken))
-            throw ExceptionUtilities.Unreachable()
+            throw ExceptionUtilities.Unreachable();
 
     private Solution CreateSolutionFromInfo(SolutionInfo solutionInfo)
-        var solution = this.CreateSolution(solutionInfo)
-        using var _ = ArrayBuilder<ProjectInfo>.GetInstance(solutionInfo.Projects.Count, out var projectInfos)
-        projectInfos.AddRange(solutionInfo.Projects)
+        var solution = this.CreateSolution(solutionInfo);
+        using var _ = ArrayBuilder<ProjectInfo>.GetInstance(solutionInfo.Projects.Count, out var projectInfos);
+        projectInfos.AddRange(solutionInfo.Projects);
 
         // Add in one operation, avoiding intermediary forking of the solution.
-        return solution.AddProjects(projectInfos)
+        return solution.AddProjects(projectInfos);
 
     /// <summary>
     /// Updates this workspace with the given <paramref name="newSolution"/>.  The solution returned is the actual
@@ -291,25 +291,25 @@ internal sealed partial class RemoteWorkspace : Workspace
                 this.ClearSolutionData();
                 });
 
-            return newSolution
+            return newSolution;
 
         static bool IsAddingSolution(Solution oldSolution, Solution newSolution)
-            => oldSolution.Id != newSolution.Id || oldSolution.FilePath != newSolution.FilePath
+            => oldSolution.Id != newSolution.Id || oldSolution.FilePath != newSolution.FilePath;
 
     public TestAccessor GetTestAccessor()
-        => new(this)
+        => new(this);
 
     public readonly struct TestAccessor
-        private readonly RemoteWorkspace _remoteWorkspace
+        private readonly RemoteWorkspace _remoteWorkspace;
 
         public TestAccessor(RemoteWorkspace remoteWorkspace)
-            _remoteWorkspace = remoteWorkspace
+            _remoteWorkspace = remoteWorkspace;
 
         public Solution CreateSolutionFromInfo(SolutionInfo solutionInfo)
-            => _remoteWorkspace.CreateSolutionFromInfo(solutionInfo)
+            => _remoteWorkspace.CreateSolutionFromInfo(solutionInfo);
 
         public Task<Solution> UpdateWorkspaceCurrentSolutionAsync(Solution newSolution)
-            => _remoteWorkspace.UpdateWorkspaceCurrentSolutionAsync(newSolution, CancellationToken.None)
+            => _remoteWorkspace.UpdateWorkspaceCurrentSolutionAsync(newSolution, CancellationToken.None);
 
         public async ValueTask<Solution> GetSolutionAsync(
             AssetProvider assetProvider,
@@ -318,4 +318,4 @@ internal sealed partial class RemoteWorkspace : Workspace
             CancellationToken cancellationToken)
             var (solution, _) = await _remoteWorkspace.RunWithSolutionAsync(
                 assetProvider, solutionChecksum, updatePrimaryBranch, async _ => false, cancellationToken).ConfigureAwait(false)
-            return solution
+            return solution;

@@ -2,22 +2,22 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System
-using System.Collections.Immutable
-using System.Composition
-using System.Linq
-using System.Threading
-using System.Threading.Tasks
-using Microsoft.CodeAnalysis.CodeActions
-using Microsoft.CodeAnalysis.CodeFixes
-using Microsoft.CodeAnalysis.CSharp.Extensions
-using Microsoft.CodeAnalysis.CSharp.Syntax
-using Microsoft.CodeAnalysis.Diagnostics
-using Microsoft.CodeAnalysis.Editing
-using Microsoft.CodeAnalysis.FindSymbols
-using Microsoft.CodeAnalysis.Host.Mef
-using Microsoft.CodeAnalysis.Shared.Extensions
-using Microsoft.CodeAnalysis.Simplification
+using System;
+using System.Collections.Immutable;
+using System.Composition;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.CodeAnalysis.CodeActions;
+using Microsoft.CodeAnalysis.CodeFixes;
+using Microsoft.CodeAnalysis.CSharp.Extensions;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Diagnostics;
+using Microsoft.CodeAnalysis.Editing;
+using Microsoft.CodeAnalysis.FindSymbols;
+using Microsoft.CodeAnalysis.Host.Mef;
+using Microsoft.CodeAnalysis.Shared.Extensions;
+using Microsoft.CodeAnalysis.Simplification;
 
 namespace Microsoft.CodeAnalysis.CSharp.UseSystemThreadingLock;
 
@@ -25,23 +25,23 @@ namespace Microsoft.CodeAnalysis.CSharp.UseSystemThreadingLock;
 [method: ImportingConstructor]
 [method: Obsolete(MefConstruction.ImportingConstructorMessage, error: true)]
 internal sealed partial class CSharpUseSystemThreadingLockCodeFixProvider() : CodeFixProvider
-    public override ImmutableArray<string> FixableDiagnosticIds { get; }  = [IDEDiagnosticIds.UseSystemThreadingLockDiagnosticId]
+    public override ImmutableArray<string> FixableDiagnosticIds { get; }  = [IDEDiagnosticIds.UseSystemThreadingLockDiagnosticId];
 
     public override FixAllProvider? GetFixAllProvider()
 #if CODE_STYLE
         => WellKnownFixAllProviders.BatchFixer;
 #else
-        => new CSharpUseSystemThreadingLockFixAllProvider()
+        => new CSharpUseSystemThreadingLockFixAllProvider();
 
     #endif
 
     public override async Task RegisterCodeFixesAsync(CodeFixContext context)
-        var cancellationToken = context.CancellationToken
-        var document = context.Document
+        var cancellationToken = context.CancellationToken;
+        var document = context.Document;
 
         foreach (var diagnostic in context.Diagnostics)
             if (diagnostic.Location.FindNode(cancellationToken) is not VariableDeclaratorSyntax variableDeclarator)
-                continue
+                continue;
 
             context.RegisterCodeFix(
                 CodeAction.Create(
@@ -55,12 +55,12 @@ internal sealed partial class CSharpUseSystemThreadingLockCodeFixProvider() : Co
         SemanticModel? semanticModel,
         VariableDeclaratorSyntax variableDeclarator,
         CancellationToken cancellationToken)
-        var solutionEditor = new SolutionEditor(document.Project.Solution)
+        var solutionEditor = new SolutionEditor(document.Project.Solution);
 
         await UseSystemThreadingLockAsync(
             solutionEditor, document, semanticModel, variableDeclarator, cancellationToken).ConfigureAwait(false)
 
-        return solutionEditor.GetChangedSolution()
+        return solutionEditor.GetChangedSolution();
 
     private static async Task UseSystemThreadingLockAsync(
         SolutionEditor solutionEditor,
@@ -68,22 +68,22 @@ internal sealed partial class CSharpUseSystemThreadingLockCodeFixProvider() : Co
         SemanticModel? semanticModel,
         VariableDeclaratorSyntax variableDeclarator,
         CancellationToken cancellationToken)
-        var solution = document.Project.Solution
-        semanticModel ??= await document.GetRequiredSemanticModelAsync(cancellationToken).ConfigureAwait(false)
-        var compilation = semanticModel.Compilation
+        var solution = document.Project.Solution;
+        semanticModel ??= await document.GetRequiredSemanticModelAsync(cancellationToken).ConfigureAwait(false);
+        var compilation = semanticModel.Compilation;
 
-        var lockType = compilation.GetBestTypeByMetadataName("System.Threading.Lock")
+        var lockType = compilation.GetBestTypeByMetadataName("System.Threading.Lock");
         if (lockType is null)
-            return
+            return;
 
         if (variableDeclarator.Parent is not VariableDeclarationSyntax { Parent: FieldDeclarationSyntax } variableDeclaration)
-            return
+            return;
 
         if (semanticModel.GetDeclaredSymbol(variableDeclarator, cancellationToken) is not IFieldSymbol field)
-            return
+            return;
 
-        var editor = await solutionEditor.GetDocumentEditorAsync(document.Id, cancellationToken).ConfigureAwait(false)
-        var generator = editor.Generator
+        var editor = await solutionEditor.GetDocumentEditorAsync(document.Id, cancellationToken).ConfigureAwait(false);
+        var generator = editor.Generator;
         var lockTypeExpression = generator
             .TypeExpression(lockType, addImport: true)
             .WithAdditionalAnnotations(Simplifier.AddImportsAnnotation)
@@ -100,7 +100,7 @@ internal sealed partial class CSharpUseSystemThreadingLockCodeFixProvider() : Co
 
         // Now, go find all the references to the field.  If any of them are initialized to a new value, then update
         // that as well.
-        var fieldReferences = await SymbolFinder.FindReferencesAsync(field, solution, cancellationToken).ConfigureAwait(false)
+        var fieldReferences = await SymbolFinder.FindReferencesAsync(field, solution, cancellationToken).ConfigureAwait(false);
 
         // Group these by document, so we can process a document all at once.  Limit to just documents from our starting
         // project as FindReferencesAsync will find references in all flavors of the starting project.
@@ -110,29 +110,29 @@ internal sealed partial class CSharpUseSystemThreadingLockCodeFixProvider() : Co
             .Where(loc => loc.Document.Project == document.Project)
             .GroupBy(loc => loc.Document);
         foreach (var group in groups)
-            var groupDocument = group.Key
-            var groupDocumentEditor = await solutionEditor.GetDocumentEditorAsync(groupDocument.Id, cancellationToken).ConfigureAwait(false)
+            var groupDocument = group.Key;
+            var groupDocumentEditor = await solutionEditor.GetDocumentEditorAsync(groupDocument.Id, cancellationToken).ConfigureAwait(false);
 
             foreach (var reference in group)
                 if (reference.IsImplicit)
-                    continue
+                    continue;
 
                 // Currently, the only case we know we want to fixup is if the field is being initialized to a new
                 // value.  If the analyzer is updated to handle more cases, this will need to be updated as well.
                 if (reference.Location.FindNode(cancellationToken) is not IdentifierNameSyntax node)
-                    continue
+                    continue;
 
-                ExpressionSyntax expression = node
+                ExpressionSyntax expression = node;
                 if (expression.Parent is MemberAccessExpressionSyntax memberAccess &&
                     memberAccess.Name == expression)
-                    expression = memberAccess
+                    expression = memberAccess;
 
                 if (expression.Parent is not AssignmentExpressionSyntax assignment ||
                     assignment.Left != expression)
-                    continue
+                    continue;
 
                 if (assignment.Right.WalkDownParentheses() is not ObjectCreationExpressionSyntax objectCreation)
-                    continue
+                    continue;
 
                 groupDocumentEditor.ReplaceNode(
                     objectCreation.Type,

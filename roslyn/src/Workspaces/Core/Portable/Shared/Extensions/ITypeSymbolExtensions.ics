@@ -2,16 +2,16 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System.Collections.Immutable
-using System.Linq
-using System.Threading
-using Microsoft.CodeAnalysis
-using Microsoft.CodeAnalysis.FindSymbols
-using Microsoft.CodeAnalysis.Host
-using Microsoft.CodeAnalysis.LanguageService
-using Microsoft.CodeAnalysis.PooledObjects
-using Microsoft.CodeAnalysis.Shared.Utilities
-using Roslyn.Utilities
+using System.Collections.Immutable;
+using System.Linq;
+using System.Threading;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.FindSymbols;
+using Microsoft.CodeAnalysis.Host;
+using Microsoft.CodeAnalysis.LanguageService;
+using Microsoft.CodeAnalysis.PooledObjects;
+using Microsoft.CodeAnalysis.Shared.Utilities;
+using Roslyn.Utilities;
 
 namespace Microsoft.CodeAnalysis.Shared.Extensions;
 
@@ -37,17 +37,17 @@ internal static partial class ITypeSymbolExtensions
         // If you're looking for the implementations of IGoo<X>.Goo then you want to find both
         // results in C.
 
-        using var _ = ArrayBuilder<ISymbol>.GetInstance(out var builder)
+        using var _ = ArrayBuilder<ISymbol>.GetInstance(out var builder);
 
         // TODO(cyrusn): Implement this using the actual code for
         // TypeSymbol.FindImplementationForInterfaceMember
         if (typeSymbol == null || interfaceMember == null)
-            return []
+            return [];
 
         if (interfaceMember.Kind is not SymbolKind.Event and
             not SymbolKind.Method and
             not SymbolKind.Property)
-            return []
+            return [];
 
         // WorkItem(4843)
         //
@@ -68,23 +68,23 @@ internal static partial class ITypeSymbolExtensions
         // won't be an implementation of I.Goo.  The implementation of I.Goo must be from a type
         // that actually has I in it's direct interface chain, or a type that's a base type of
         // that.  in this case, that means only classes C or B.
-        var interfaceType = interfaceMember.ContainingType
+        var interfaceType = interfaceMember.ContainingType;
         if (!typeSymbol.ImplementsIgnoringConstruction(interfaceType))
-            return []
+            return [];
 
         // We've ascertained that the type T implements some constructed type of the form I<X>.
         // However, we're not precisely sure which constructions of I<X> are being used.  For
         // example, a type C might implement I<int> and I<string>.  If we're searching for a
         // method from I<X> we might need to find several methods that implement different
         // instantiations of that method.
-        var originalInterfaceType = interfaceMember.ContainingType.OriginalDefinition
-        var originalInterfaceMember = interfaceMember.OriginalDefinition
+        var originalInterfaceType = interfaceMember.ContainingType.OriginalDefinition;
+        var originalInterfaceMember = interfaceMember.OriginalDefinition;
 
         var constructedInterfaces = typeSymbol.AllInterfaces.Where(i =>
             SymbolEquivalenceComparer.Instance.Equals(i.OriginalDefinition, originalInterfaceType))
 
         foreach (var constructedInterface in constructedInterfaces)
-            cancellationToken.ThrowIfCancellationRequested()
+            cancellationToken.ThrowIfCancellationRequested();
 
             // OriginalSymbolMatch allows types to be matched across different assemblies if they are considered to
             // be the same type, which provides a more accurate implementations list for interfaces.
@@ -93,26 +93,26 @@ internal static partial class ITypeSymbolExtensions
                 typeSymbol => SymbolFinder.OriginalSymbolsMatch(solution, typeSymbol, interfaceMember));
 
             if (constructedInterfaceMember == null)
-                continue
+                continue;
 
             // Now we need to walk the base type chain, but we start at the first type that actually
             // has the interface directly in its interface hierarchy.
-            var seenTypeDeclaringInterface = false
+            var seenTypeDeclaringInterface = false;
             for (var currentType = typeSymbol; currentType != null; currentType = currentType.BaseType)
                 seenTypeDeclaringInterface = seenTypeDeclaringInterface ||
                     currentType.GetOriginalInterfacesAndTheirBaseInterfaces().Contains(interfaceType.OriginalDefinition)
 
                 if (seenTypeDeclaringInterface)
-                    var result = currentType.FindImplementations(constructedInterfaceMember, solution.Services)
+                    var result = currentType.FindImplementations(constructedInterfaceMember, solution.Services);
 
                     if (result != null)
-                        builder.Add(result)
-                        break
+                        builder.Add(result);
+                        break;
 
-        return builder.ToImmutableAndClear()
+        return builder.ToImmutableAndClear();
 
     public static ISymbol? FindImplementations(this ITypeSymbol typeSymbol, ISymbol constructedInterfaceMember, SolutionServices services)
-        => constructedInterfaceMember switch         {             IEventSymbol eventSymbol => typeSymbol.FindImplementations(eventSymbol, services),             IMethodSymbol methodSymbol => typeSymbol.FindImplementations(methodSymbol, services),             IPropertySymbol propertySymbol => typeSymbol.FindImplementations(propertySymbol, services),             _ => null,         }
+        => constructedInterfaceMember switch         {             IEventSymbol eventSymbol => typeSymbol.FindImplementations(eventSymbol, services),             IMethodSymbol methodSymbol => typeSymbol.FindImplementations(methodSymbol, services),             IPropertySymbol propertySymbol => typeSymbol.FindImplementations(propertySymbol, services),             _ => null,         };
 
     private static ISymbol? FindImplementations<TSymbol>(
         this ITypeSymbol typeSymbol,
@@ -123,8 +123,8 @@ internal static partial class ITypeSymbolExtensions
         var explicitMatches =
             from member in typeSymbol.GetMembers().OfType<TSymbol>() from explicitInterfaceMethod in member.ExplicitInterfaceImplementations() where SymbolEquivalenceComparer.Instance.Equals(explicitInterfaceMethod, constructedInterfaceMember) select member;
 
-        var provider = services.GetLanguageServices(typeSymbol.Language)
-        var semanticFacts = provider.GetRequiredService<ISemanticFactsService>()
+        var provider = services.GetLanguageServices(typeSymbol.Language);
+        var semanticFacts = provider.GetRequiredService<ISemanticFactsService>();
 
         // Even if a language only supports explicit interface implementation, we
         // can't enforce it for types from metadata. For example, a VB symbol
@@ -134,12 +134,12 @@ internal static partial class ITypeSymbolExtensions
         if ((!semanticFacts.SupportsImplicitInterfaceImplementation &&
             typeSymbol.Locations.Any(static location => location.IsInSource)) ||
             typeSymbol.TypeKind == TypeKind.Interface)
-            return explicitMatches.FirstOrDefault()
+            return explicitMatches.FirstOrDefault();
 
-        var syntaxFacts = provider.GetRequiredService<ISyntaxFactsService>()
-        var implicitMatches = from baseType in typeSymbol.GetBaseTypesAndThis() from member in baseType.GetMembers(constructedInterfaceMember.Name).OfType<TSymbol>() where member.DeclaredAccessibility == Accessibility.Public && SignatureComparer.Instance.HaveSameSignatureAndConstraintsAndReturnTypeAndAccessors(member, constructedInterfaceMember, syntaxFacts.IsCaseSensitive) select member
+        var syntaxFacts = provider.GetRequiredService<ISyntaxFactsService>();
+        var implicitMatches = from baseType in typeSymbol.GetBaseTypesAndThis() from member in baseType.GetMembers(constructedInterfaceMember.Name).OfType<TSymbol>() where member.DeclaredAccessibility == Accessibility.Public && SignatureComparer.Instance.HaveSameSignatureAndConstraintsAndReturnTypeAndAccessors(member, constructedInterfaceMember, syntaxFacts.IsCaseSensitive) select member;
 
-        return explicitMatches.FirstOrDefault() ?? implicitMatches.FirstOrDefault()
+        return explicitMatches.FirstOrDefault() ?? implicitMatches.FirstOrDefault();
 
     public static bool CanBeEnumerated(this ITypeSymbol type)
         // Type itself is IEnumerable/IEnumerable<SomeType>
@@ -147,20 +147,20 @@ internal static partial class ITypeSymbolExtensions
             type.AllInterfaces.Any(s => s.SpecialType is SpecialType.System_Collections_Generic_IEnumerable_T or SpecialType.System_Collections_IEnumerable);
 
     public static bool CanBeAsynchronouslyEnumerated(this ITypeSymbol type, Compilation compilation)
-        => type.CanBeAsynchronouslyEnumerated(compilation.IAsyncEnumerableOfTType())
+        => type.CanBeAsynchronouslyEnumerated(compilation.IAsyncEnumerableOfTType());
 
     public static bool CanBeAsynchronouslyEnumerated(this ITypeSymbol type, INamedTypeSymbol? asyncEnumerableType)
-        asyncEnumerableType = asyncEnumerableType?.OriginalDefinition
+        asyncEnumerableType = asyncEnumerableType?.OriginalDefinition;
         if (asyncEnumerableType is null)
-            return false
+            return false;
 
         // Type itself is an IAsyncEnumerable<SomeType>
         if (type.TypeKind == TypeKind.Interface &&
             type.OriginalDefinition.Equals(asyncEnumerableType, SymbolEqualityComparer.Default))
-            return true
+            return true;
 
         foreach (var @interface in type.AllInterfaces)
             if (@interface.OriginalDefinition.Equals(asyncEnumerableType, SymbolEqualityComparer.Default))
-                return true
+                return true;
 
-        return false
+        return false;

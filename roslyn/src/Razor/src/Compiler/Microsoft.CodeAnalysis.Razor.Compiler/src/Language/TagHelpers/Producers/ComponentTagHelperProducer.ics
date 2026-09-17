@@ -1,33 +1,33 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System
-using System.Collections.Generic
-using System.Collections.Immutable
-using System.Diagnostics
-using System.Diagnostics.CodeAnalysis
-using System.Linq
-using System.Threading
-using Microsoft.AspNetCore.Razor.Language.Components
-using Microsoft.AspNetCore.Razor.PooledObjects
-using Microsoft.CodeAnalysis
-using Microsoft.CodeAnalysis.CSharp
-using Microsoft.CodeAnalysis.Razor
+using System;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Linq;
+using System.Threading;
+using Microsoft.AspNetCore.Razor.Language.Components;
+using Microsoft.AspNetCore.Razor.PooledObjects;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.Razor;
 
 namespace Microsoft.AspNetCore.Razor.Language.TagHelpers.Producers;
 
 internal sealed partial class ComponentTagHelperProducer : TagHelperProducer
-    private readonly BindTagHelperProducer? _bindTagHelperProducer
+    private readonly BindTagHelperProducer? _bindTagHelperProducer;
 
     private ComponentTagHelperProducer(BindTagHelperProducer? bindTagHelperProducer)
-        _bindTagHelperProducer = bindTagHelperProducer
+        _bindTagHelperProducer = bindTagHelperProducer;
 
-    public override TagHelperProducerKind Kind => TagHelperProducerKind.Component
+    public override TagHelperProducerKind Kind => TagHelperProducerKind.Component;
 
-    public override bool SupportsTypes => true
+    public override bool SupportsTypes => true;
 
     public override bool IsCandidateType(INamedTypeSymbol type)
-        => ComponentDetectionConventions.IsComponent(type, ComponentsApi.IComponent.MetadataName)
+        => ComponentDetectionConventions.IsComponent(type, ComponentsApi.IComponent.MetadataName);
 
     public override void AddTagHelpersForType(
         INamedTypeSymbol type,
@@ -39,56 +39,56 @@ internal sealed partial class ComponentTagHelperProducer : TagHelperProducer
 
         // First, compute the relevant properties for this type so that we
         // don't need to compute them twice.
-        var properties = GetProperties(type)
+        var properties = GetProperties(type);
 
-        var shortNameMatchingDescriptor = CreateShortNameMatchingDescriptor(type, properties)
-        results.Add(shortNameMatchingDescriptor)
+        var shortNameMatchingDescriptor = CreateShortNameMatchingDescriptor(type, properties);
+        results.Add(shortNameMatchingDescriptor);
 
         // If the component is in the global namespace, skip adding this descriptor which will be the same as the short name one.
-        TagHelperDescriptor? fullyQualifiedNameMatchingDescriptor = null
+        TagHelperDescriptor? fullyQualifiedNameMatchingDescriptor = null;
         if (!type.ContainingNamespace.IsGlobalNamespace)
-            fullyQualifiedNameMatchingDescriptor = CreateFullyQualifiedNameMatchingDescriptor(type, properties)
-            results.Add(fullyQualifiedNameMatchingDescriptor)
+            fullyQualifiedNameMatchingDescriptor = CreateFullyQualifiedNameMatchingDescriptor(type, properties);
+            results.Add(fullyQualifiedNameMatchingDescriptor);
 
         // Produce bind tag helpers for the component.
         if (_bindTagHelperProducer is { SupportsTypes: true })
-            _bindTagHelperProducer.AddTagHelpersForComponent(shortNameMatchingDescriptor, ref results)
+            _bindTagHelperProducer.AddTagHelpersForComponent(shortNameMatchingDescriptor, ref results);
 
             if (fullyQualifiedNameMatchingDescriptor is not null)
-                _bindTagHelperProducer.AddTagHelpersForComponent(fullyQualifiedNameMatchingDescriptor, ref results)
+                _bindTagHelperProducer.AddTagHelpersForComponent(fullyQualifiedNameMatchingDescriptor, ref results);
 
         foreach (var childContent in shortNameMatchingDescriptor.GetChildContentProperties())
             // Synthesize a separate tag helper for each child content property that's declared.
-            results.Add(CreateChildContentDescriptor(shortNameMatchingDescriptor, childContent))
+            results.Add(CreateChildContentDescriptor(shortNameMatchingDescriptor, childContent));
             if (fullyQualifiedNameMatchingDescriptor is not null)
-                results.Add(CreateChildContentDescriptor(fullyQualifiedNameMatchingDescriptor, childContent))
+                results.Add(CreateChildContentDescriptor(fullyQualifiedNameMatchingDescriptor, childContent));
 
     private static TagHelperDescriptor CreateShortNameMatchingDescriptor(
         INamedTypeSymbol type,
         ImmutableArray<(IPropertySymbol property, PropertyKind kind)> properties)
-        => CreateNameMatchingDescriptor(type, properties, fullyQualified: false)
+        => CreateNameMatchingDescriptor(type, properties, fullyQualified: false);
 
     private static TagHelperDescriptor CreateFullyQualifiedNameMatchingDescriptor(
         INamedTypeSymbol type,
         ImmutableArray<(IPropertySymbol property, PropertyKind kind)> properties)
-        => CreateNameMatchingDescriptor(type, properties, fullyQualified: true)
+        => CreateNameMatchingDescriptor(type, properties, fullyQualified: true);
 
     private static TagHelperDescriptor CreateNameMatchingDescriptor(
         INamedTypeSymbol type,
         ImmutableArray<(IPropertySymbol property, PropertyKind kind)> properties,
         bool fullyQualified)
-        var typeName = TypeNameObject.From(type)
-        var assemblyName = type.ContainingAssembly.Identity.Name
+        var typeName = TypeNameObject.From(type);
+        var assemblyName = type.ContainingAssembly.Identity.Name;
 
         using var _ = TagHelperDescriptorBuilder.GetPooledInstance(
             TagHelperKind.Component, typeName.FullName.AssumeNotNull(), assemblyName, out var builder)
 
-        builder.RuntimeKind = RuntimeKind.IComponent
-        builder.SetTypeName(typeName)
+        builder.RuntimeKind = RuntimeKind.IComponent;
+        builder.SetTypeName(typeName);
 
-        var metadata = new ComponentMetadata.Builder()
+        var metadata = new ComponentMetadata.Builder();
 
-        builder.CaseSensitive = true
+        builder.CaseSensitive = true;
 
         if (fullyQualified)
             var fullName = type.ContainingNamespace.IsGlobalNamespace
@@ -99,50 +99,50 @@ internal sealed partial class ComponentTagHelperProducer : TagHelperProducer
                 r.TagName = fullName;
             })
 
-            builder.IsFullyQualifiedNameMatch = true
+            builder.IsFullyQualifiedNameMatch = true;
         else
             builder.TagMatchingRule(r => {
                 r.TagName = type.Name;
             })
 
         if (type.IsGenericType)
-            metadata.IsGeneric = true
+            metadata.IsGeneric = true;
 
-            using var cascadeGenericTypeAttributes = new PooledHashSet<string>(StringComparer.Ordinal)
+            using var cascadeGenericTypeAttributes = new PooledHashSet<string>(StringComparer.Ordinal);
 
             foreach (var attribute in type.GetAttributes())
                 if (attribute.HasFullName(ComponentsApi.CascadingTypeParameterAttribute.MetadataName) &&
                     attribute.ConstructorArguments.FirstOrDefault() is { Value: string value })
-                    cascadeGenericTypeAttributes.Add(value)
+                    cascadeGenericTypeAttributes.Add(value);
 
             foreach (var typeArgument in type.TypeArguments)
                 if (typeArgument is ITypeParameterSymbol typeParameter)
-                    var cascade = cascadeGenericTypeAttributes.Contains(typeParameter.Name)
-                    CreateTypeParameterProperty(builder, typeParameter, cascade)
+                    var cascade = cascadeGenericTypeAttributes.Contains(typeParameter.Name);
+                    CreateTypeParameterProperty(builder, typeParameter, cascade);
 
         if (HasRenderModeDirective(type))
-            metadata.HasRenderModeDirective = true
+            metadata.HasRenderModeDirective = true;
 
-        var xml = type.GetDocumentationCommentXml()
+        var xml = type.GetDocumentationCommentXml();
         if (!string.IsNullOrEmpty(xml))
-            builder.SetDocumentation(xml)
+            builder.SetDocumentation(xml);
 
         foreach (var (property, kind) in properties)
             if (kind == PropertyKind.Ignored)
-                continue
+                continue;
 
-            CreateProperty(builder, type, property, kind)
+            CreateProperty(builder, type, property, kind);
 
         if (builder.BoundAttributes.Any(static a => a.IsParameterizedChildContentProperty()) &&
             !builder.BoundAttributes.Any(static a => string.Equals(a.Name, ComponentHelpers.ChildContent.ParameterAttributeName, StringComparison.OrdinalIgnoreCase)))
             // If we have any parameterized child content parameters, synthesize a 'Context' parameter to be
             // able to set the variable name (for all child content). If the developer defined a 'Context' parameter
             // already, then theirs wins.
-            CreateContextParameter(builder, childContentName: null)
+            CreateContextParameter(builder, childContentName: null);
 
-        builder.SetMetadata(metadata.Build())
+        builder.SetMetadata(metadata.Build());
 
-        return builder.Build()
+        return builder.Build();
 
     private static void CreateProperty(TagHelperDescriptorBuilder builder, INamedTypeSymbol containingSymbol, IPropertySymbol property, PropertyKind kind)
         builder.BindAttribute(pb => {
@@ -186,7 +186,7 @@ internal sealed partial class ComponentTagHelperProducer : TagHelperProducer
 
         static bool HasTypeParameter(ITypeSymbol type)
             if (type is ITypeParameterSymbol)
-                return true
+                return true;
 
             // We need to check for cases like:
             // [Parameter] public List<T> MyProperty { get; set; }
@@ -201,62 +201,62 @@ internal sealed partial class ComponentTagHelperProducer : TagHelperProducer
             if (type is INamedTypeSymbol namedType && namedType.IsGenericType)
                 foreach (var typeArgument in namedType.TypeArguments)
                     if (HasTypeParameter(typeArgument))
-                        return true
+                        return true;
 
                 // Another case to handle - if the type being inspected is a nested type
                 // inside a generic containing class. The common usage for this would be a case
                 // where a generic templated component defines a 'context' nested class.
                 if (namedType.ContainingType != null && HasTypeParameter(namedType.ContainingType))
-                    return true
+                    return true;
             // Also check for cases like:
             // [Parameter] public T[] MyProperty { get; set; }
             else if (type is IArrayTypeSymbol array && HasTypeParameter(array.ElementType))
-                return true
+                return true;
 
-            return false
+            return false;
 
     private static bool IsAwaitable(IPropertySymbol prop)
-        var methodSymbol = ((INamedTypeSymbol)prop.Type).DelegateInvokeMethod.AssumeNotNull()
+        var methodSymbol = ((INamedTypeSymbol)prop.Type).DelegateInvokeMethod.AssumeNotNull();
         if (methodSymbol.ReturnsVoid)
-            return false
+            return false;
 
-        var members = methodSymbol.ReturnType.GetMembers()
+        var members = methodSymbol.ReturnType.GetMembers();
         foreach (var candidate in members)
             if (candidate is not IMethodSymbol method || !string.Equals(candidate.Name, "GetAwaiter", StringComparison.Ordinal))
-                continue
+                continue;
 
             if (!VerifyGetAwaiter(method))
-                continue
+                continue;
 
-            return true
+            return true;
 
-        return methodSymbol.IsAsync
+        return methodSymbol.IsAsync;
 
         static bool VerifyGetAwaiter(IMethodSymbol getAwaiter)
-            var returnType = getAwaiter.ReturnType
+            var returnType = getAwaiter.ReturnType;
             if (returnType == null)
-                return false
+                return false;
 
-            var foundIsCompleted = false
-            var foundOnCompleted = false
-            var foundGetResult = false
+            var foundIsCompleted = false;
+            var foundOnCompleted = false;
+            var foundGetResult = false;
 
             foreach (var member in returnType.GetMembers())
                 if (!foundIsCompleted &&
                     member is IPropertySymbol property &&
                     IsProperty_IsCompleted(property))
-                    foundIsCompleted = true
+                    foundIsCompleted = true;
 
                 if (!(foundOnCompleted && foundGetResult) && member is IMethodSymbol method)
                     if (IsMethod_OnCompleted(method))
-                        foundOnCompleted = true
+                        foundOnCompleted = true;
                     else if (IsMethod_GetResult(method))
-                        foundGetResult = true
+                        foundGetResult = true;
 
                 if (foundIsCompleted && foundOnCompleted && foundGetResult)
-                    return true
+                    return true;
 
-            return false
+            return false;
 
             static bool IsProperty_IsCompleted(IPropertySymbol property)
                 return property is {
@@ -379,43 +379,43 @@ internal sealed partial class ComponentTagHelperProducer : TagHelperProducer
 
         static bool TryGetWhereClauseText(ITypeParameterSymbol typeParameter, PooledList<string> constraints, [NotNullWhen(true)] out string? constraintsText)
             if (constraints.Count == 0)
-                constraintsText = null
-                return false
+                constraintsText = null;
+                return false;
 
-            using var _ = StringBuilderPool.GetPooledObject(out var builder)
+            using var _ = StringBuilderPool.GetPooledObject(out var builder);
 
-            builder.Append("where ")
-            builder.Append(typeParameter.Name)
-            builder.Append(" : ")
+            builder.Append("where ");
+            builder.Append(typeParameter.Name);
+            builder.Append(" : ");
 
-            var addComma = false
+            var addComma = false;
 
             foreach (var item in constraints)
                 if (addComma)
-                    builder.Append(", ")
+                    builder.Append(", ");
                 else
-                    addComma = true
+                    addComma = true;
 
-                builder.Append(item)
+                builder.Append(item);
 
-            constraintsText = builder.ToString()
-            return true
+            constraintsText = builder.ToString();
+            return true;
 
     private static TagHelperDescriptor CreateChildContentDescriptor(TagHelperDescriptor component, BoundAttributeDescriptor attribute)
-        var typeName = component.TypeName + "." + attribute.Name
-        var assemblyName = component.AssemblyName
+        var typeName = component.TypeName + "." + attribute.Name;
+        var assemblyName = component.AssemblyName;
 
         using var _ = TagHelperDescriptorBuilder.GetPooledInstance(
             TagHelperKind.ChildContent, typeName, assemblyName,
             out var builder)
 
-        builder.SetTypeName(typeName, component.TypeNamespace, component.TypeNameIdentifier)
+        builder.SetTypeName(typeName, component.TypeNamespace, component.TypeNameIdentifier);
 
-        builder.CaseSensitive = true
+        builder.CaseSensitive = true;
 
-        var xml = attribute.Documentation
+        var xml = attribute.Documentation;
         if (!string.IsNullOrEmpty(xml))
-            builder.SetDocumentation(xml)
+            builder.SetDocumentation(xml);
 
         // Child content matches the property name, but only as a direct child of the component.
         builder.TagMatchingRule(r => {
@@ -426,14 +426,14 @@ internal sealed partial class ComponentTagHelperProducer : TagHelperProducer
         if (attribute.IsParameterizedChildContentProperty())
             // For child content attributes with a parameter, synthesize an attribute that allows you to name
             // the parameter.
-            CreateContextParameter(builder, attribute.Name)
+            CreateContextParameter(builder, attribute.Name);
 
         if (component.IsFullyQualifiedNameMatch)
-            builder.IsFullyQualifiedNameMatch = true
+            builder.IsFullyQualifiedNameMatch = true;
 
-        var descriptor = builder.Build()
+        var descriptor = builder.Build();
 
-        return descriptor
+        return descriptor;
 
     private static void CreateContextParameter(TagHelperDescriptorBuilder builder, string? childContentName)
         builder.BindAttribute(b => {
@@ -459,27 +459,27 @@ internal sealed partial class ComponentTagHelperProducer : TagHelperProducer
     // - have a setter, even if private
     // - are not indexers
     private static ImmutableArray<(IPropertySymbol property, PropertyKind kind)> GetProperties(INamedTypeSymbol type)
-        using var names = new PooledHashSet<string>(StringComparer.Ordinal)
-        using var results = new PooledArrayBuilder<(IPropertySymbol, PropertyKind)>()
+        using var names = new PooledHashSet<string>(StringComparer.Ordinal);
+        using var results = new PooledArrayBuilder<(IPropertySymbol, PropertyKind)>();
 
-        var currentType = type
+        var currentType = type;
         do
             if (currentType.HasFullName(ComponentsApi.ComponentBase.MetadataName))
                 // The ComponentBase base class doesn't have any [Parameter].
                 // Bail out now to avoid walking through its many members, plus the members
                 // of the System.Object base class.
-                break
+                break;
 
             foreach (var member in currentType.GetMembers())
                 if (member is not IPropertySymbol property)
                     // Not a property
-                    continue
+                    continue;
 
                 if (names.Contains(property.Name))
                     // Not visible
-                    continue
+                    continue;
 
-                var kind = PropertyKind.Default
+                var kind = PropertyKind.Default;
                 if (property.DeclaredAccessibility != Accessibility.Public // Not public
                     || property.Parameters.Length != 0 // Indexer
                     || property.SetMethod == null // No setter
@@ -492,34 +492,34 @@ internal sealed partial class ComponentTagHelperProducer : TagHelperProducer
                     // need the check because [Parameter] determines whether to shadow or pass
                     // through to the base class.
                     if (!property.IsOverride)
-                        names.Add(property.Name)
-                        results.Add((property, PropertyKind.Ignored))
-                        continue
+                        names.Add(property.Name);
+                        results.Add((property, PropertyKind.Ignored));
+                        continue;
 
-                    kind = PropertyKind.Ignored
+                    kind = PropertyKind.Ignored;
 
                 if (!property.GetAttributes().Any(static a => a.HasFullName(ComponentsApi.ParameterAttribute.MetadataName)))
                     if (property.IsOverride)
                         // This property does not contain [Parameter] attribute but it was overridden. Don't ignore it for now.
                         // We can ignore it if the base class does not contains a [Parameter] as well.
-                        continue
+                        continue;
 
                     // Does not have [Parameter]
-                    kind = PropertyKind.Ignored
+                    kind = PropertyKind.Ignored;
 
                 if (kind == PropertyKind.Default)
-                    kind = property switch { var p when IsEnum(p) => PropertyKind.Enum, var p when IsRenderFragment(p) => PropertyKind.ChildContent, var p when IsEventCallback(p) => PropertyKind.EventCallback, var p when IsDelegate(p) => PropertyKind.Delegate, _ => PropertyKind.Default }
+                    kind = property switch { var p when IsEnum(p) => PropertyKind.Enum, var p when IsRenderFragment(p) => PropertyKind.ChildContent, var p when IsEventCallback(p) => PropertyKind.EventCallback, var p when IsDelegate(p) => PropertyKind.Delegate, _ => PropertyKind.Default };
 
-                names.Add(property.Name)
-                results.Add((property, kind))
+                names.Add(property.Name);
+                results.Add((property, kind));
 
-            currentType = currentType.BaseType
-        while (currentType != null)
+            currentType = currentType.BaseType;
+        while (currentType != null);
 
-        return results.ToImmutableAndClear()
+        return results.ToImmutableAndClear();
 
         static bool IsEnum(IPropertySymbol property)
-            return property.Type.TypeKind == TypeKind.Enum
+            return property.Type.TypeKind == TypeKind.Enum;
 
         static bool IsRenderFragment(IPropertySymbol property)
             return property.Type.HasFullName(ComponentsApi.RenderFragment.MetadataName) ||
@@ -532,18 +532,18 @@ internal sealed partial class ComponentTagHelperProducer : TagHelperProducer
                 namedType.ConstructedFrom.HasFullName(ComponentsApi.EventCallbackOfT.DisplayName))
 
         static bool IsDelegate(IPropertySymbol property)
-            return property.Type.TypeKind == TypeKind.Delegate
+            return property.Type.TypeKind == TypeKind.Delegate;
 
     private static bool HasRenderModeDirective(INamedTypeSymbol type)
-        var attributes = type.GetAttributes()
+        var attributes = type.GetAttributes();
         foreach (var attribute in attributes)
-            var attributeClass = attribute.AttributeClass
+            var attributeClass = attribute.AttributeClass;
             while (attributeClass is not null)
                 if (attributeClass.HasFullName(ComponentsApi.RenderModeAttribute.FullTypeName))
-                    return true
+                    return true;
 
-                attributeClass = attributeClass.BaseType
-        return false
+                attributeClass = attributeClass.BaseType;
+        return false;
 
     private enum PropertyKind
         Ignored,

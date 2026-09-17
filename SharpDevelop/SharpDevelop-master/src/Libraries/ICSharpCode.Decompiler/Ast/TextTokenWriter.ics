@@ -16,253 +16,253 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System
-using System.Collections.Generic
-using System.Linq
-using ICSharpCode.Decompiler
-using ICSharpCode.Decompiler.ILAst
-using ICSharpCode.NRefactory
-using ICSharpCode.NRefactory.CSharp
-using Mono.Cecil
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using ICSharpCode.Decompiler;
+using ICSharpCode.Decompiler.ILAst;
+using ICSharpCode.NRefactory;
+using ICSharpCode.NRefactory.CSharp;
+using Mono.Cecil;
 
 namespace ICSharpCode.Decompiler.Ast
     public class TextTokenWriter : TokenWriter
-        readonly ITextOutput output
-        readonly Stack<AstNode> nodeStack = new Stack<AstNode>()
-        int braceLevelWithinType = -1
-        bool inDocumentationComment = false
-        bool firstUsingDeclaration
-        bool lastUsingDeclaration
+        readonly ITextOutput output;
+        readonly Stack<AstNode> nodeStack = new Stack<AstNode>();
+        int braceLevelWithinType = -1;
+        bool inDocumentationComment = false;
+        bool firstUsingDeclaration;
+        bool lastUsingDeclaration;
 
-        TextLocation? lastEndOfLine
+        TextLocation? lastEndOfLine;
 
-        public bool FoldBraces = false
+        public bool FoldBraces = false;
 
         public TextTokenWriter(ITextOutput output)
             if (output == null)
-                throw new ArgumentNullException("output")
-            this.output = output
+                throw new ArgumentNullException("output");
+            this.output = output;
 
         public override void WriteIdentifier(Identifier identifier)
-            var definition = GetCurrentDefinition()
+            var definition = GetCurrentDefinition();
             if (definition != null)
-                output.WriteDefinition(identifier.Name, definition, false)
-                return
+                output.WriteDefinition(identifier.Name, definition, false);
+                return;
 
-            object memberRef = GetCurrentMemberReference()
+            object memberRef = GetCurrentMemberReference();
 
             if (memberRef != null)
-                output.WriteReference(identifier.Name, memberRef)
-                return
+                output.WriteReference(identifier.Name, memberRef);
+                return;
 
-            definition = GetCurrentLocalDefinition()
+            definition = GetCurrentLocalDefinition();
             if (definition != null)
-                output.WriteDefinition(identifier.Name, definition)
-                return
+                output.WriteDefinition(identifier.Name, definition);
+                return;
 
-            memberRef = GetCurrentLocalReference()
+            memberRef = GetCurrentLocalReference();
             if (memberRef != null)
-                output.WriteReference(identifier.Name, memberRef, true)
-                return
+                output.WriteReference(identifier.Name, memberRef, true);
+                return;
 
             if (firstUsingDeclaration)
-                output.MarkFoldStart(defaultCollapsed: true)
-                firstUsingDeclaration = false
+                output.MarkFoldStart(defaultCollapsed: true);
+                firstUsingDeclaration = false;
 
-            output.Write(identifier.Name)
+            output.Write(identifier.Name);
 
         MemberReference GetCurrentMemberReference()
-            AstNode node = nodeStack.Peek()
-            MemberReference memberRef = node.Annotation<MemberReference>()
+            AstNode node = nodeStack.Peek();
+            MemberReference memberRef = node.Annotation<MemberReference>();
             if (memberRef == null && node.Role == Roles.TargetExpression && (node.Parent is InvocationExpression || node.Parent is ObjectCreateExpression))
-                memberRef = node.Parent.Annotation<MemberReference>()
-            return memberRef
+                memberRef = node.Parent.Annotation<MemberReference>();
+            return memberRef;
 
         object GetCurrentLocalReference()
-            AstNode node = nodeStack.Peek()
-            ILVariable variable = node.Annotation<ILVariable>()
+            AstNode node = nodeStack.Peek();
+            ILVariable variable = node.Annotation<ILVariable>();
             if (variable != null)
                 if (variable.OriginalParameter != null)
-                    return variable.OriginalParameter
+                    return variable.OriginalParameter;
                 //if (variable.OriginalVariable != null)
                 //    return variable.OriginalVariable;
-                return variable
+                return variable;
 
-            var gotoStatement = node as GotoStatement
+            var gotoStatement = node as GotoStatement;
             if (gotoStatement != null)
-                var method = nodeStack.Select(nd => nd.Annotation<MethodReference>()).FirstOrDefault(mr => mr != null)
+                var method = nodeStack.Select(nd => nd.Annotation<MethodReference>()).FirstOrDefault(mr => mr != null);
                 if (method != null)
-                    return method.ToString() + gotoStatement.Label
+                    return method.ToString() + gotoStatement.Label;
 
-            return null
+            return null;
 
         object GetCurrentLocalDefinition()
-            AstNode node = nodeStack.Peek()
+            AstNode node = nodeStack.Peek();
             if (node is Identifier && node.Parent != null)
-                node = node.Parent
+                node = node.Parent;
 
-            var parameterDef = node.Annotation<ParameterDefinition>()
+            var parameterDef = node.Annotation<ParameterDefinition>();
             if (parameterDef != null)
-                return parameterDef
+                return parameterDef;
 
             if (node is VariableInitializer || node is CatchClause || node is ForeachStatement)
-                var variable = node.Annotation<ILVariable>()
+                var variable = node.Annotation<ILVariable>();
                 if (variable != null)
                     if (variable.OriginalParameter != null)
-                        return variable.OriginalParameter
+                        return variable.OriginalParameter;
                     //if (variable.OriginalVariable != null)
                     //    return variable.OriginalVariable;
-                    return variable
+                    return variable;
 
-            var label = node as LabelStatement
+            var label = node as LabelStatement;
             if (label != null)
-                var method = nodeStack.Select(nd => nd.Annotation<MethodReference>()).FirstOrDefault(mr => mr != null)
+                var method = nodeStack.Select(nd => nd.Annotation<MethodReference>()).FirstOrDefault(mr => mr != null);
                 if (method != null)
-                    return method.ToString() + label.Label
+                    return method.ToString() + label.Label;
 
-            return null
+            return null;
 
         object GetCurrentDefinition()
             if (nodeStack == null || nodeStack.Count == 0)
-                return null
+                return null;
 
-            var node = nodeStack.Peek()
+            var node = nodeStack.Peek();
             if (node is Identifier)
-                node = node.Parent
+                node = node.Parent;
             if (IsDefinition(node))
-                return node.Annotation<MemberReference>()
+                return node.Annotation<MemberReference>();
 
-            return null
+            return null;
 
         public override void WriteKeyword(Role role, string keyword)
-            output.Write(keyword)
+            output.Write(keyword);
 
         public override void WriteToken(Role role, string token)
             // Attach member reference to token only if there's no identifier in the current node.
-            MemberReference memberRef = GetCurrentMemberReference()
-            var node = nodeStack.Peek()
+            MemberReference memberRef = GetCurrentMemberReference();
+            var node = nodeStack.Peek();
             if (memberRef != null && node.GetChildByRole(Roles.Identifier).IsNull)
-                output.WriteReference(token, memberRef)
+                output.WriteReference(token, memberRef);
             else
-                output.Write(token)
+                output.Write(token);
 
         public override void Space()
-            output.Write(' ')
+            output.Write(' ');
 
         public void OpenBrace(BraceStyle style)
             if (braceLevelWithinType >= 0 || nodeStack.Peek() is TypeDeclaration)
-                braceLevelWithinType++
+                braceLevelWithinType++;
             if (nodeStack.OfType<BlockStatement>().Count() <= 1 || FoldBraces)
-                output.MarkFoldStart(defaultCollapsed: braceLevelWithinType == 1)
-            output.WriteLine()
-            output.WriteLine("{")
-            output.Indent()
+                output.MarkFoldStart(defaultCollapsed: braceLevelWithinType == 1);
+            output.WriteLine();
+            output.WriteLine("{");
+            output.Indent();
 
         public void CloseBrace(BraceStyle style)
-            output.Unindent()
-            output.Write('}')
+            output.Unindent();
+            output.Write('}');
             if (nodeStack.OfType<BlockStatement>().Count() <= 1 || FoldBraces)
-                output.MarkFoldEnd()
+                output.MarkFoldEnd();
             if (braceLevelWithinType >= 0)
-                braceLevelWithinType--
+                braceLevelWithinType--;
 
         public override void Indent()
-            output.Indent()
+            output.Indent();
 
         public override void Unindent()
-            output.Unindent()
+            output.Unindent();
 
         public override void NewLine()
             if (lastUsingDeclaration)
-                output.MarkFoldEnd()
-                lastUsingDeclaration = false
-            lastEndOfLine = output.Location
-            output.WriteLine()
+                output.MarkFoldEnd();
+                lastUsingDeclaration = false;
+            lastEndOfLine = output.Location;
+            output.WriteLine();
 
         public override void WriteComment(CommentType commentType, string content)
             switch (commentType)
                 case CommentType.SingleLine:
-                    output.Write("//")
-                    output.WriteLine(content)
-                    break
+                    output.Write("//");
+                    output.WriteLine(content);
+                    break;
                 case CommentType.MultiLine:
-                    output.Write("/*")
-                    output.Write(content)
-                    output.Write("*/")
-                    break
+                    output.Write("/*");
+                    output.Write(content);
+                    output.Write("*/");
+                    break;
                 case CommentType.Documentation:
-                    bool isLastLine = !(nodeStack.Peek().NextSibling is Comment)
+                    bool isLastLine = !(nodeStack.Peek().NextSibling is Comment);
                     if (!inDocumentationComment && !isLastLine)
-                        inDocumentationComment = true
-                        output.MarkFoldStart("///" + content, true)
-                    output.Write("///")
-                    output.Write(content)
+                        inDocumentationComment = true;
+                        output.MarkFoldStart("///" + content, true);
+                    output.Write("///");
+                    output.Write(content);
                     if (inDocumentationComment && isLastLine)
-                        inDocumentationComment = false
-                        output.MarkFoldEnd()
-                    output.WriteLine()
-                    break
+                        inDocumentationComment = false;
+                        output.MarkFoldEnd();
+                    output.WriteLine();
+                    break;
                 default:
-                    output.Write(content)
-                    break
+                    output.Write(content);
+                    break;
 
         public override void WritePreProcessorDirective(PreProcessorDirectiveType type, string argument)
             // pre-processor directive must start on its own line
-            output.Write('#')
-            output.Write(type.ToString().ToLowerInvariant())
+            output.Write('#');
+            output.Write(type.ToString().ToLowerInvariant());
             if (!string.IsNullOrEmpty(argument))
-                output.Write(' ')
-                output.Write(argument)
-            output.WriteLine()
+                output.Write(' ');
+                output.Write(argument);
+            output.WriteLine();
 
         public override void WritePrimitiveValue(object value, string literalValue = null)
             ;
 
         public override void WritePrimitiveType(string type)
-            output.Write(type)
+            output.Write(type);
             if (type == "new")
-                output.Write("()")
+                output.Write("()");
 
-        Stack<TextLocation> startLocations = new Stack<TextLocation>()
-        Stack<MethodDebugSymbols> symbolsStack = new Stack<MethodDebugSymbols>()
+        Stack<TextLocation> startLocations = new Stack<TextLocation>();
+        Stack<MethodDebugSymbols> symbolsStack = new Stack<MethodDebugSymbols>();
 
         public override void StartNode(AstNode node)
             if (nodeStack.Count == 0)
                 if (IsUsingDeclaration(node))
-                    firstUsingDeclaration = !IsUsingDeclaration(node.PrevSibling)
-                    lastUsingDeclaration = !IsUsingDeclaration(node.NextSibling)
+                    firstUsingDeclaration = !IsUsingDeclaration(node.PrevSibling);
+                    lastUsingDeclaration = !IsUsingDeclaration(node.NextSibling);
                 else
-                    firstUsingDeclaration = false
-                    lastUsingDeclaration = false
-            nodeStack.Push(node)
-            startLocations.Push(output.Location)
+                    firstUsingDeclaration = false;
+                    lastUsingDeclaration = false;
+            nodeStack.Push(node);
+            startLocations.Push(output.Location);
 
             if (node is EntityDeclaration && node.Annotation<MemberReference>() != null && node.GetChildByRole(Roles.Identifier).IsNull)
-                output.WriteDefinition("", node.Annotation<MemberReference>(), false)
+                output.WriteDefinition("", node.Annotation<MemberReference>(), false);
 
             if (node.Annotation<MethodDebugSymbols>() != null)
-                symbolsStack.Push(node.Annotation<MethodDebugSymbols>())
-                symbolsStack.Peek().StartLocation = startLocations.Peek()
+                symbolsStack.Push(node.Annotation<MethodDebugSymbols>());
+                symbolsStack.Peek().StartLocation = startLocations.Peek();
 
         private bool IsUsingDeclaration(AstNode node)
-            return node is UsingDeclaration || node is UsingAliasDeclaration
+            return node is UsingDeclaration || node is UsingAliasDeclaration;
 
         public override void EndNode(AstNode node)
             if (nodeStack.Pop() != node)
-                throw new InvalidOperationException()
+                throw new InvalidOperationException();
 
-            var startLocation = startLocations.Pop()
+            var startLocation = startLocations.Pop();
 
             // code mappings
-            var ranges = node.Annotation<List<ILRange>>()
+            var ranges = node.Annotation<List<ILRange>>();
             if (symbolsStack.Count > 0 && ranges != null && ranges.Count > 0)
                 // Ignore the newline which was printed at the end of the statement
-                TextLocation endLocation = (node is Statement) ? (lastEndOfLine ?? output.Location) : output.Location
-                symbolsStack.Peek().SequencePoints.Add(new SequencePoint() { ILRanges = ILRange.OrderAndJoin(ranges).ToArray(), StartLocation = startLocation, EndLocation = endLocation })
+                TextLocation endLocation = (node is Statement) ? (lastEndOfLine ?? output.Location) : output.Location;
+                symbolsStack.Peek().SequencePoints.Add(new SequencePoint() { ILRanges = ILRange.OrderAndJoin(ranges).ToArray(), StartLocation = startLocation, EndLocation = endLocation });
 
             if (node.Annotation<MethodDebugSymbols>() != null)
-                symbolsStack.Peek().EndLocation = output.Location
-                output.AddDebugSymbols(symbolsStack.Pop())
+                symbolsStack.Peek().EndLocation = output.Location;
+                output.AddDebugSymbols(symbolsStack.Pop());
 
         private static bool IsDefinition(AstNode node)
             return node is EntityDeclaration

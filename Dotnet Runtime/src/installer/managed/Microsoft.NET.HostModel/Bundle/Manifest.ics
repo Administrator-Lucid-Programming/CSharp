@@ -1,17 +1,17 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System
-using System.Buffers.Text
-using System.Collections.Generic
-using System.Diagnostics
-using System.IO
-using System.Linq
-using System.Security.Cryptography
+using System;
+using System.Buffers.Text;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Security.Cryptography;
 #if NET
 using Base64Url = System.Buffers.Text.Base64Url;
 #else
-using Base64Url = Microsoft.NET.HostModel.Base64Url
+using Base64Url = Microsoft.NET.HostModel.Base64Url;
 #endif
 
 namespace Microsoft.NET.HostModel.Bundle
@@ -70,106 +70,106 @@ namespace Microsoft.NET.HostModel.Bundle
         // with path-names so that the AppHost can use it in
         // extraction path.
         public string BundleID { get; private set; }
-        private const int BundleIdLength = 12
-        private SHA256 bundleHash = SHA256.Create()
-        public readonly uint BundleMajorVersion
+        private const int BundleIdLength = 12;
+        private SHA256 bundleHash = SHA256.Create();
+        public readonly uint BundleMajorVersion;
         // The Minor version is currently unused, and is always zero
-        public const uint BundleMinorVersion = 0
-        private FileEntry DepsJsonEntry
-        private FileEntry RuntimeConfigJsonEntry
-        private readonly HeaderFlags Flags
-        public List<FileEntry> Files
-        public string BundleVersion => $"{BundleMajorVersion}.{BundleMinorVersion}"
+        public const uint BundleMinorVersion = 0;
+        private FileEntry DepsJsonEntry;
+        private FileEntry RuntimeConfigJsonEntry;
+        private readonly HeaderFlags Flags;
+        public List<FileEntry> Files;
+        public string BundleVersion => $"{BundleMajorVersion}.{BundleMinorVersion}";
 
         public Manifest(uint bundleMajorVersion, bool netcoreapp3CompatMode = false)
-            BundleMajorVersion = bundleMajorVersion
-            Files = new List<FileEntry>()
-            Flags = (netcoreapp3CompatMode) ? HeaderFlags.NetcoreApp3CompatMode : HeaderFlags.None
+            BundleMajorVersion = bundleMajorVersion;
+            Files = new List<FileEntry>();
+            Flags = (netcoreapp3CompatMode) ? HeaderFlags.NetcoreApp3CompatMode : HeaderFlags.None;
 
         public FileEntry AddEntry(FileType type, FileStream fileContent, string relativePath, long offset, long compressedSize, uint bundleMajorVersion)
             if (bundleHash == null)
-                throw new InvalidOperationException("It is forbidden to change Manifest state after it was written or BundleId was obtained.")
+                throw new InvalidOperationException("It is forbidden to change Manifest state after it was written or BundleId was obtained.");
 
-            FileEntry entry = new FileEntry(type, relativePath, offset, fileContent.Length, compressedSize, bundleMajorVersion)
-            Files.Add(entry)
+            FileEntry entry = new FileEntry(type, relativePath, offset, fileContent.Length, compressedSize, bundleMajorVersion);
+            Files.Add(entry);
 
-            fileContent.Position = 0
-            byte[] hashBytes = ComputeSha256Hash(fileContent)
-            bundleHash.TransformBlock(hashBytes, 0, hashBytes.Length, hashBytes, 0)
+            fileContent.Position = 0;
+            byte[] hashBytes = ComputeSha256Hash(fileContent);
+            bundleHash.TransformBlock(hashBytes, 0, hashBytes.Length, hashBytes, 0);
 
             switch (entry.Type)
                 case FileType.DepsJson:
-                    DepsJsonEntry = entry
-                    break
+                    DepsJsonEntry = entry;
+                    break;
                 case FileType.RuntimeConfigJson:
-                    RuntimeConfigJsonEntry = entry
-                    break
+                    RuntimeConfigJsonEntry = entry;
+                    break;
 
                 case FileType.Assembly:
-                    break
+                    break;
 
                 default:
-                    break
+                    break;
 
-            return entry
+            return entry;
 
         private static byte[] ComputeSha256Hash(Stream stream)
             using (SHA256 sha = SHA256.Create())
-                return sha.ComputeHash(stream)
+                return sha.ComputeHash(stream);
 
         private string GenerateDeterministicId()
-            bundleHash.TransformFinalBlock(Array.Empty<byte>(), 0, 0)
-            byte[] manifestHash = bundleHash.Hash
-            bundleHash.Dispose()
-            bundleHash = null
-            string id = Base64Url.EncodeToString(manifestHash).Substring(0, BundleIdLength)
-            Debug.Assert(id.Length == BundleIdLength)
-            return id
+            bundleHash.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
+            byte[] manifestHash = bundleHash.Hash;
+            bundleHash.Dispose();
+            bundleHash = null;
+            string id = Base64Url.EncodeToString(manifestHash).Substring(0, BundleIdLength);
+            Debug.Assert(id.Length == BundleIdLength);
+            return id;
 
         public long Write(BinaryWriter writer)
-            BundleID ??= GenerateDeterministicId()
+            BundleID ??= GenerateDeterministicId();
 
-            long startOffset = writer.BaseStream.Position
+            long startOffset = writer.BaseStream.Position;
 
             // Write the bundle header
-            writer.Write(BundleMajorVersion)
-            writer.Write(BundleMinorVersion)
-            writer.Write(Files.Count)
-            writer.Write(BundleID)
+            writer.Write(BundleMajorVersion);
+            writer.Write(BundleMinorVersion);
+            writer.Write(Files.Count);
+            writer.Write(BundleID);
 
             if (BundleMajorVersion >= 2)
-                writer.Write((DepsJsonEntry != null) ? DepsJsonEntry.Offset : 0)
-                writer.Write((DepsJsonEntry != null) ? DepsJsonEntry.Size : 0)
+                writer.Write((DepsJsonEntry != null) ? DepsJsonEntry.Offset : 0);
+                writer.Write((DepsJsonEntry != null) ? DepsJsonEntry.Size : 0);
 
-                writer.Write((RuntimeConfigJsonEntry != null) ? RuntimeConfigJsonEntry.Offset : 0)
-                writer.Write((RuntimeConfigJsonEntry != null) ? RuntimeConfigJsonEntry.Size : 0)
+                writer.Write((RuntimeConfigJsonEntry != null) ? RuntimeConfigJsonEntry.Offset : 0);
+                writer.Write((RuntimeConfigJsonEntry != null) ? RuntimeConfigJsonEntry.Size : 0);
 
-                writer.Write((ulong)Flags)
+                writer.Write((ulong)Flags);
 
             // Write the manifest entries
             foreach (FileEntry entry in Files)
-                entry.Write(writer)
+                entry.Write(writer);
             Debug.Assert(writer.BaseStream.Position - startOffset == GetManifestLength(BundleMajorVersion, Files.Select(static f => f.RelativePath)),
                 $"Manifest size mismatch: {writer.BaseStream.Position - startOffset} != {GetManifestLength(BundleMajorVersion, Files.Select(static f => f.RelativePath))}")
 
-            return startOffset
+            return startOffset;
 
         /// <summary>
         /// Calculates the length of the manifest in bytes.
         /// </summary>
         public static long GetManifestLength(uint bundleMajorVersion, IEnumerable<string> fileSpecs)
-            const string dummyBundleId = "FakeBundleID"
-            Debug.Assert(dummyBundleId.Length == BundleIdLength)
+            const string dummyBundleId = "FakeBundleID";
+            Debug.Assert(dummyBundleId.Length == BundleIdLength);
             // Size of the header
             // BundleMajorVersion + BundleMinorVersion
             // NumEmbeddedFiles
             long size = sizeof(uint) * 2 + sizeof(int) + (bundleMajorVersion >= 2 ? (sizeof(long) * 4 + sizeof(ulong)) : 0) // DepsJson and RuntimeConfigJson offsets and sizes, and Flags
-            size += Bundler.GetBinaryWriterStringLength(dummyBundleId)
+            size += Bundler.GetBinaryWriterStringLength(dummyBundleId);
             // Size of each FileEntry
             foreach (var fileSpec in fileSpecs)
-                size += FileEntry.GetFileEntryLength(bundleMajorVersion, fileSpec)
+                size += FileEntry.GetFileEntryLength(bundleMajorVersion, fileSpec);
 
-            return size
+            return size;
 
         public bool Contains(string relativePath)
-            return Files.Any(entry => relativePath.Equals(entry.RelativePath))
+            return Files.Any(entry => relativePath.Equals(entry.RelativePath));

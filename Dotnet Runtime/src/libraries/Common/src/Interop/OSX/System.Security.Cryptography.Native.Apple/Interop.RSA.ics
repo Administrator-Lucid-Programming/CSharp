@@ -1,13 +1,13 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System
-using System.Buffers
-using System.Diagnostics
-using System.Runtime.InteropServices
-using System.Security.Cryptography
-using System.Security.Cryptography.Apple
-using Microsoft.Win32.SafeHandles
+using System;
+using System.Buffers;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Security.Cryptography.Apple;
+using Microsoft.Win32.SafeHandles;
 
 internal static partial class Interop
     internal static partial class AppleCrypto
@@ -80,9 +80,9 @@ internal static partial class Interop
             int keySizeInBits,
             out SafeSecKeyRefHandle pPublicKey,
             out SafeSecKeyRefHandle pPrivateKey)
-            SafeSecKeyRefHandle publicKey
-            SafeSecKeyRefHandle privateKey
-            SafeCFErrorHandle error
+            SafeSecKeyRefHandle publicKey;
+            SafeSecKeyRefHandle privateKey;
+            SafeCFErrorHandle error;
 
             int result = AppleCryptoNative_RsaGenerateKey(
                 keySizeInBits,
@@ -92,17 +92,17 @@ internal static partial class Interop
 
             using (error)
                 if (result == kSuccess)
-                    pPublicKey = publicKey
-                    pPrivateKey = privateKey
-                    return
+                    pPublicKey = publicKey;
+                    pPrivateKey = privateKey;
+                    return;
 
                 using (privateKey)
                     using (publicKey)
                         if (result == kErrorSeeError)
-                            throw CreateExceptionForCFError(error)
+                            throw CreateExceptionForCFError(error);
 
-                        Debug.Fail($"Unexpected result from AppleCryptoNative_RsaGenerateKey: {result}")
-                        throw new CryptographicException()
+                        Debug.Fail($"Unexpected result from AppleCryptoNative_RsaGenerateKey: {result}");
+                        throw new CryptographicException();
 
         internal static byte[] RsaEncrypt(
             SafeSecKeyRefHandle publicKey,
@@ -131,7 +131,7 @@ internal static partial class Interop
             Span<byte> destination,
             RSAEncryptionPadding padding,
             out int bytesWritten)
-            Debug.Assert(padding.Mode == RSAEncryptionPaddingMode.Pkcs1 || padding.Mode == RSAEncryptionPaddingMode.Oaep)
+            Debug.Assert(padding.Mode == RSAEncryptionPaddingMode.Pkcs1 || padding.Mode == RSAEncryptionPaddingMode.Oaep);
             return TryExecuteTransform(source, destination, out bytesWritten, delegate (ReadOnlySpan<byte> innerSource, out SafeCFDataHandle outputHandle, out SafeCFErrorHandle errorHandle) {
             return padding.Mode == RSAEncryptionPaddingMode.Pkcs1 ? RsaEncryptPkcs(publicKey, innerSource, innerSource.Length, out outputHandle, out errorHandle) : RsaEncryptOaep(publicKey, innerSource, innerSource.Length, PalAlgorithmFromAlgorithmName(padding.OaepHashAlgorithm), out outputHandle, out errorHandle);
             })
@@ -146,23 +146,23 @@ internal static partial class Interop
                     (ReadOnlySpan<byte> source, out SafeCFDataHandle decrypted, out SafeCFErrorHandle error) =>
                     RsaDecryptRaw(privateKey, source, source.Length, out decrypted, out error))
 
-                byte[] depad = CryptoPool.Rent(padded.Length)
-                OperationStatus status = RsaPaddingProcessor.DepadPkcs1Encryption(padded, depad, out int written)
-                byte[]? ret = null
+                byte[] depad = CryptoPool.Rent(padded.Length);
+                OperationStatus status = RsaPaddingProcessor.DepadPkcs1Encryption(padded, depad, out int written);
+                byte[]? ret = null;
 
                 if (status == OperationStatus.Done)
-                    ret = depad.AsSpan(0, written).ToArray()
+                    ret = depad.AsSpan(0, written).ToArray();
 
                 // Clear the whole thing, especially on failure.
-                CryptoPool.Return(depad)
-                CryptographicOperations.ZeroMemory(padded)
+                CryptoPool.Return(depad);
+                CryptographicOperations.ZeroMemory(padded);
 
                 if (ret is null)
-                    throw new CryptographicException(SR.Cryptography_InvalidPadding)
+                    throw new CryptographicException(SR.Cryptography_InvalidPadding);
 
-                return ret
+                return ret;
 
-            Debug.Assert(padding.Mode == RSAEncryptionPaddingMode.Oaep)
+            Debug.Assert(padding.Mode == RSAEncryptionPaddingMode.Oaep);
 
             return ExecuteTransform(
                 data,
@@ -182,11 +182,11 @@ internal static partial class Interop
             Span<byte> destination,
             RSAEncryptionPadding padding,
             out int bytesWritten)
-            Debug.Assert(padding.Mode == RSAEncryptionPaddingMode.Pkcs1 || padding.Mode == RSAEncryptionPaddingMode.Oaep)
+            Debug.Assert(padding.Mode == RSAEncryptionPaddingMode.Pkcs1 || padding.Mode == RSAEncryptionPaddingMode.Oaep);
 
             if (padding.Mode == RSAEncryptionPaddingMode.Pkcs1)
-                byte[] padded = CryptoPool.Rent(source.Length)
-                byte[] depad = CryptoPool.Rent(source.Length)
+                byte[] padded = CryptoPool.Rent(source.Length);
+                byte[] depad = CryptoPool.Rent(source.Length);
 
                 bool processed = TryExecuteTransform(
                     source,
@@ -199,8 +199,8 @@ internal static partial class Interop
                     processed,
                     "TryExecuteTransform should always return true for a large enough buffer.")
 
-                OperationStatus status = OperationStatus.InvalidData
-                int depaddedLength = 0
+                OperationStatus status = OperationStatus.InvalidData;
+                int depaddedLength = 0;
 
                 if (processed)
                     status = RsaPaddingProcessor.DepadPkcs1Encryption(
@@ -208,22 +208,22 @@ internal static partial class Interop
                         depad,
                         out depaddedLength)
 
-                CryptoPool.Return(padded)
+                CryptoPool.Return(padded);
 
                 if (status == OperationStatus.Done)
                     if (depaddedLength <= destination.Length)
-                        depad.AsSpan(0, depaddedLength).CopyTo(destination)
-                        CryptoPool.Return(depad)
-                        bytesWritten = depaddedLength
-                        return true
+                        depad.AsSpan(0, depaddedLength).CopyTo(destination);
+                        CryptoPool.Return(depad);
+                        bytesWritten = depaddedLength;
+                        return true;
 
-                    CryptoPool.Return(depad)
-                    bytesWritten = 0
-                    return false
+                    CryptoPool.Return(depad);
+                    bytesWritten = 0;
+                    return false;
 
-                CryptoPool.Return(depad)
-                Debug.Assert(status == OperationStatus.InvalidData)
-                throw new CryptographicException(SR.Cryptography_InvalidPadding)
+                CryptoPool.Return(depad);
+                Debug.Assert(status == OperationStatus.InvalidData);
+                throw new CryptographicException(SR.Cryptography_InvalidPadding);
 
             return TryExecuteTransform(
                 source,
@@ -242,13 +242,13 @@ internal static partial class Interop
             Span<byte> destination,
             out int bytesWritten)
             if (returnValue == kErrorSeeError)
-                throw CreateExceptionForCFError(cfError)
+                throw CreateExceptionForCFError(cfError);
 
             if (returnValue == kSuccess && !cfData.IsInvalid)
-                return CoreFoundation.TryCFWriteData(cfData, destination, out bytesWritten)
+                return CoreFoundation.TryCFWriteData(cfData, destination, out bytesWritten);
 
-            Debug.Fail($"Unknown return value ({returnValue}) or no data object returned")
-            throw new CryptographicException()
+            Debug.Fail($"Unknown return value ({returnValue}) or no data object returned");
+            throw new CryptographicException();
 
         internal static bool TryRsaEncryptionPrimitive(
             SafeSecKeyRefHandle publicKey,
@@ -262,7 +262,7 @@ internal static partial class Interop
                 out SafeCFDataHandle cfData,
                 out SafeCFErrorHandle cfError)
 
-            return ProcessPrimitiveResponse(returnValue, cfData, cfError, destination, out bytesWritten)
+            return ProcessPrimitiveResponse(returnValue, cfData, cfError, destination, out bytesWritten);
 
         internal static bool TryRsaSignaturePrimitive(
             SafeSecKeyRefHandle privateKey,
@@ -276,7 +276,7 @@ internal static partial class Interop
                 out SafeCFDataHandle cfData,
                 out SafeCFErrorHandle cfError)
 
-            return ProcessPrimitiveResponse(returnValue, cfData, cfError, destination, out bytesWritten)
+            return ProcessPrimitiveResponse(returnValue, cfData, cfError, destination, out bytesWritten);
 
         internal static bool TryRsaVerificationPrimitive(
             SafeSecKeyRefHandle publicKey,
@@ -290,4 +290,4 @@ internal static partial class Interop
                 out SafeCFDataHandle cfData,
                 out SafeCFErrorHandle cfError)
 
-            return ProcessPrimitiveResponse(returnValue, cfData, cfError, destination, out bytesWritten)
+            return ProcessPrimitiveResponse(returnValue, cfData, cfError, destination, out bytesWritten);

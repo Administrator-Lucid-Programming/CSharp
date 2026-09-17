@@ -1,17 +1,17 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System
-using System.Buffers
-using System.Collections.Generic
-using System.Diagnostics
-using System.Globalization
-using System.Diagnostics.Tracing
-using System.IO
-using System.Text
-using System.Text.Json
-using System.Text.Json.Serialization
-using System.Threading
+using System;
+using System.Buffers;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
+using System.Diagnostics.Tracing;
+using System.IO;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Threading;
 
 namespace Microsoft.Extensions.Logging.EventSource
     /// <summary>
@@ -29,30 +29,30 @@ namespace Microsoft.Extensions.Logging.EventSource
     /// </para>
     /// </remarks>
     internal sealed class EventSourceLogger : ILogger
-        private static int _activityIds
-        private readonly LoggingEventSource _eventSource
-        private readonly int _factoryID
+        private static int _activityIds;
+        private readonly LoggingEventSource _eventSource;
+        private readonly int _factoryID;
 
         [ThreadStatic]
-        private static MemoryStream? t_jsonStream
+        private static MemoryStream? t_jsonStream;
         [ThreadStatic]
-        private static Utf8JsonWriter? t_jsonWriter
+        private static Utf8JsonWriter? t_jsonWriter;
 
         // Upper bound for the per-thread buffers we keep cached between events. A single unusually
         // large event (e.g. a huge property value) must not permanently inflate steady-state memory
         // on long-lived thread-pool threads. This mirrors ConsoleLogger, which caps its thread-static
         // StringBuilder at the same size.
-        private const int MaxCachedBufferSize = 1024
+        private const int MaxCachedBufferSize = 1024;
 
         public EventSourceLogger(string categoryName, int factoryID, LoggingEventSource eventSource, EventSourceLogger? next)
-            CategoryName = categoryName
+            CategoryName = categoryName;
 
             // Default is to turn on all the logging
-            Level = LogLevel.Trace
+            Level = LogLevel.Trace;
 
-            _factoryID = factoryID
-            _eventSource = eventSource
-            Next = next
+            _factoryID = factoryID;
+            _eventSource = eventSource;
+            Next = next;
 
         public string CategoryName { get; }
 
@@ -62,40 +62,40 @@ namespace Microsoft.Extensions.Logging.EventSource
         public EventSourceLogger? Next { get; }
 
         public bool IsEnabled(LogLevel logLevel)
-            return logLevel != LogLevel.None && logLevel >= Level
+            return logLevel != LogLevel.None && logLevel >= Level;
 
         /// <inheritdoc />
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
             if (!IsEnabled(logLevel))
-                return
+                return;
 
-            bool formattedMessageEventEnabled = _eventSource.IsEnabled(EventLevel.Critical, LoggingEventSource.Keywords.FormattedMessage)
-            bool messageEventEnabled = _eventSource.IsEnabled(EventLevel.Critical, LoggingEventSource.Keywords.Message)
-            bool jsonMessageEventEnabled = _eventSource.IsEnabled(EventLevel.Critical, LoggingEventSource.Keywords.JsonMessage)
+            bool formattedMessageEventEnabled = _eventSource.IsEnabled(EventLevel.Critical, LoggingEventSource.Keywords.FormattedMessage);
+            bool messageEventEnabled = _eventSource.IsEnabled(EventLevel.Critical, LoggingEventSource.Keywords.Message);
+            bool jsonMessageEventEnabled = _eventSource.IsEnabled(EventLevel.Critical, LoggingEventSource.Keywords.JsonMessage);
 
             if (!formattedMessageEventEnabled
                 && !messageEventEnabled
                 && !jsonMessageEventEnabled)
-                return
+                return;
 
-            string? message = null
+            string? message = null;
 
-            Activity? activity = Activity.Current
-            string activityTraceId
-            string activitySpanId
-            string activityTraceFlags
+            Activity? activity = Activity.Current;
+            string activityTraceId;
+            string activitySpanId;
+            string activityTraceFlags;
             if (activity != null && activity.IdFormat == ActivityIdFormat.W3C)
-                activityTraceId = activity.TraceId.ToHexString()
-                activitySpanId = activity.SpanId.ToHexString()
-                activityTraceFlags = ((int)activity.ActivityTraceFlags).ToString(CultureInfo.InvariantCulture)
+                activityTraceId = activity.TraceId.ToHexString();
+                activitySpanId = activity.SpanId.ToHexString();
+                activityTraceFlags = ((int)activity.ActivityTraceFlags).ToString(CultureInfo.InvariantCulture);
             else
-                activityTraceId = string.Empty
-                activitySpanId = string.Empty
-                activityTraceFlags = string.Empty
+                activityTraceId = string.Empty;
+                activitySpanId = string.Empty;
+                activityTraceFlags = string.Empty;
 
             // See if they want the formatted message
             if (formattedMessageEventEnabled)
-                message = formatter(state, exception)
+                message = formatter(state, exception);
 
                 _eventSource.FormattedMessage(
                     logLevel,
@@ -110,8 +110,8 @@ namespace Microsoft.Extensions.Logging.EventSource
 
             // See if they want the message as its component parts.
             if (messageEventEnabled)
-                ExceptionInfo exceptionInfo = GetExceptionInfo(exception)
-                IReadOnlyList<KeyValuePair<string, string?>> arguments = GetProperties(state)
+                ExceptionInfo exceptionInfo = GetExceptionInfo(exception);
+                IReadOnlyList<KeyValuePair<string, string?>> arguments = GetProperties(state);
 
                 _eventSource.Message(
                     logLevel,
@@ -127,18 +127,18 @@ namespace Microsoft.Extensions.Logging.EventSource
 
             // See if they want the json message
             if (jsonMessageEventEnabled)
-                string exceptionJson = "{}"
+                string exceptionJson = "{}";
                 if (exception != null)
-                    ExceptionInfo exceptionInfo = GetExceptionInfo(exception)
+                    ExceptionInfo exceptionInfo = GetExceptionInfo(exception);
                     KeyValuePair<string, string?>[] exceptionInfoData = new[] {
                         new KeyValuePair<string, string?>("TypeName", exceptionInfo.TypeName),
                         new KeyValuePair<string, string?>("Message", exceptionInfo.Message),
                         new KeyValuePair<string, string?>("HResult", exceptionInfo.HResult.ToString()),
                         new KeyValuePair<string, string?>("VerboseMessage", exceptionInfo.VerboseMessage),
                     }
-                    exceptionJson = ToJson(exceptionInfoData)
+                    exceptionJson = ToJson(exceptionInfoData);
 
-                IReadOnlyList<KeyValuePair<string, string?>> arguments = GetProperties(state)
+                IReadOnlyList<KeyValuePair<string, string?>> arguments = GetProperties(state);
 
                 _eventSource.MessageJson(
                     logLevel,
@@ -155,47 +155,47 @@ namespace Microsoft.Extensions.Logging.EventSource
 
         public IDisposable BeginScope<TState>(TState state) where TState : notnull
             if (!IsEnabled(LogLevel.Critical))
-                return NullScope.Instance
+                return NullScope.Instance;
 
-            int id = Interlocked.Increment(ref _activityIds)
+            int id = Interlocked.Increment(ref _activityIds);
 
             // If JsonMessage is on, use JSON format
             if (_eventSource.IsEnabled(EventLevel.Critical, LoggingEventSource.Keywords.JsonMessage))
-                IReadOnlyList<KeyValuePair<string, string?>> arguments = GetProperties(state)
-                _eventSource.ActivityJsonStart(id, _factoryID, CategoryName, ToJson(arguments))
-                return new ActivityScope(_eventSource, CategoryName, id, _factoryID, true)
+                IReadOnlyList<KeyValuePair<string, string?>> arguments = GetProperties(state);
+                _eventSource.ActivityJsonStart(id, _factoryID, CategoryName, ToJson(arguments));
+                return new ActivityScope(_eventSource, CategoryName, id, _factoryID, true);
 
             if (_eventSource.IsEnabled(EventLevel.Critical, LoggingEventSource.Keywords.Message) ||
                 _eventSource.IsEnabled(EventLevel.Critical, LoggingEventSource.Keywords.FormattedMessage))
-                IReadOnlyList<KeyValuePair<string, string?>> arguments = GetProperties(state)
-                _eventSource.ActivityStart(id, _factoryID, CategoryName, arguments)
-                return new ActivityScope(_eventSource, CategoryName, id, _factoryID, false)
+                IReadOnlyList<KeyValuePair<string, string?>> arguments = GetProperties(state);
+                _eventSource.ActivityStart(id, _factoryID, CategoryName, arguments);
+                return new ActivityScope(_eventSource, CategoryName, id, _factoryID, false);
 
-            return NullScope.Instance
+            return NullScope.Instance;
 
         /// <summary>
         /// ActivityScope is just a IDisposable that knows how to send the ActivityStop event when it is
         /// desposed.  It is part of the BeginScope() support.
         /// </summary>
         private sealed class ActivityScope : IDisposable
-            private readonly string _categoryName
-            private readonly int _activityID
-            private readonly int _factoryID
-            private readonly bool _isJsonStop
-            private readonly LoggingEventSource _eventSource
+            private readonly string _categoryName;
+            private readonly int _activityID;
+            private readonly int _factoryID;
+            private readonly bool _isJsonStop;
+            private readonly LoggingEventSource _eventSource;
 
             public ActivityScope(LoggingEventSource eventSource, string categoryName, int activityID, int factoryID, bool isJsonStop)
-                _categoryName = categoryName
-                _activityID = activityID
-                _factoryID = factoryID
-                _isJsonStop = isJsonStop
-                _eventSource = eventSource
+                _categoryName = categoryName;
+                _activityID = activityID;
+                _factoryID = factoryID;
+                _isJsonStop = isJsonStop;
+                _eventSource = eventSource;
 
             public void Dispose()
                 if (_isJsonStop)
-                    _eventSource.ActivityJsonStop(_activityID, _factoryID, _categoryName)
+                    _eventSource.ActivityJsonStop(_activityID, _factoryID, _categoryName);
                 else
-                    _eventSource.ActivityStop(_activityID, _factoryID, _categoryName)
+                    _eventSource.ActivityStop(_activityID, _factoryID, _categoryName);
 
         /// <summary>
         /// 'serializes' a given exception into an ExceptionInfo (that EventSource knows how to serialize)
@@ -204,36 +204,36 @@ namespace Microsoft.Extensions.Logging.EventSource
         /// <returns>ExceptionInfo object represending a .NET Exception</returns>
         /// <remarks>ETW does not support a concept of a null value. So we use an un-initialized object if there is no exception in the event data.</remarks>
         private static ExceptionInfo GetExceptionInfo(Exception? exception)
-            return exception != null ? new ExceptionInfo(exception) : ExceptionInfo.Empty
+            return exception != null ? new ExceptionInfo(exception) : ExceptionInfo.Empty;
 
         /// <summary>
         /// Converts an ILogger state object into a set of key-value pairs (That can be send to a EventSource)
         /// </summary>
         private static KeyValuePair<string, string?>[] GetProperties(object? state)
             if (state is IReadOnlyList<KeyValuePair<string, object?>> keyValuePairs)
-                var arguments = new KeyValuePair<string, string?>[keyValuePairs.Count]
+                var arguments = new KeyValuePair<string, string?>[keyValuePairs.Count];
                 for (int i = 0; i < keyValuePairs.Count; i++)
-                    KeyValuePair<string, object?> keyValuePair = keyValuePairs[i]
-                    arguments[i] = new KeyValuePair<string, string?>(keyValuePair.Key, keyValuePair.Value?.ToString())
-                return arguments
+                    KeyValuePair<string, object?> keyValuePair = keyValuePairs[i];
+                    arguments[i] = new KeyValuePair<string, string?>(keyValuePair.Key, keyValuePair.Value?.ToString());
+                return arguments;
 
-            return Array.Empty<KeyValuePair<string, string?>>()
+            return Array.Empty<KeyValuePair<string, string?>>();
 
         private static string ToJson(IReadOnlyList<KeyValuePair<string, string?>> keyValues)
             // Reuse a per-thread stream and writer to avoid allocating a MemoryStream, a Utf8JsonWriter,
             // and their backing buffers on every logged event.
-            MemoryStream stream = t_jsonStream ??= new MemoryStream()
-            Utf8JsonWriter writer = t_jsonWriter ??= new Utf8JsonWriter(stream)
+            MemoryStream stream = t_jsonStream ??= new MemoryStream();
+            Utf8JsonWriter writer = t_jsonWriter ??= new Utf8JsonWriter(stream);
 
-            stream.SetLength(0)
-            writer.Reset(stream)
+            stream.SetLength(0);
+            writer.Reset(stream);
 
-            writer.WriteStartObject()
+            writer.WriteStartObject();
             foreach (KeyValuePair<string, string?> keyValue in keyValues)
-                writer.WriteString(keyValue.Key, keyValue.Value)
-            writer.WriteEndObject()
+                writer.WriteString(keyValue.Key, keyValue.Value);
+            writer.WriteEndObject();
 
-            writer.Flush()
+            writer.Flush();
 
             string result = stream.TryGetBuffer(out ArraySegment<byte> buffer)
                 ? Encoding.UTF8.GetString(buffer.Array!, buffer.Offset, buffer.Count)
@@ -244,9 +244,9 @@ namespace Microsoft.Extensions.Logging.EventSource
                 // Shrink the stream back down (its length must be reset before its capacity can be lowered)
                 // and drop the writer, whose internal buffer has no public API to shrink, so neither is
                 // retained at the larger size on this thread. Both are lazily recreated on the next event.
-                stream.SetLength(0)
-                stream.Capacity = MaxCachedBufferSize
-                writer.Dispose()
-                t_jsonWriter = null
+                stream.SetLength(0);
+                stream.Capacity = MaxCachedBufferSize;
+                writer.Dispose();
+                t_jsonWriter = null;
 
-            return result
+            return result;

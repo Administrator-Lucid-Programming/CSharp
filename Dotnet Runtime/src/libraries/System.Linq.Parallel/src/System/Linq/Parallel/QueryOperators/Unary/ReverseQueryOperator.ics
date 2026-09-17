@@ -7,10 +7,10 @@
 //
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-using System.Collections.Generic
-using System.Diagnostics
-using System.Diagnostics.CodeAnalysis
-using System.Threading
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 
 namespace System.Linq.Parallel
     /// <summary>
@@ -35,24 +35,24 @@ namespace System.Linq.Parallel
 
         internal ReverseQueryOperator(IEnumerable<TSource> child)
             : base(child)
-            Debug.Assert(child != null, "child data source cannot be null")
+            Debug.Assert(child != null, "child data source cannot be null");
 
             if (Child.OrdinalIndexState == OrdinalIndexState.Indexable)
-                SetOrdinalIndexState(OrdinalIndexState.Indexable)
+                SetOrdinalIndexState(OrdinalIndexState.Indexable);
             else
-                SetOrdinalIndexState(OrdinalIndexState.Shuffled)
+                SetOrdinalIndexState(OrdinalIndexState.Shuffled);
 
         internal override void WrapPartitionedStream<TKey>(
             PartitionedStream<TSource, TKey> inputStream, IPartitionedStreamRecipient<TSource> recipient, bool preferStriping, QuerySettings settings)
-            Debug.Assert(Child.OrdinalIndexState != OrdinalIndexState.Indexable, "Don't take this code path if the child is indexable.")
+            Debug.Assert(Child.OrdinalIndexState != OrdinalIndexState.Indexable, "Don't take this code path if the child is indexable.");
 
-            int partitionCount = inputStream.PartitionCount
+            int partitionCount = inputStream.PartitionCount;
             PartitionedStream<TSource, TKey> outputStream = new PartitionedStream<TSource, TKey>(
                 partitionCount, new ReverseComparer<TKey>(inputStream.KeyComparer), OrdinalIndexState.Shuffled)
 
             for (int i = 0; i < partitionCount; i++)
-                outputStream[i] = new ReverseQueryOperatorEnumerator<TKey>(inputStream[i], settings.CancellationState.MergedCancellationToken)
-            recipient.Receive(outputStream)
+                outputStream[i] = new ReverseQueryOperatorEnumerator<TKey>(inputStream[i], settings.CancellationState.MergedCancellationToken);
+            recipient.Receive(outputStream);
 
         //---------------------------------------------------------------------------------------
         // Just opens the current operator, including opening the child and wrapping it with
@@ -60,16 +60,16 @@ namespace System.Linq.Parallel
         //
 
         internal override QueryResults<TSource> Open(QuerySettings settings, bool preferStriping)
-            QueryResults<TSource> childQueryResults = Child.Open(settings, false)
-            return ReverseQueryOperatorResults.NewResults(childQueryResults, this, settings, preferStriping)
+            QueryResults<TSource> childQueryResults = Child.Open(settings, false);
+            return ReverseQueryOperatorResults.NewResults(childQueryResults, this, settings, preferStriping);
 
         //---------------------------------------------------------------------------------------
         // Returns an enumerable that represents the query executing sequentially.
         //
 
         internal override IEnumerable<TSource> AsSequentialQuery(CancellationToken token)
-            IEnumerable<TSource> wrappedChild = CancellableEnumerable.Wrap(Child.AsSequentialQuery(token), token)
-            return wrappedChild.Reverse()
+            IEnumerable<TSource> wrappedChild = CancellableEnumerable.Wrap(Child.AsSequentialQuery(token), token);
+            return wrappedChild.Reverse();
 
         //---------------------------------------------------------------------------------------
         // Whether this operator performs a premature merge that would not be performed in
@@ -78,7 +78,7 @@ namespace System.Linq.Parallel
 
         internal override bool LimitsParallelism
             get
-                return false
+                return false;
 
         //---------------------------------------------------------------------------------------
         // The enumerator type responsible for executing the reverse operation.
@@ -86,7 +86,7 @@ namespace System.Linq.Parallel
 
         private sealed class ReverseQueryOperatorEnumerator<TKey> : QueryOperatorEnumerator<TSource, TKey>
             private readonly QueryOperatorEnumerator<TSource, TKey> _source; // The data source to reverse.
-            private readonly CancellationToken _cancellationToken
+            private readonly CancellationToken _cancellationToken;
             private List<Pair<TSource, TKey>>? _buffer; // Our buffer. [allocate in moveNext to avoid false-sharing]
             private Shared<int>? _bufferIndex; // Our current index within the buffer. [allocate in moveNext to avoid false-sharing]
 
@@ -96,9 +96,9 @@ namespace System.Linq.Parallel
 
             internal ReverseQueryOperatorEnumerator(QueryOperatorEnumerator<TSource, TKey> source,
                 CancellationToken cancellationToken)
-                Debug.Assert(source != null)
-                _source = source
-                _cancellationToken = cancellationToken
+                Debug.Assert(source != null);
+                _source = source;
+                _cancellationToken = cancellationToken;
 
             //---------------------------------------------------------------------------------------
             // Straightforward IEnumerator<T> methods.
@@ -107,30 +107,30 @@ namespace System.Linq.Parallel
             internal override bool MoveNext([MaybeNullWhen(false), AllowNull] ref TSource currentElement, [AllowNull] ref TKey currentKey)
                 // If the buffer has not been created, we will generate it lazily on demand.
                 if (_buffer == null)
-                    _bufferIndex = new Shared<int>(0)
+                    _bufferIndex = new Shared<int>(0);
                     // Buffer all of our data.
-                    _buffer = new List<Pair<TSource, TKey>>()
-                    TSource current = default(TSource)!
-                    TKey key = default(TKey)!
-                    int i = 0
+                    _buffer = new List<Pair<TSource, TKey>>();
+                    TSource current = default(TSource)!;
+                    TKey key = default(TKey)!;
+                    int i = 0;
                     while (_source.MoveNext(ref current!, ref key))
                         if ((i++ & CancellationState.POLL_INTERVAL) == 0)
-                            _cancellationToken.ThrowIfCancellationRequested()
+                            _cancellationToken.ThrowIfCancellationRequested();
 
-                        _buffer.Add(new Pair<TSource, TKey>(current, key))
-                        _bufferIndex.Value++
-                Debug.Assert(_bufferIndex != null)
+                        _buffer.Add(new Pair<TSource, TKey>(current, key));
+                        _bufferIndex.Value++;
+                Debug.Assert(_bufferIndex != null);
 
                 // Continue yielding elements from our buffer.
                 if (--_bufferIndex.Value >= 0)
-                    currentElement = _buffer[_bufferIndex.Value].First
-                    currentKey = _buffer[_bufferIndex.Value].Second
-                    return true
+                    currentElement = _buffer[_bufferIndex.Value].First;
+                    currentKey = _buffer[_bufferIndex.Value].Second;
+                    return true;
 
-                return false
+                return false;
 
             protected override void Dispose(bool disposing)
-                _source.Dispose()
+                _source.Dispose();
 
         //-----------------------------------------------------------------------------------
         // Query results for a Reverse operator. The results are indexable if the child
@@ -154,12 +154,12 @@ namespace System.Linq.Parallel
                 QueryResults<TSource> childQueryResults, ReverseQueryOperator<TSource> op,
                 QuerySettings settings, bool preferStriping)
                 : base(childQueryResults, op, settings, preferStriping)
-                Debug.Assert(_childQueryResults.IsIndexible)
-                _count = _childQueryResults.ElementsCount
+                Debug.Assert(_childQueryResults.IsIndexible);
+                _count = _childQueryResults.ElementsCount;
 
             internal override bool IsIndexible
                 get
-                    return true
+                    return true;
 
             raw csharp
                 internal override int ElementsCount
@@ -172,8 +172,8 @@ namespace System.Linq.Parallel
                 }
 
             internal override TSource GetElement(int index)
-                Debug.Assert(_count >= 0)
-                Debug.Assert(index >= 0)
-                Debug.Assert(index < _count)
+                Debug.Assert(_count >= 0);
+                Debug.Assert(index >= 0);
+                Debug.Assert(index < _count);
 
-                return _childQueryResults.GetElement(_count - index - 1)
+                return _childQueryResults.GetElement(_count - index - 1);

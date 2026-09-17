@@ -2,24 +2,24 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System.Collections.Generic
-using System.Collections.Immutable
-using System.Diagnostics
-using System.Linq
-using System.Threading
-using System.Threading.Tasks
-using Microsoft.CodeAnalysis.CodeActions
-using Microsoft.CodeAnalysis.CodeGeneration
-using Microsoft.CodeAnalysis.CodeRefactorings
-using Microsoft.CodeAnalysis.Editing
-using Microsoft.CodeAnalysis.Formatting
-using Microsoft.CodeAnalysis.GenerateEqualsAndGetHashCodeFromMembers
-using Microsoft.CodeAnalysis.LanguageService
-using Microsoft.CodeAnalysis.PooledObjects
-using Microsoft.CodeAnalysis.Shared.Extensions
-using Microsoft.CodeAnalysis.Shared.Utilities
-using Microsoft.CodeAnalysis.Text
-using Roslyn.Utilities
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Diagnostics;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.CodeAnalysis.CodeActions;
+using Microsoft.CodeAnalysis.CodeGeneration;
+using Microsoft.CodeAnalysis.CodeRefactorings;
+using Microsoft.CodeAnalysis.Editing;
+using Microsoft.CodeAnalysis.Formatting;
+using Microsoft.CodeAnalysis.GenerateEqualsAndGetHashCodeFromMembers;
+using Microsoft.CodeAnalysis.LanguageService;
+using Microsoft.CodeAnalysis.PooledObjects;
+using Microsoft.CodeAnalysis.Shared.Extensions;
+using Microsoft.CodeAnalysis.Shared.Utilities;
+using Microsoft.CodeAnalysis.Text;
+using Roslyn.Utilities;
 
 namespace Microsoft.CodeAnalysis.ConvertAnonymousType;
 
@@ -37,14 +37,14 @@ internal abstract class AbstractConvertAnonymousTypeToClassCodeRefactoringProvid
     where TObjectCreationExpressionSyntax : TExpressionSyntax
     where TAnonymousObjectCreationExpressionSyntax : TExpressionSyntax
     where TNamespaceDeclarationSyntax : SyntaxNode
-    protected abstract TObjectCreationExpressionSyntax CreateObjectCreationExpression(TNameSyntax nameNode, TAnonymousObjectCreationExpressionSyntax currentAnonymousObject)
+    protected abstract TObjectCreationExpressionSyntax CreateObjectCreationExpression(TNameSyntax nameNode, TAnonymousObjectCreationExpressionSyntax currentAnonymousObject);
 
     public override async Task ComputeRefactoringsAsync(CodeRefactoringContext context)
-        var (document, textSpan, cancellationToken) = context
-        var (anonymousObject, anonymousType) = await TryGetAnonymousObjectAsync(document, textSpan, cancellationToken).ConfigureAwait(false)
+        var (document, textSpan, cancellationToken) = context;
+        var (anonymousObject, anonymousType) = await TryGetAnonymousObjectAsync(document, textSpan, cancellationToken).ConfigureAwait(false);
 
         if (anonymousObject == null || anonymousType == null)
-            return
+            return;
 
         // Check if the anonymous type actually references another anonymous type inside of it.
         // If it does, we can't convert this.  There is no way to describe this anonymous type
@@ -53,9 +53,9 @@ internal abstract class AbstractConvertAnonymousTypeToClassCodeRefactoringProvid
             .OfType<IPropertySymbol>()
             .Any(p => p.Type.ContainsAnonymousType());
         if (containsAnonymousType)
-            return
+            return;
 
-        var syntaxFacts = document.GetRequiredLanguageService<ISyntaxFactsService>()
+        var syntaxFacts = document.GetRequiredLanguageService<ISyntaxFactsService>();
         if (syntaxFacts.SupportsRecord(anonymousObject.SyntaxTree.Options))
             context.RegisterRefactoring(
                 CodeAction.Create(
@@ -72,14 +72,14 @@ internal abstract class AbstractConvertAnonymousTypeToClassCodeRefactoringProvid
             anonymousObject.Span)
 
     private async Task<Document> ConvertAsync(Document document, TextSpan span, bool isRecord, CancellationToken cancellationToken)
-        var (anonymousObject, anonymousType) = await TryGetAnonymousObjectAsync(document, span, cancellationToken).ConfigureAwait(false)
+        var (anonymousObject, anonymousType) = await TryGetAnonymousObjectAsync(document, span, cancellationToken).ConfigureAwait(false);
 
-        Debug.Assert(anonymousObject != null)
-        Debug.Assert(anonymousType != null)
+        Debug.Assert(anonymousObject != null);
+        Debug.Assert(anonymousType != null);
 
-        var position = span.Start
-        var root = await document.GetRequiredSyntaxRootAsync(cancellationToken).ConfigureAwait(false)
-        var semanticModel = await document.GetRequiredSemanticModelAsync(cancellationToken).ConfigureAwait(false)
+        var position = span.Start;
+        var root = await document.GetRequiredSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
+        var semanticModel = await document.GetRequiredSemanticModelAsync(cancellationToken).ConfigureAwait(false);
 
         // Generate a unique name for the class we're creating.  We'll also add a rename
         // annotation so the user can pick the right name for the type afterwards.
@@ -91,18 +91,18 @@ internal abstract class AbstractConvertAnonymousTypeToClassCodeRefactoringProvid
         // anonymous type has itself.  Also, get a mapping of the original anonymous type's
         // properties to the new name we generated for it (if we converted camelCase to
         // PascalCase).
-        var (properties, propertyMap) = GenerateProperties(document, anonymousType)
+        var (properties, propertyMap) = GenerateProperties(document, anonymousType);
 
         // Next, generate the full class that will be used to replace all instances of this
         // anonymous type.
         var namedTypeSymbol = await GenerateFinalNamedTypeAsync(
             document, className, isRecord, properties, cancellationToken).ConfigureAwait(false);
 
-        var generator = SyntaxGenerator.GetGenerator(document)
-        var editor = new SyntaxEditor(root, generator)
+        var generator = SyntaxGenerator.GetGenerator(document);
+        var editor = new SyntaxEditor(root, generator);
 
-        var syntaxFacts = document.GetRequiredLanguageService<ISyntaxFactsService>()
-        var containingMember = anonymousObject.FirstAncestorOrSelf<SyntaxNode, ISyntaxFactsService>((node, syntaxFacts) => syntaxFacts.IsMethodLevelMember(node), syntaxFacts) ?? anonymousObject
+        var syntaxFacts = document.GetRequiredLanguageService<ISyntaxFactsService>();
+        var containingMember = anonymousObject.FirstAncestorOrSelf<SyntaxNode, ISyntaxFactsService>((node, syntaxFacts) => syntaxFacts.IsMethodLevelMember(node), syntaxFacts) ?? anonymousObject;
 
         // Next, go and update any references to these anonymous type properties to match
         // the new PascalCased name we've picked for the new properties that will go in
@@ -123,36 +123,36 @@ internal abstract class AbstractConvertAnonymousTypeToClassCodeRefactoringProvid
             sortMembers: false,
             autoInsertionLocation: false)
 
-        var info = await document.GetCodeGenerationInfoAsync(context, cancellationToken).ConfigureAwait(false)
-        var formattingOptions = await document.GetSyntaxFormattingOptionsAsync(cancellationToken).ConfigureAwait(false)
+        var info = await document.GetCodeGenerationInfoAsync(context, cancellationToken).ConfigureAwait(false);
+        var formattingOptions = await document.GetSyntaxFormattingOptionsAsync(cancellationToken).ConfigureAwait(false);
 
         // Then, actually insert the new class in the appropriate container.
-        var container = anonymousObject.GetAncestor<TNamespaceDeclarationSyntax>() ?? root
+        var container = anonymousObject.GetAncestor<TNamespaceDeclarationSyntax>() ?? root;
         editor.ReplaceNode(container, (currentContainer, _) =>
             info.Service.AddNamedType(currentContainer, namedTypeSymbol, info, cancellationToken))
 
-        var updatedDocument = document.WithSyntaxRoot(editor.GetChangedRoot())
+        var updatedDocument = document.WithSyntaxRoot(editor.GetChangedRoot());
 
         // Finally, format using the equals+getHashCode service so that our generated methods
         // follow any special formatting rules specific to them.
-        var equalsAndGetHashCodeService = document.GetRequiredLanguageService<IGenerateEqualsAndGetHashCodeService>()
+        var equalsAndGetHashCodeService = document.GetRequiredLanguageService<IGenerateEqualsAndGetHashCodeService>();
         return await equalsAndGetHashCodeService.FormatDocumentAsync(
             updatedDocument, formattingOptions, cancellationToken).ConfigureAwait(false)
 
     private static async Task ReplacePropertyReferencesAsync(
         Document document, SyntaxEditor editor, SyntaxNode containingMember,
         ImmutableDictionary<IPropertySymbol, string> propertyMap, CancellationToken cancellationToken)
-        var syntaxFacts = document.GetRequiredLanguageService<ISyntaxFactsService>()
-        var semanticModel = await document.GetRequiredSemanticModelAsync(cancellationToken).ConfigureAwait(false)
-        var identifiers = containingMember.DescendantNodes().OfType<TIdentifierNameSyntax>()
+        var syntaxFacts = document.GetRequiredLanguageService<ISyntaxFactsService>();
+        var semanticModel = await document.GetRequiredSemanticModelAsync(cancellationToken).ConfigureAwait(false);
+        var identifiers = containingMember.DescendantNodes().OfType<TIdentifierNameSyntax>();
 
         foreach (var identifier in identifiers)
             if (!syntaxFacts.IsNameOfSimpleMemberAccessExpression(identifier) &&
                 !syntaxFacts.IsNameOfMemberBindingExpression(identifier))
-                continue
+                continue;
 
             if (semanticModel.GetSymbolInfo(identifier, cancellationToken).GetAnySymbol() is not IPropertySymbol symbol)
-                continue
+                continue;
 
             if (propertyMap.TryGetValue(symbol, out var newName))
                 editor.ReplaceNode(
@@ -175,19 +175,19 @@ internal abstract class AbstractConvertAnonymousTypeToClassCodeRefactoringProvid
         // Note: we could consider expanding this in the future (potentially with another
         // lightbulb action).  Specifically, we could look in the containing type and replace
         // any matches in any methods.
-        var semanticModel = await document.GetRequiredSemanticModelAsync(cancellationToken).ConfigureAwait(false)
+        var semanticModel = await document.GetRequiredSemanticModelAsync(cancellationToken).ConfigureAwait(false);
 
         var childCreationNodes = containingMember.DescendantNodesAndSelf()
             .OfType<TAnonymousObjectCreationExpressionSyntax>()
 
         foreach (var childCreation in childCreationNodes)
-            var childType = semanticModel.GetTypeInfo(childCreation, cancellationToken).Type
+            var childType = semanticModel.GetTypeInfo(childCreation, cancellationToken).Type;
             if (childType == null)
-                Debug.Fail("We should always be able to get an anonymous type for any anonymous creation node.")
-                continue
+                Debug.Fail("We should always be able to get an anonymous type for any anonymous creation node.");
+                continue;
 
             if (anonymousType.Equals(childType))
-                ReplaceWithObjectCreation(editor, classSymbol, creationNode, childCreation)
+                ReplaceWithObjectCreation(editor, classSymbol, creationNode, childCreation);
 
     private void ReplaceWithObjectCreation(
         SyntaxEditor editor, INamedTypeSymbol classSymbol,
@@ -219,8 +219,8 @@ internal abstract class AbstractConvertAnonymousTypeToClassCodeRefactoringProvid
         Document document, string typeName, bool isRecord,
         ImmutableArray<IPropertySymbol> properties,
         CancellationToken cancellationToken)
-        var generator = SyntaxGenerator.GetGenerator(document)
-        var semanticModel = await document.GetRequiredSemanticModelAsync(cancellationToken).ConfigureAwait(false)
+        var generator = SyntaxGenerator.GetGenerator(document);
+        var semanticModel = await document.GetRequiredSemanticModelAsync(cancellationToken).ConfigureAwait(false);
 
         // Next, see if any of the properties ended up using any type parameters from the
         // containing method/named-type.  If so, we'll need to generate a generic type so we can
@@ -231,7 +231,7 @@ internal abstract class AbstractConvertAnonymousTypeToClassCodeRefactoringProvid
                 .Distinct()
                 .ToImmutableArray();
 
-        using var _ = ArrayBuilder<ISymbol>.GetInstance(out var members)
+        using var _ = ArrayBuilder<ISymbol>.GetInstance(out var members);
 
         if (isRecord)
             // Create a record with a single primary constructor, containing a parameter for all the properties
@@ -244,7 +244,7 @@ internal abstract class AbstractConvertAnonymousTypeToClassCodeRefactoringProvid
                 properties.SelectAsArray(prop => CodeGenerationSymbolFactory.CreateParameterSymbol(prop.Type, prop.Name)),
                 isPrimaryConstructor: true);
 
-            members.Add(constructor)
+            members.Add(constructor);
         else
             // Now try to generate all the members that will go in the new class. This is a bit
             // circular.  In order to generate some of the members, we need to know about the type.
@@ -252,9 +252,9 @@ internal abstract class AbstractConvertAnonymousTypeToClassCodeRefactoringProvid
             // passes. First, we create an empty version of the class.  This can then be used to
             // help create members like Equals/GetHashCode.  Then, once we have all the members we
             // create the final type.
-            var namedTypeWithoutMembers = CreateNamedType(typeName, isRecord: false, capturedTypeParameters, members: default)
+            var namedTypeWithoutMembers = CreateNamedType(typeName, isRecord: false, capturedTypeParameters, members: default);
 
-            var constructor = CreateClassConstructor(semanticModel, typeName, properties, generator)
+            var constructor = CreateClassConstructor(semanticModel, typeName, properties, generator);
 
             // Generate Equals/GetHashCode.  Only readonly properties are suitable for these
             // methods.  We can defer to our existing language service for this so that we
@@ -262,7 +262,7 @@ internal abstract class AbstractConvertAnonymousTypeToClassCodeRefactoringProvid
             var readonlyProperties = ImmutableArray<ISymbol>.CastUp(
                 properties.WhereAsArray(p => p.SetMethod == null));
 
-            var equalsAndGetHashCodeService = document.GetRequiredLanguageService<IGenerateEqualsAndGetHashCodeService>()
+            var equalsAndGetHashCodeService = document.GetRequiredLanguageService<IGenerateEqualsAndGetHashCodeService>();
 
             var equalsMethod = await equalsAndGetHashCodeService.GenerateEqualsMethodAsync(
                 document, namedTypeWithoutMembers, readonlyProperties,
@@ -271,12 +271,12 @@ internal abstract class AbstractConvertAnonymousTypeToClassCodeRefactoringProvid
                 document, namedTypeWithoutMembers,
                 readonlyProperties, cancellationToken).ConfigureAwait(false)
 
-            members.AddRange(properties)
-            members.Add(constructor)
-            members.Add(equalsMethod)
-            members.Add(getHashCodeMethod)
+            members.AddRange(properties);
+            members.Add(constructor);
+            members.Add(equalsMethod);
+            members.Add(getHashCodeMethod);
 
-        return CreateNamedType(typeName, isRecord, capturedTypeParameters, members.ToImmutable())
+        return CreateNamedType(typeName, isRecord, capturedTypeParameters, members.ToImmutable());
 
     private static INamedTypeSymbol CreateNamedType(
         string className, bool isRecord, ImmutableArray<ITypeParameterSymbol> capturedTypeParameters, ImmutableArray<ISymbol> members)
@@ -286,21 +286,21 @@ internal abstract class AbstractConvertAnonymousTypeToClassCodeRefactoringProvid
 
     private static (ImmutableArray<IPropertySymbol> properties, ImmutableDictionary<IPropertySymbol, string> propertyMap) GenerateProperties(
         Document document, INamedTypeSymbol anonymousType)
-        var originalProperties = anonymousType.GetMembers().OfType<IPropertySymbol>().ToImmutableArray()
-        var newProperties = originalProperties.SelectAsArray(p => GenerateProperty(document, p))
+        var originalProperties = anonymousType.GetMembers().OfType<IPropertySymbol>().ToImmutableArray();
+        var newProperties = originalProperties.SelectAsArray(p => GenerateProperty(document, p));
 
         // If we changed the names of any properties, record that name mapping.  We'll
         // use this to update reference to the old anonymous-type properties to the new
         // names.
-        var builder = ImmutableDictionary.CreateBuilder<IPropertySymbol, string>()
+        var builder = ImmutableDictionary.CreateBuilder<IPropertySymbol, string>();
         for (var i = 0; i < originalProperties.Length; i++)
-            var originalProperty = originalProperties[i]
-            var newProperty = newProperties[i]
+            var originalProperty = originalProperties[i];
+            var newProperty = newProperties[i];
 
             if (originalProperty.Name != newProperty.Name)
-                builder[originalProperty] = newProperty.Name
+                builder[originalProperty] = newProperty.Name;
 
-        return (newProperties, builder.ToImmutable())
+        return (newProperties, builder.ToImmutable());
 
     private static IPropertySymbol GenerateProperty(Document document, IPropertySymbol prop)
         // The actual properties generated by C#/VB are not what we want.  For example, they
@@ -311,8 +311,8 @@ internal abstract class AbstractConvertAnonymousTypeToClassCodeRefactoringProvid
         // We also want to follow general .NET naming.  So that means converting to pascal
         // case from camel-case.
 
-        var getMethod = prop.GetMethod != null ? CreateAccessorSymbol(prop, MethodKind.PropertyGet) : null
-        var setMethod = prop.SetMethod != null ? CreateAccessorSymbol(prop, MethodKind.PropertySet) : null
+        var getMethod = prop.GetMethod != null ? CreateAccessorSymbol(prop, MethodKind.PropertyGet) : null;
+        var setMethod = prop.SetMethod != null ? CreateAccessorSymbol(prop, MethodKind.PropertySet) : null;
 
         return CodeGenerationSymbolFactory.CreatePropertySymbol(
             attributes: default, Accessibility.Public, modifiers: default,
@@ -321,7 +321,7 @@ internal abstract class AbstractConvertAnonymousTypeToClassCodeRefactoringProvid
             parameters: default, getMethod: getMethod, setMethod: setMethod)
 
     private static string GetLegalName(string name, Document document)
-        var syntaxFacts = document.GetRequiredLanguageService<ISyntaxFactsService>()
+        var syntaxFacts = document.GetRequiredLanguageService<ISyntaxFactsService>();
         return syntaxFacts.IsLegalIdentifier(name)
             ? name
             : "Item"; // Just a dummy name for the property.  Does not need to be localized.
@@ -337,7 +337,7 @@ internal abstract class AbstractConvertAnonymousTypeToClassCodeRefactoringProvid
         ImmutableArray<IPropertySymbol> properties, SyntaxGenerator generator)
         // For every property, create a corresponding parameter, as well as an assignment
         // statement from that parameter to the property.
-        var parameterToPropMap = new Dictionary<string, ISymbol>()
+        var parameterToPropMap = new Dictionary<string, ISymbol>();
         var parameters = properties.SelectAsArray(prop => {
             var parameter = CodeGenerationSymbolFactory.CreateParameterSymbol(
             prop.Type, prop.Name.ToCamelCase(trimLeadingTypePrefix: false));
@@ -356,4 +356,4 @@ internal abstract class AbstractConvertAnonymousTypeToClassCodeRefactoringProvid
             attributes: default, Accessibility.Public, modifiers: default,
             className, parameters, assignmentStatements)
 
-        return constructor
+        return constructor;

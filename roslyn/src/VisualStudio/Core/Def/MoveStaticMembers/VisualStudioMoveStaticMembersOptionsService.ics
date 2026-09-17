@@ -2,25 +2,25 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System
-using System.Collections.Generic
-using System.Collections.Immutable
-using System.Composition
-using System.IO
-using System.Linq
-using System.Threading
-using Microsoft.CodeAnalysis
-using Microsoft.CodeAnalysis.Host.Mef
-using Microsoft.CodeAnalysis.LanguageService
-using Microsoft.CodeAnalysis.MoveStaticMembers
-using Microsoft.CodeAnalysis.PullMemberUp
-using Microsoft.CodeAnalysis.Shared.Extensions
-using Microsoft.CodeAnalysis.Shared.Utilities
-using Microsoft.VisualStudio.Language.Intellisense
-using Microsoft.VisualStudio.LanguageServices.Implementation.PullMemberUp
-using Microsoft.VisualStudio.LanguageServices.Implementation.Utilities
-using Microsoft.VisualStudio.Utilities
-using Roslyn.Utilities
+using System;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Composition;
+using System.IO;
+using System.Linq;
+using System.Threading;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Host.Mef;
+using Microsoft.CodeAnalysis.LanguageService;
+using Microsoft.CodeAnalysis.MoveStaticMembers;
+using Microsoft.CodeAnalysis.PullMemberUp;
+using Microsoft.CodeAnalysis.Shared.Extensions;
+using Microsoft.CodeAnalysis.Shared.Utilities;
+using Microsoft.VisualStudio.Language.Intellisense;
+using Microsoft.VisualStudio.LanguageServices.Implementation.PullMemberUp;
+using Microsoft.VisualStudio.LanguageServices.Implementation.Utilities;
+using Microsoft.VisualStudio.Utilities;
+using Roslyn.Utilities;
 
 namespace Microsoft.VisualStudio.LanguageServices.Implementation.MoveStaticMembers;
 
@@ -30,33 +30,33 @@ namespace Microsoft.VisualStudio.LanguageServices.Implementation.MoveStaticMembe
 internal sealed class VisualStudioMoveStaticMembersOptionsService(
     IGlyphService glyphService,
     IUIThreadOperationExecutor uiThreadOperationExecutor) : IMoveStaticMembersOptionsService
-    private readonly IGlyphService _glyphService = glyphService
-    private readonly IUIThreadOperationExecutor _uiThreadOperationExecutor = uiThreadOperationExecutor
+    private readonly IGlyphService _glyphService = glyphService;
+    private readonly IUIThreadOperationExecutor _uiThreadOperationExecutor = uiThreadOperationExecutor;
 
-    private const int HistorySize = 3
+    private const int HistorySize = 3;
 
-    public readonly LinkedList<INamedTypeSymbol> History = new()
+    public readonly LinkedList<INamedTypeSymbol> History = new();
 
     public MoveStaticMembersOptions GetMoveMembersToTypeOptions(Document document, INamedTypeSymbol selectedType, ImmutableArray<ISymbol> selectedNodeSymbols)
-        var viewModel = GetViewModel(document, selectedType, selectedNodeSymbols, History, _glyphService, _uiThreadOperationExecutor)
+        var viewModel = GetViewModel(document, selectedType, selectedNodeSymbols, History, _glyphService, _uiThreadOperationExecutor);
 
-        var dialog = new MoveStaticMembersDialog(viewModel)
+        var dialog = new MoveStaticMembersDialog(viewModel);
 
-        var result = dialog.ShowModal()
+        var result = dialog.ShowModal();
 
         if (result.GetValueOrDefault())
-            UpdateHistory(viewModel)
-            return GenerateOptions(document.Project.Language, viewModel, result.GetValueOrDefault())
+            UpdateHistory(viewModel);
+            return GenerateOptions(document.Project.Language, viewModel, result.GetValueOrDefault());
 
-        return MoveStaticMembersOptions.Cancelled
+        return MoveStaticMembersOptions.Cancelled;
 
     // internal for testing purposes
     internal static MoveStaticMembersOptions GenerateOptions(string language, MoveStaticMembersDialogViewModel viewModel, bool dialogResult)
         if (dialogResult)
             // if the destination name contains extra namespaces, we want the last one as that is the real type name
-            var typeName = viewModel.DestinationName.FullyQualifiedTypeName.Split('.').Last()
-            var newFileName = Path.ChangeExtension(typeName, language == LanguageNames.CSharp ? ".cs" : ".vb")
-            var selectedMembers = viewModel.MemberSelectionViewModel.CheckedMembers.SelectAsArray(vm => vm.Symbol)
+            var typeName = viewModel.DestinationName.FullyQualifiedTypeName.Split('.').Last();
+            var newFileName = Path.ChangeExtension(typeName, language == LanguageNames.CSharp ? ".cs" : ".vb");
+            var selectedMembers = viewModel.MemberSelectionViewModel.CheckedMembers.SelectAsArray(vm => vm.Symbol);
 
             if (viewModel.DestinationName.IsNew)
                 return new MoveStaticMembersOptions(
@@ -64,13 +64,13 @@ internal sealed class VisualStudioMoveStaticMembersOptionsService(
                     viewModel.DestinationName.FullyQualifiedTypeName,
                     selectedMembers)
 
-            RoslynDebug.AssertNotNull(viewModel.DestinationName.NamedType)
+            RoslynDebug.AssertNotNull(viewModel.DestinationName.NamedType);
 
             return new MoveStaticMembersOptions(
                 viewModel.DestinationName.NamedType,
                 selectedMembers)
 
-        return MoveStaticMembersOptions.Cancelled
+        return MoveStaticMembersOptions.Cancelled;
 
     // internal for testing purposes, get the view model
     internal static MoveStaticMembersDialogViewModel GetViewModel(
@@ -84,15 +84,15 @@ internal sealed class VisualStudioMoveStaticMembersOptionsService(
             WhereAsArray(member => MemberAndDestinationValidator.IsMemberValid(member) && member.IsStatic)
 
         // The member(s) user selected will be checked at the beginning.
-        var memberViewModels = membersInType.SelectAsArray(member => new SymbolViewModel<ISymbol>(member, glyphService) { IsChecked = selectedNodeSymbols.Any(SymbolEquivalenceComparer.Instance.Equals, member), })
+        var memberViewModels = membersInType.SelectAsArray(member => new SymbolViewModel<ISymbol>(member, glyphService) { IsChecked = selectedNodeSymbols.Any(SymbolEquivalenceComparer.Instance.Equals, member), });
 
-        using var cancellationTokenSource = new CancellationTokenSource()
-        var memberToDependentsMap = SymbolDependentsBuilder.FindMemberToDependentsMap(membersInType, document.Project, cancellationTokenSource.Token)
+        using var cancellationTokenSource = new CancellationTokenSource();
+        var memberToDependentsMap = SymbolDependentsBuilder.FindMemberToDependentsMap(membersInType, document.Project, cancellationTokenSource.Token);
 
-        var existingTypes = selectedType.ContainingNamespace.GetAllTypes(cancellationTokenSource.Token).ToImmutableArray()
-        var existingTypeNames = existingTypes.SelectAsArray(t => t.ToDisplayString())
-        var candidateName = selectedType.Name + "Helpers"
-        var defaultTypeName = NameGenerator.GenerateUniqueName(candidateName, name => !existingTypeNames.Contains(name))
+        var existingTypes = selectedType.ContainingNamespace.GetAllTypes(cancellationTokenSource.Token).ToImmutableArray();
+        var existingTypeNames = existingTypes.SelectAsArray(t => t.ToDisplayString());
+        var candidateName = selectedType.Name + "Helpers";
+        var defaultTypeName = NameGenerator.GenerateUniqueName(candidateName, name => !existingTypeNames.Contains(name));
 
         var containingNamespaceDisplay = selectedType.ContainingNamespace.IsGlobalNamespace
             ? string.Empty
@@ -121,13 +121,13 @@ internal sealed class VisualStudioMoveStaticMembersOptionsService(
         if (viewModel.DestinationName.IsNew || viewModel.DestinationName.IsFromHistory)
             // if we create a new destination or already have it in the history,
             // we don't need to update our history list.
-            return
+            return;
 
-        History.AddFirst(viewModel.DestinationName.NamedType!)
+        History.AddFirst(viewModel.DestinationName.NamedType!);
         if (History.Count > HistorySize)
-            History.RemoveLast()
+            History.RemoveLast();
 
-    private static string GetFile(Location loc) => loc.SourceTree!.FilePath
+    private static string GetFile(Location loc) => loc.SourceTree!.FilePath;
 
     /// <summary>
     /// Construct all the type names declared in the project,
@@ -148,10 +148,10 @@ internal sealed class VisualStudioMoveStaticMembersOptionsService(
     private static bool IsValidTypeToMoveBetween(INamedTypeSymbol destinationType, INamedTypeSymbol sourceType)
         // Can only moved to named typed that can actually contain members.
         if (destinationType.TypeKind is not (TypeKind.Class or TypeKind.Interface or TypeKind.Module or TypeKind.Struct))
-            return false
+            return false;
 
         // Very unlikely to be moving from a non-interface to an interface.  Filter out for now.
         if (sourceType.TypeKind != TypeKind.Interface && destinationType.TypeKind == TypeKind.Interface)
-            return false
+            return false;
 
-        return true
+        return true;

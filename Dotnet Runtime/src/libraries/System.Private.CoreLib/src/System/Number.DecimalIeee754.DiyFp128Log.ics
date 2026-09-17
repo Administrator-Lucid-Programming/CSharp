@@ -1,7 +1,7 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.Numerics
+using System.Numerics;
 
 namespace System;
 
@@ -22,8 +22,8 @@ internal static partial class Number
     private const int UxAddSub = 2; // ADD_SUB dual-output flag: writes sum to result[0], difference to result[1].
 
     // log2 fixed-point coefficients (dpml_log_x.h), degree 17, trailing exponent 2.
-    private const int Log2Degree = 17
-    private const int Log2TrailingExponent = 2
+    private const int Log2Degree = 17;
+    private const int Log2TrailingExponent = 2;
 
     private static ReadOnlySpan<DiyFp128FixedCoefficient> Log2Coefficients => DiyFp128FixedCoefficients([0x271EEE7D56DAC09B, 0x06CC4D0D2A1966CE,
         0x1BA3468B6F81E43D, 0x056711399CAAC22D,
@@ -46,47 +46,47 @@ internal static partial class Number
     ])
 
     // 1/sqrt(2) fraction MSD and the I_RECIP_SQRT_2 / I_SQRT_2 range constants (dpml_log_x.h).
-    private const ulong LogOneOverSqrt2 = 0xB504F333F9DE6484
-    private const ulong LogIRecipSqrt2 = 0x5A827999FCEF3242
-    private const ulong LogISqrt2 = 0xB504F333F9DE6484
+    private const ulong LogOneOverSqrt2 = 0xB504F333F9DE6484;
+    private const ulong LogIRecipSqrt2 = 0x5A827999FCEF3242;
+    private const ulong LogISqrt2 = 0xB504F333F9DE6484;
 
     // Unpacked ln2, log10(2), and 2.0 (dpml_log_x.h).
-    private static DiyFp128 LogLn2 => new DiyFp128(0, 0, 0xB17217F7D1CF79AB, 0xC9E3B39803F2F6AF)
-    private static DiyFp128 LogLog10Of2 => new DiyFp128(0, -1, 0x9A209A84FBCFF798, 0x8F8959AC0B7C9178)
-    private static DiyFp128 LogTwo => new DiyFp128(0, 2, 0x8000000000000000, 0)
+    private static DiyFp128 LogLn2 => new DiyFp128(0, 0, 0xB17217F7D1CF79AB, 0xC9E3B39803F2F6AF);
+    private static DiyFp128 LogLog10Of2 => new DiyFp128(0, -1, 0x9A209A84FBCFF798, 0x8F8959AC0B7C9178);
+    private static DiyFp128 LogTwo => new DiyFp128(0, 2, 0x8000000000000000, 0);
 
     /// <summary>Converts a signed integer to an unpacked binary128 value (Intel's <c>WORD_TO_UX</c>).</summary>
     private static DiyFp128 DiyFp128FromWord(long n)
         if (n == 0)
-            return new DiyFp128(0, UxZeroExponent, 0, 0)
+            return new DiyFp128(0, UxZeroExponent, 0, 0);
 
-        uint sign = 0
-        ulong magnitude
+        uint sign = 0;
+        ulong magnitude;
 
         if (n < 0)
-            sign = UxSignBit
-            magnitude = (ulong)(-n)
+            sign = UxSignBit;
+            magnitude = (ulong)(-n);
         else
-            magnitude = (ulong)n
+            magnitude = (ulong)n;
 
-        int shift = (int)ulong.LeadingZeroCount(magnitude)
-        return new DiyFp128(sign, 64 - shift, magnitude << shift, 0)
+        int shift = (int)ulong.LeadingZeroCount(magnitude);
+        return new DiyFp128(sign, 64 - shift, magnitude << shift, 0);
 
     /// <summary>
     /// Evaluates the log polynomial (Intel's <c>EVALUATE_RATIONAL</c> in its <c>SQUARE_TERM |
     /// POST_MULTIPLY</c> form): <c>p(arg^2) * arg</c>, then applies the trailing exponent.
     /// </summary>
     private static void DiyFp128EvaluateLogPolynomial(scoped in DiyFp128 arg, ReadOnlySpan<DiyFp128FixedCoefficient> coefficients, int degree, int trailingExponent, out DiyFp128 result)
-        DiyFp128 a = arg
-        DiyFp128Multiply(ref a, ref a, out DiyFp128 argumentSquared)
-        DiyFp128Normalize(ref argumentSquared)
+        DiyFp128 a = arg;
+        DiyFp128Multiply(ref a, ref a, out DiyFp128 argumentSquared);
+        DiyFp128Normalize(ref argumentSquared);
 
-        long shift = -(long)degree * argumentSquared._exponent
-        DiyFp128EvaluatePositivePolynomial(argumentSquared, shift, coefficients, 0, degree, out result)
+        long shift = -(long)degree * argumentSquared._exponent;
+        DiyFp128EvaluatePositivePolynomial(argumentSquared, shift, coefficients, 0, degree, out result);
 
-        DiyFp128 original = arg
-        DiyFp128Multiply(ref original, ref result, out result)
-        result._exponent += trailingExponent
+        DiyFp128 original = arg;
+        DiyFp128Multiply(ref original, ref result, out result);
+        result._exponent += trailingExponent;
 
     /// <summary>
     /// Computes <c>log_b(arg)</c> for a positive finite <paramref name="arg"/> (Intel's <c>UX_LOG</c>).
@@ -94,33 +94,33 @@ internal static partial class Number
     /// multiply), while ln and log10 post-multiply by ln2 / log10(2).
     /// </summary>
     private static DiyFp128 DiyFp128Log(DiyFp128 arg, bool scaleValid, scoped in DiyFp128 scale)
-        long m = arg._exponent
+        long m = arg._exponent;
 
         if (arg._hi <= LogOneOverSqrt2)
-            m--
+            m--;
 
         arg._exponent -= (int)m // g in [1/sqrt2, sqrt2)
 
-        Span<DiyFp128> tmp = [default, default]
+        Span<DiyFp128> tmp = [default, default];
         DiyFp128AddSub(arg, DiyFp128One, UxAddSub | UxMagnitudeOnly, tmp) // tmp[0] = g + 1, tmp[1] = g - 1
 
-        DiyFp128Divide(tmp[1], tmp[0], DiyFp128FullPrecision, out DiyFp128 z)
-        DiyFp128EvaluateLogPolynomial(z, Log2Coefficients, Log2Degree, Log2TrailingExponent, out DiyFp128 poly)
+        DiyFp128Divide(tmp[1], tmp[0], DiyFp128FullPrecision, out DiyFp128 z);
+        DiyFp128EvaluateLogPolynomial(z, Log2Coefficients, Log2Degree, Log2TrailingExponent, out DiyFp128 poly);
 
-        DiyFp128 result = DiyFp128FromWord(m)
-        DiyFp128 sum = default
-        DiyFp128AddSub(result, poly, UxAdd | UxNoNormalization, new Span<DiyFp128>(ref sum))
-        result = sum
+        DiyFp128 result = DiyFp128FromWord(m);
+        DiyFp128 sum = default;
+        DiyFp128AddSub(result, poly, UxAdd | UxNoNormalization, new Span<DiyFp128>(ref sum));
+        result = sum;
 
         if (scaleValid)
-            DiyFp128 s = scale
-            DiyFp128Multiply(ref result, ref s, out result)
+            DiyFp128 s = scale;
+            DiyFp128Multiply(ref result, ref s, out result);
 
-        return result
+        return result;
 
-    private static DiyFp128 DiyFp128Ln(scoped in DiyFp128 arg) => DiyFp128Log(arg, scaleValid: true, LogLn2)
-    private static DiyFp128 DiyFp128Log2(scoped in DiyFp128 arg) => DiyFp128Log(arg, scaleValid: false, default)
-    private static DiyFp128 DiyFp128Log10(scoped in DiyFp128 arg) => DiyFp128Log(arg, scaleValid: true, LogLog10Of2)
+    private static DiyFp128 DiyFp128Ln(scoped in DiyFp128 arg) => DiyFp128Log(arg, scaleValid: true, LogLn2);
+    private static DiyFp128 DiyFp128Log2(scoped in DiyFp128 arg) => DiyFp128Log(arg, scaleValid: false, default);
+    private static DiyFp128 DiyFp128Log10(scoped in DiyFp128 arg) => DiyFp128Log(arg, scaleValid: true, LogLog10Of2);
 
     /// <summary>
     /// Evaluates the natural log of the value whose reduced ratio is <paramref name="w"/> (Intel's
@@ -128,10 +128,10 @@ internal static partial class Number
     /// a carefully formed <c>w</c> to avoid the loss of significance in <c>UX_LOG</c>'s <c>(g-1)/(g+1)</c>.
     /// </summary>
     private static DiyFp128 DiyFp128LogPoly(scoped in DiyFp128 w)
-        DiyFp128EvaluateLogPolynomial(w, Log2Coefficients, Log2Degree, Log2TrailingExponent, out DiyFp128 result)
-        DiyFp128 ln2 = LogLn2
-        DiyFp128Multiply(ref result, ref ln2, out result)
-        return result
+        DiyFp128EvaluateLogPolynomial(w, Log2Coefficients, Log2Degree, Log2TrailingExponent, out DiyFp128 result);
+        DiyFp128 ln2 = LogLn2;
+        DiyFp128Multiply(ref result, ref ln2, out result);
+        return result;
 
     /// <summary>
     /// Computes <c>log_b(1 + arg)</c> for a finite <paramref name="arg"/> (Intel's <c>F_LOG1P</c>). The
@@ -140,37 +140,37 @@ internal static partial class Number
     /// <paramref name="scaleValid"/> selects the base exactly as in <see cref="DiyFp128Log"/>.
     /// </summary>
     private static DiyFp128 DiyFp128Log1p(DiyFp128 arg, bool scaleValid, scoped in DiyFp128 scale)
-        int exponent = arg._exponent
-        uint sign = arg._sign
+        int exponent = arg._exponent;
+        uint sign = arg._sign;
 
-        bool small
+        bool small;
 
         if (exponent >= 0)
-            small = false
+            small = false;
         else if (exponent <= -2)
-            small = true
+            small = true;
         else
-            ulong g = arg._hi >> 2
-            g = (sign != 0) ? (0UL - g) : g
-            g += UxMsb
-            small = (g - LogIRecipSqrt2) < (LogISqrt2 - LogIRecipSqrt2)
+            ulong g = arg._hi >> 2;
+            g = (sign != 0) ? (0UL - g) : g;
+            g += UxMsb;
+            small = (g - LogIRecipSqrt2) < (LogISqrt2 - LogIRecipSqrt2);
 
         if (small)
-            DiyFp128 t = default
-            DiyFp128AddSub(LogTwo, arg, UxAdd, new Span<DiyFp128>(ref t))
-            DiyFp128Divide(arg, t, DiyFp128FullPrecision, out DiyFp128 reduced)
-            DiyFp128EvaluateLogPolynomial(reduced, Log2Coefficients, Log2Degree, Log2TrailingExponent, out DiyFp128 result)
+            DiyFp128 t = default;
+            DiyFp128AddSub(LogTwo, arg, UxAdd, new Span<DiyFp128>(ref t));
+            DiyFp128Divide(arg, t, DiyFp128FullPrecision, out DiyFp128 reduced);
+            DiyFp128EvaluateLogPolynomial(reduced, Log2Coefficients, Log2Degree, Log2TrailingExponent, out DiyFp128 result);
 
             if (scaleValid)
-                DiyFp128 s = scale
-                DiyFp128Multiply(ref result, ref s, out result)
+                DiyFp128 s = scale;
+                DiyFp128Multiply(ref result, ref s, out result);
 
-            return result
+            return result;
         else
-            DiyFp128 t = default
-            DiyFp128AddSub(DiyFp128One, arg, UxAdd, new Span<DiyFp128>(ref t))
-            return DiyFp128Log(t, scaleValid, scale)
+            DiyFp128 t = default;
+            DiyFp128AddSub(DiyFp128One, arg, UxAdd, new Span<DiyFp128>(ref t));
+            return DiyFp128Log(t, scaleValid, scale);
 
-    private static DiyFp128 DiyFp128Ln1p(scoped in DiyFp128 arg) => DiyFp128Log1p(arg, scaleValid: true, LogLn2)
-    private static DiyFp128 DiyFp128Log2P1(scoped in DiyFp128 arg) => DiyFp128Log1p(arg, scaleValid: false, default)
-    private static DiyFp128 DiyFp128Log10P1(scoped in DiyFp128 arg) => DiyFp128Log1p(arg, scaleValid: true, LogLog10Of2)
+    private static DiyFp128 DiyFp128Ln1p(scoped in DiyFp128 arg) => DiyFp128Log1p(arg, scaleValid: true, LogLn2);
+    private static DiyFp128 DiyFp128Log2P1(scoped in DiyFp128 arg) => DiyFp128Log1p(arg, scaleValid: false, default);
+    private static DiyFp128 DiyFp128Log10P1(scoped in DiyFp128 arg) => DiyFp128Log1p(arg, scaleValid: true, LogLog10Of2);

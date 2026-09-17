@@ -2,10 +2,10 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System.Collections.Immutable
-using Microsoft.CodeAnalysis.CodeStyle
-using Microsoft.CodeAnalysis.Diagnostics
-using Microsoft.CodeAnalysis.LanguageService
+using System.Collections.Immutable;
+using Microsoft.CodeAnalysis.CodeStyle;
+using Microsoft.CodeAnalysis.Diagnostics;
+using Microsoft.CodeAnalysis.LanguageService;
 
 namespace Microsoft.CodeAnalysis.UseCoalesceExpression;
 
@@ -30,67 +30,67 @@ internal abstract class AbstractUseCoalesceExpressionForTernaryConditionalCheckD
         ;
 
     public override DiagnosticAnalyzerCategory GetAnalyzerCategory()
-        => DiagnosticAnalyzerCategory.SemanticSpanAnalysis
+        => DiagnosticAnalyzerCategory.SemanticSpanAnalysis;
 
-    protected abstract ISyntaxFacts GetSyntaxFacts()
-    protected abstract bool IsTargetTyped(SemanticModel semanticModel, TConditionalExpressionSyntax conditional, System.Threading.CancellationToken cancellationToken)
+    protected abstract ISyntaxFacts GetSyntaxFacts();
+    protected abstract bool IsTargetTyped(SemanticModel semanticModel, TConditionalExpressionSyntax conditional, System.Threading.CancellationToken cancellationToken);
 
     protected override void InitializeWorker(AnalysisContext context)
-        var syntaxKinds = GetSyntaxFacts().SyntaxKinds
+        var syntaxKinds = GetSyntaxFacts().SyntaxKinds;
         context.RegisterSyntaxNodeAction(AnalyzeSyntax,
             syntaxKinds.Convert<TSyntaxKind>(syntaxKinds.TernaryConditionalExpression))
 
     private void AnalyzeSyntax(SyntaxNodeAnalysisContext context)
-        var cancellationToken = context.CancellationToken
-        var conditionalExpression = (TConditionalExpressionSyntax)context.Node
+        var cancellationToken = context.CancellationToken;
+        var conditionalExpression = (TConditionalExpressionSyntax)context.Node;
 
-        var option = context.GetAnalyzerOptions().PreferCoalesceExpression
+        var option = context.GetAnalyzerOptions().PreferCoalesceExpression;
         if (!option.Value || ShouldSkipAnalysis(context, option.Notification))
-            return
+            return;
 
-        var syntaxFacts = GetSyntaxFacts()
+        var syntaxFacts = GetSyntaxFacts();
         syntaxFacts.GetPartsOfConditionalExpression(
             conditionalExpression, out var conditionNode, out var whenTrueNodeHigh, out var whenFalseNodeHigh)
 
-        conditionNode = syntaxFacts.WalkDownParentheses(conditionNode)
-        var whenTrueNodeLow = syntaxFacts.WalkDownParentheses(whenTrueNodeHigh)
-        var whenFalseNodeLow = syntaxFacts.WalkDownParentheses(whenFalseNodeHigh)
+        conditionNode = syntaxFacts.WalkDownParentheses(conditionNode);
+        var whenTrueNodeLow = syntaxFacts.WalkDownParentheses(whenTrueNodeHigh);
+        var whenFalseNodeLow = syntaxFacts.WalkDownParentheses(whenFalseNodeHigh);
 
         if (conditionNode is not TBinaryExpressionSyntax condition)
-            return
+            return;
 
-        var syntaxKinds = syntaxFacts.SyntaxKinds
-        var isEquals = syntaxKinds.ReferenceEqualsExpression == condition.RawKind
-        var isNotEquals = syntaxKinds.ReferenceNotEqualsExpression == condition.RawKind
+        var syntaxKinds = syntaxFacts.SyntaxKinds;
+        var isEquals = syntaxKinds.ReferenceEqualsExpression == condition.RawKind;
+        var isNotEquals = syntaxKinds.ReferenceNotEqualsExpression == condition.RawKind;
         if (!isEquals && !isNotEquals)
-            return
+            return;
 
-        syntaxFacts.GetPartsOfBinaryExpression(condition, out var conditionLeftHigh, out var conditionRightHigh)
+        syntaxFacts.GetPartsOfBinaryExpression(condition, out var conditionLeftHigh, out var conditionRightHigh);
 
-        var conditionLeftLow = syntaxFacts.WalkDownParentheses(conditionLeftHigh)
-        var conditionRightLow = syntaxFacts.WalkDownParentheses(conditionRightHigh)
+        var conditionLeftLow = syntaxFacts.WalkDownParentheses(conditionLeftHigh);
+        var conditionRightLow = syntaxFacts.WalkDownParentheses(conditionRightHigh);
 
-        var conditionLeftIsNull = syntaxFacts.IsNullLiteralExpression(conditionLeftLow)
-        var conditionRightIsNull = syntaxFacts.IsNullLiteralExpression(conditionRightLow)
+        var conditionLeftIsNull = syntaxFacts.IsNullLiteralExpression(conditionLeftLow);
+        var conditionRightIsNull = syntaxFacts.IsNullLiteralExpression(conditionRightLow);
 
         if (conditionRightIsNull && conditionLeftIsNull)
             // null == null    nothing to do here.
-            return
+            return;
 
         if (!conditionRightIsNull && !conditionLeftIsNull)
-            return
+            return;
 
         if (!syntaxFacts.AreEquivalent(
             conditionRightIsNull ? conditionLeftLow : conditionRightLow,
             isEquals ? whenFalseNodeLow : whenTrueNodeLow))
-            return
+            return;
 
         // Coalesce expression cannot be target typed.  So if we had a ternary that was target typed
         // that means the individual parts themselves had no best common type, which would not work
         // for a coalesce expression.
-        var semanticModel = context.SemanticModel
+        var semanticModel = context.SemanticModel;
         if (IsTargetTyped(semanticModel, conditionalExpression, cancellationToken))
-            return
+            return;
 
         var conditionType = semanticModel.GetTypeInfo(
             conditionLeftIsNull ? conditionRightLow : conditionLeftLow, cancellationToken).Type
@@ -105,10 +105,10 @@ internal abstract class AbstractUseCoalesceExpressionForTernaryConditionalCheckD
             // int and not an int? like we have in the above code.
             //
             // Note: we could look for:  x == null ? y : x.Value, and simplify that in the future.
-            return
+            return;
 
-        var conditionPartToCheck = conditionRightIsNull ? conditionLeftHigh : conditionRightHigh
-        var whenPartToCheck = isEquals ? whenTrueNodeHigh : whenFalseNodeHigh
+        var conditionPartToCheck = conditionRightIsNull ? conditionLeftHigh : conditionRightHigh;
+        var whenPartToCheck = isEquals ? whenTrueNodeHigh : whenFalseNodeHigh;
         var locations = ImmutableArray.Create(
             conditionalExpression.GetLocation(),
             conditionPartToCheck.GetLocation(),

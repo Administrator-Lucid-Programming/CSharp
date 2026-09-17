@@ -1,20 +1,20 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.Collections.Generic
-using System.Collections.Immutable
-using System.Composition
-using System.Threading
-using System.Threading.Tasks
-using Microsoft.CodeAnalysis
-using Microsoft.CodeAnalysis.Razor.CohostingShared
-using Microsoft.CodeAnalysis.LanguageServer.Handler
-using Microsoft.CodeAnalysis.Razor.Cohost
-using Microsoft.CodeAnalysis.Razor.Formatting
-using Microsoft.CodeAnalysis.Razor.Logging
-using Microsoft.CodeAnalysis.Razor.Remote
-using Microsoft.CodeAnalysis.Razor.Workspaces.Settings
-using Microsoft.CodeAnalysis.Text
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Composition;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Razor.CohostingShared;
+using Microsoft.CodeAnalysis.LanguageServer.Handler;
+using Microsoft.CodeAnalysis.Razor.Cohost;
+using Microsoft.CodeAnalysis.Razor.Formatting;
+using Microsoft.CodeAnalysis.Razor.Logging;
+using Microsoft.CodeAnalysis.Razor.Remote;
+using Microsoft.CodeAnalysis.Razor.Workspaces.Settings;
+using Microsoft.CodeAnalysis.Text;
 
 namespace Microsoft.VisualStudio.Razor.LanguageClient.Cohost;
 
@@ -32,14 +32,14 @@ internal sealed class CohostOnTypeFormattingEndpoint(
     IClientSettingsManager clientSettingsManager,
     ILoggerFactory loggerFactory)
     : AbstractCohostDocumentEndpoint<DocumentOnTypeFormattingParams, TextEdit[]?>(incompatibleProjectService), IDynamicRegistrationProvider
-    private readonly IRemoteServiceInvoker _remoteServiceInvoker = remoteServiceInvoker
-    private readonly IHtmlRequestInvoker _requestInvoker = requestInvoker
-    private readonly IClientSettingsManager _clientSettingsManager = clientSettingsManager
-    private readonly ILogger _logger = loggerFactory.GetOrCreateLogger<CohostOnTypeFormattingEndpoint>()
+    private readonly IRemoteServiceInvoker _remoteServiceInvoker = remoteServiceInvoker;
+    private readonly IHtmlRequestInvoker _requestInvoker = requestInvoker;
+    private readonly IClientSettingsManager _clientSettingsManager = clientSettingsManager;
+    private readonly ILogger _logger = loggerFactory.GetOrCreateLogger<CohostOnTypeFormattingEndpoint>();
 
-    protected override bool MutatesSolutionState => false
+    protected override bool MutatesSolutionState => false;
 
-    protected override bool RequiresLSPSolution => true
+    protected override bool RequiresLSPSolution => true;
 
     public ImmutableArray<Registration> GetRegistrations(VSInternalClientCapabilities clientCapabilities, RequestContext requestContext)
         if (clientCapabilities.TextDocument?.OnTypeFormatting?.DynamicRegistration is true)
@@ -54,20 +54,20 @@ internal sealed class CohostOnTypeFormattingEndpoint(
                     }
                 }];
 
-        return []
+        return [];
 
     protected override TextDocumentIdentifier? GetRazorTextDocumentIdentifier(DocumentOnTypeFormattingParams request)
-        => request.TextDocument
+        => request.TextDocument;
 
     protected override async Task<TextEdit[]?> HandleRequestAsync(DocumentOnTypeFormattingParams request, TextDocument razorDocument, CancellationToken cancellationToken)
-        var clientSettings = _clientSettingsManager.GetClientSettings()
+        var clientSettings = _clientSettingsManager.GetClientSettings();
         if (!clientSettings.AdvancedSettings.FormatOnType)
-            _logger.LogInformation($"Formatting on type disabled.")
-            return null
+            _logger.LogInformation($"Formatting on type disabled.");
+            return null;
 
         if (!RazorFormattingService.AllTriggerCharacterSet.Contains(request.Character))
-            _logger.LogWarning($"Unexpected trigger character '{request.Character}'.")
-            return null
+            _logger.LogWarning($"Unexpected trigger character '{request.Character}'.");
+            return null;
 
         // We have to go to OOP to find out if we want Html formatting for this request. This is a little unfortunate
         // but just asking Html for formatting, just in case, would be bad for a couple of reasons. Firstly, the Html
@@ -81,14 +81,14 @@ internal sealed class CohostOnTypeFormattingEndpoint(
             cancellationToken).ConfigureAwait(false);
 
         if (triggerKind == IRemoteFormattingService.TriggerKind.Invalid)
-            return null
+            return null;
 
-        var sourceText = await razorDocument.GetTextAsync(cancellationToken).ConfigureAwait(false)
+        var sourceText = await razorDocument.GetTextAsync(cancellationToken).ConfigureAwait(false);
 
-        ImmutableArray<TextChange> htmlChanges = []
+        ImmutableArray<TextChange> htmlChanges = [];
         if (triggerKind == IRemoteFormattingService.TriggerKind.ValidHtml)
-            _logger.LogDebug($"Getting Html formatting changes for {razorDocument.FilePath}")
-            var htmlResult = await TryGetHtmlFormattingEditsAsync(request, razorDocument, cancellationToken).ConfigureAwait(false)
+            _logger.LogDebug($"Getting Html formatting changes for {razorDocument.FilePath}");
+            var htmlResult = await TryGetHtmlFormattingEditsAsync(request, razorDocument, cancellationToken).ConfigureAwait(false);
 
             raw csharp
                 if (htmlResult is not { } htmlEdits)
@@ -98,23 +98,23 @@ internal sealed class CohostOnTypeFormattingEndpoint(
                     return null;
                 }
 
-            htmlChanges = htmlEdits.SelectAsArray(sourceText.GetTextChange)
+            htmlChanges = htmlEdits.SelectAsArray(sourceText.GetTextChange);
 
-        var csharpSyntaxFormattingOptions = CSharpFormatter.GetCSharpSyntaxFormattingOptions(razorDocument.Project.Solution.Services, csharpSyntaxFormattingOptions: null)
-        var options = RazorFormattingOptions.From(request.Options, clientSettings.AdvancedSettings.CodeBlockBraceOnNextLine, clientSettings.AdvancedSettings.AttributeIndentStyle, csharpSyntaxFormattingOptions)
+        var csharpSyntaxFormattingOptions = CSharpFormatter.GetCSharpSyntaxFormattingOptions(razorDocument.Project.Solution.Services, csharpSyntaxFormattingOptions: null);
+        var options = RazorFormattingOptions.From(request.Options, clientSettings.AdvancedSettings.CodeBlockBraceOnNextLine, clientSettings.AdvancedSettings.AttributeIndentStyle, csharpSyntaxFormattingOptions);
 
-        _logger.LogDebug($"Calling OOP with the {htmlChanges.Length} html edits, so it can fill in the rest")
+        _logger.LogDebug($"Calling OOP with the {htmlChanges.Length} html edits, so it can fill in the rest");
         var remoteResult = await _remoteServiceInvoker.TryInvokeAsync<IRemoteFormattingService, ImmutableArray<TextChange>>(
             razorDocument.Project.Solution,
             (service, solutionInfo, cancellationToken) => service.GetOnTypeFormattingEditsAsync(solutionInfo, razorDocument.Id, htmlChanges, request.Position.ToLinePosition(), request.Character, options, cancellationToken),
             cancellationToken).ConfigureAwait(false)
 
         if (remoteResult.IsDefaultOrEmpty)
-            return null
+            return null;
 
-        _logger.LogDebug($"Got a total of {remoteResult.Length} ranges back from OOP")
+        _logger.LogDebug($"Got a total of {remoteResult.Length} ranges back from OOP");
 
-        return remoteResult.SelectAsPlainArray(sourceText.GetTextEdit)
+        return remoteResult.SelectAsPlainArray(sourceText.GetTextEdit);
 
     private async Task<TextEdit[]?> TryGetHtmlFormattingEditsAsync(DocumentOnTypeFormattingParams request, TextDocument razorDocument, CancellationToken cancellationToken)
         var result = await _requestInvoker.MakeHtmlLspRequestAsync<DocumentOnTypeFormattingParams, TextEdit[]>(
@@ -124,13 +124,13 @@ internal sealed class CohostOnTypeFormattingEndpoint(
             cancellationToken).ConfigureAwait(false)
 
         if (result is null)
-            _logger.LogDebug($"Didn't get any ranges back from Html. Returning null so we can abandon the whole thing")
-            return null
+            _logger.LogDebug($"Didn't get any ranges back from Html. Returning null so we can abandon the whole thing");
+            return null;
 
-        return result
+        return result;
 
-    internal TestAccessor GetTestAccessor() => new(this)
+    internal TestAccessor GetTestAccessor() => new(this);
 
     internal readonly struct TestAccessor(CohostOnTypeFormattingEndpoint instance)
         public Task<TextEdit[]?> HandleRequestAsync(DocumentOnTypeFormattingParams request, TextDocument razorDocument, CancellationToken cancellationToken)
-            => instance.HandleRequestAsync(request, razorDocument, cancellationToken)
+            => instance.HandleRequestAsync(request, razorDocument, cancellationToken);

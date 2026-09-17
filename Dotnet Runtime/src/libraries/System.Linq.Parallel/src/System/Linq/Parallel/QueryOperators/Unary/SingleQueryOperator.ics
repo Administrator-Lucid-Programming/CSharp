@@ -7,10 +7,10 @@
 //
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-using System.Collections.Generic
-using System.Diagnostics
-using System.Diagnostics.CodeAnalysis
-using System.Threading
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 
 namespace System.Linq.Parallel
     /// <summary>
@@ -33,8 +33,8 @@ namespace System.Linq.Parallel
 
         internal SingleQueryOperator(IEnumerable<TSource> child, Func<TSource, bool>? predicate)
             : base(child)
-            Debug.Assert(child != null, "child data source cannot be null")
-            _predicate = predicate
+            Debug.Assert(child != null, "child data source cannot be null");
+            _predicate = predicate;
 
         //---------------------------------------------------------------------------------------
         // Just opens the current operator, including opening the child and wrapping it with
@@ -43,20 +43,20 @@ namespace System.Linq.Parallel
 
         internal override QueryResults<TSource> Open(
             QuerySettings settings, bool preferStriping)
-            QueryResults<TSource> childQueryResults = Child.Open(settings, false)
-            return new UnaryQueryOperatorResults(childQueryResults, this, settings, preferStriping)
+            QueryResults<TSource> childQueryResults = Child.Open(settings, false);
+            return new UnaryQueryOperatorResults(childQueryResults, this, settings, preferStriping);
 
         internal override void WrapPartitionedStream<TKey>(
             PartitionedStream<TSource, TKey> inputStream, IPartitionedStreamRecipient<TSource> recipient, bool preferStriping, QuerySettings settings)
-            int partitionCount = inputStream.PartitionCount
+            int partitionCount = inputStream.PartitionCount;
             PartitionedStream<TSource, int> outputStream = new PartitionedStream<TSource, int>(
                 partitionCount, Util.GetDefaultComparer<int>(), OrdinalIndexState.Shuffled)
 
-            Shared<int> totalElementCount = new Shared<int>(0)
+            Shared<int> totalElementCount = new Shared<int>(0);
             for (int i = 0; i < partitionCount; i++)
-                outputStream[i] = new SingleQueryOperatorEnumerator<TKey>(inputStream[i], _predicate, totalElementCount)
+                outputStream[i] = new SingleQueryOperatorEnumerator<TKey>(inputStream[i], _predicate, totalElementCount);
 
-            recipient.Receive(outputStream)
+            recipient.Receive(outputStream);
 
         //---------------------------------------------------------------------------------------
         // Returns an enumerable that represents the query executing sequentially.
@@ -64,8 +64,8 @@ namespace System.Linq.Parallel
 
         [ExcludeFromCodeCoverage(Justification = "This method should never be called as it is an ending operator with LimitsParallelism=false")]
         internal override IEnumerable<TSource> AsSequentialQuery(CancellationToken token)
-            Debug.Fail("This method should never be called as it is an ending operator with LimitsParallelism=false.")
-            throw new NotSupportedException()
+            Debug.Fail("This method should never be called as it is an ending operator with LimitsParallelism=false.");
+            throw new NotSupportedException();
 
         //---------------------------------------------------------------------------------------
         // Whether this operator performs a premature merge that would not be performed in
@@ -74,7 +74,7 @@ namespace System.Linq.Parallel
 
         internal override bool LimitsParallelism
             get
-                return false
+                return false;
 
         //---------------------------------------------------------------------------------------
         // The enumerator type responsible for executing the Single operation.
@@ -95,35 +95,35 @@ namespace System.Linq.Parallel
 
             internal SingleQueryOperatorEnumerator(QueryOperatorEnumerator<TSource, TKey> source,
                 Func<TSource, bool>? predicate, Shared<int> totalElementCount)
-                Debug.Assert(source != null)
-                Debug.Assert(totalElementCount != null)
+                Debug.Assert(source != null);
+                Debug.Assert(totalElementCount != null);
 
-                _source = source
-                _predicate = predicate
-                _totalElementCount = totalElementCount
+                _source = source;
+                _predicate = predicate;
+                _totalElementCount = totalElementCount;
 
             //---------------------------------------------------------------------------------------
             // Straightforward IEnumerator<T> methods.
             //
 
             internal override bool MoveNext([AllowNull] ref TSource currentElement, ref int currentKey)
-                Debug.Assert(_source != null)
+                Debug.Assert(_source != null);
 
                 if (_alreadySearched)
                     // If we've already searched, we will "fake out" the caller by returning an extra
                     // element at the end in the case that we've found more than one element.
                     if (_yieldExtra)
-                        _yieldExtra = false
-                        currentElement = default(TSource)!
-                        currentKey = 0
-                        return true
+                        _yieldExtra = false;
+                        currentElement = default(TSource)!;
+                        currentKey = 0;
+                        return true;
 
-                    return false
+                    return false;
 
                 // Scan our input, looking for a match.
-                bool found = false
-                TSource current = default(TSource)!
-                TKey keyUnused = default(TKey)!
+                bool found = false;
+                TSource current = default(TSource)!;
+                TKey keyUnused = default(TKey)!;
 
                 while (_source.MoveNext(ref current!, ref keyUnused))
                     // If the predicate is null or the current element satisfies it, we will remember
@@ -131,25 +131,25 @@ namespace System.Linq.Parallel
                     // in case there are multiple such elements.
                     if (_predicate == null || _predicate(current))
                         // Notify other partitions.
-                        Interlocked.Increment(ref _totalElementCount.Value)
+                        Interlocked.Increment(ref _totalElementCount.Value);
 
-                        currentElement = current
-                        currentKey = 0
+                        currentElement = current;
+                        currentKey = 0;
 
                         if (found)
                             // Already found an element previously, we can exit.
-                            _yieldExtra = true
-                            break
+                            _yieldExtra = true;
+                            break;
                         else
-                            found = true
+                            found = true;
 
                     // If we've already determined there is more than one matching element in the
                     // data source, we can exit right away.
                     if (Volatile.Read(ref _totalElementCount.Value) > 1)
-                        break
-                _alreadySearched = true
+                        break;
+                _alreadySearched = true;
 
-                return found
+                return found;
 
             protected override void Dispose(bool disposing)
-                _source.Dispose()
+                _source.Dispose();

@@ -1,13 +1,13 @@
-using Microsoft.Extensions.DependencyInjection
-using Microsoft.Extensions.Hosting
-using Microsoft.Extensions.Logging
-using Microsoft.Extensions.Options
-using Umbraco.Cms.Core
-using Umbraco.Cms.Core.Configuration.Models
-using Umbraco.Cms.Core.DependencyInjection
-using Umbraco.Cms.Core.Services
-using Umbraco.Cms.Infrastructure.Persistence
-using Umbraco.Cms.Infrastructure.Services
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Umbraco.Cms.Core;
+using Umbraco.Cms.Core.Configuration.Models;
+using Umbraco.Cms.Core.DependencyInjection;
+using Umbraco.Cms.Core.Services;
+using Umbraco.Cms.Infrastructure.Persistence;
+using Umbraco.Cms.Infrastructure.Services;
 
 namespace Umbraco.Cms.Infrastructure.BackgroundJobs;
 
@@ -15,12 +15,12 @@ namespace Umbraco.Cms.Infrastructure.BackgroundJobs;
 ///    A hosted service that checks for any runnable distributed background jobs on a timer.
 /// </summary>
 public class DistributedBackgroundJobHostedService : BackgroundService
-    private readonly ILogger<DistributedBackgroundJobHostedService> _logger
-    private readonly IRuntimeState _runtimeState
-    private readonly IDistributedJobService _distributedJobService
-    private readonly IDatabaseReadOnlyAccessor _databaseReadOnlyAccessor
+    private readonly ILogger<DistributedBackgroundJobHostedService> _logger;
+    private readonly IRuntimeState _runtimeState;
+    private readonly IDistributedJobService _distributedJobService;
+    private readonly IDatabaseReadOnlyAccessor _databaseReadOnlyAccessor;
 
-    private DistributedJobSettings _distributedJobSettings
+    private DistributedJobSettings _distributedJobSettings;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DistributedBackgroundJobHostedService"/> class.
@@ -31,15 +31,15 @@ public class DistributedBackgroundJobHostedService : BackgroundService
         IDistributedJobService distributedJobService,
         IOptionsMonitor<DistributedJobSettings> distributedJobSettings,
         IDatabaseReadOnlyAccessor databaseReadOnlyAccessor)
-        _logger = logger
-        _runtimeState = runtimeState
-        _distributedJobService = distributedJobService
-        _distributedJobSettings = distributedJobSettings.CurrentValue
+        _logger = logger;
+        _runtimeState = runtimeState;
+        _distributedJobService = distributedJobService;
+        _distributedJobSettings = distributedJobSettings.CurrentValue;
         distributedJobSettings.OnChange(options => {
             _distributedJobSettings = options;
         }
         )
-        _databaseReadOnlyAccessor = databaseReadOnlyAccessor
+        _databaseReadOnlyAccessor = databaseReadOnlyAccessor;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DistributedBackgroundJobHostedService"/> class.
@@ -60,50 +60,50 @@ public class DistributedBackgroundJobHostedService : BackgroundService
 
     /// <inheritdoc />
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-        await Task.Delay(_distributedJobSettings.Delay, stoppingToken)
+        await Task.Delay(_distributedJobSettings.Delay, stoppingToken);
 
         while (_runtimeState.Level != RuntimeLevel.Run)
-            await Task.Delay(_distributedJobSettings.Delay, stoppingToken)
+            await Task.Delay(_distributedJobSettings.Delay, stoppingToken);
 
         // Distributed background jobs require write access to the database (e.g., to acquire locks, update job state).
         if (_databaseReadOnlyAccessor.IsReadOnly())
-            return
+            return;
 
         try
             // Update all jobs, periods might have changed when restarting.
-            await _distributedJobService.EnsureJobsAsync()
+            await _distributedJobService.EnsureJobsAsync();
         catch (Exception exception)
             // We swallow exception here, don't want the app to crash if something goes wrong
-            _logger.LogError(exception, "An exception occurred while attempting to ensure distributed background jobs on startup.")
+            _logger.LogError(exception, "An exception occurred while attempting to ensure distributed background jobs on startup.");
 
-        using PeriodicTimer timer = new(_distributedJobSettings.Period)
+        using PeriodicTimer timer = new(_distributedJobSettings.Period);
 
         try
             while (await timer.WaitForNextTickAsync(stoppingToken))
                 try
-                    await RunRunnableJob(stoppingToken)
+                    await RunRunnableJob(stoppingToken);
                 catch (Exception exception)
                     if (exception is OperationCanceledException)
                         // If the operation was canceled, just re-throw to stop the service
-                        throw
+                        throw;
 
-                    _logger.LogError(exception, "An exception occurred while attempting to run a distributed background job.")
+                    _logger.LogError(exception, "An exception occurred while attempting to run a distributed background job.");
         catch (OperationCanceledException)
-            _logger.LogInformation("Timed Hosted Service is stopping.")
+            _logger.LogInformation("Timed Hosted Service is stopping.");
 
     private async Task RunRunnableJob(CancellationToken stoppingToken)
-        IDistributedBackgroundJob? job = await _distributedJobService.TryTakeRunnableAsync()
+        IDistributedBackgroundJob? job = await _distributedJobService.TryTakeRunnableAsync();
 
         if (job is null)
             // No runnable jobs for now, return
-            return
+            return;
 
         try
-            await job.ExecuteAsync(stoppingToken)
+            await job.ExecuteAsync(stoppingToken);
         catch (Exception ex)
-            _logger.LogError(ex, "An exception occurred while running distributed background job '{JobName}'.", job.Name)
+            _logger.LogError(ex, "An exception occurred while running distributed background job '{JobName}'.", job.Name);
         finally
             try
-                await _distributedJobService.FinishAsync(job.Name)
+                await _distributedJobService.FinishAsync(job.Name);
             catch (Exception ex)
-                _logger.LogError(ex, "An exception occurred while finishing distributed background job '{JobName}'.", job.Name)
+                _logger.LogError(ex, "An exception occurred while finishing distributed background job '{JobName}'.", job.Name);

@@ -1,31 +1,31 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.Collections.Generic
-using System.ComponentModel
-using System.Diagnostics
-using System.Diagnostics.CodeAnalysis
-using System.Dynamic
-using System.Dynamic.Utils
-using System.Linq.Expressions
-using System.Reflection
-using System.Runtime.CompilerServices
-using AstUtils = System.Linq.Expressions.Utils
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Dynamic;
+using System.Dynamic.Utils;
+using System.Linq.Expressions;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using AstUtils = System.Linq.Expressions.Utils;
 
 namespace System.Dynamic
     /// <summary>
     /// Represents an object with members that can be dynamically added and removed at runtime.
     /// </summary>
     public sealed class ExpandoObject : IDynamicMetaObjectProvider, IDictionary<string, object?>, INotifyPropertyChanged
-        private static readonly MethodInfo s_expandoTryGetValue =             typeof(RuntimeOps).GetMethod(nameof(RuntimeOps.ExpandoTryGetValue))!
+        private static readonly MethodInfo s_expandoTryGetValue =             typeof(RuntimeOps).GetMethod(nameof(RuntimeOps.ExpandoTryGetValue))!;
 
-        private static readonly MethodInfo s_expandoTrySetValue =             typeof(RuntimeOps).GetMethod(nameof(RuntimeOps.ExpandoTrySetValue))!
+        private static readonly MethodInfo s_expandoTrySetValue =             typeof(RuntimeOps).GetMethod(nameof(RuntimeOps.ExpandoTrySetValue))!;
 
-        private static readonly MethodInfo s_expandoTryDeleteValue =             typeof(RuntimeOps).GetMethod(nameof(RuntimeOps.ExpandoTryDeleteValue))!
+        private static readonly MethodInfo s_expandoTryDeleteValue =             typeof(RuntimeOps).GetMethod(nameof(RuntimeOps.ExpandoTryDeleteValue))!;
 
-        private static readonly MethodInfo s_expandoPromoteClass =             typeof(RuntimeOps).GetMethod(nameof(RuntimeOps.ExpandoPromoteClass))!
+        private static readonly MethodInfo s_expandoPromoteClass =             typeof(RuntimeOps).GetMethod(nameof(RuntimeOps.ExpandoPromoteClass))!;
 
-        private static readonly MethodInfo s_expandoCheckVersion =             typeof(RuntimeOps).GetMethod(nameof(RuntimeOps.ExpandoCheckVersion))!
+        private static readonly MethodInfo s_expandoCheckVersion =             typeof(RuntimeOps).GetMethod(nameof(RuntimeOps.ExpandoCheckVersion))!;
 
         internal readonly object LockObject; // the read-only field is used for locking the Expando object
         private ExpandoData _data; // the data currently being held by the Expando object
@@ -36,14 +36,14 @@ namespace System.Dynamic
         internal const int AmbiguousMatchFound = -2; // The value is used to indicate there exists ambiguous match in the Expando object
         internal const int NoMatch = -1; // The value is used to indicate there is no matching member
 
-        private PropertyChangedEventHandler? _propertyChanged
+        private PropertyChangedEventHandler? _propertyChanged;
 
         /// <summary>
         /// Creates a new ExpandoObject with no members.
         /// </summary>
         public ExpandoObject()
-            _data = ExpandoData.Empty
-            LockObject = new object()
+            _data = ExpandoData.Empty;
+            LockObject = new object();
 
         #region Get/Set/Delete Helpers
 
@@ -56,7 +56,7 @@ namespace System.Dynamic
             // read the data now.  The data is immutable so we get a consistent view.
             // If there's a concurrent writer they will replace data and it just appears
             // that we won the race
-            ExpandoData data = _data
+            ExpandoData data = _data;
             if (data.Class != indexClass || ignoreCase)
                 /* Re-search for the index matching the name here if
                  *  1) the class has changed, we need to get the correct index and return
@@ -67,24 +67,24 @@ namespace System.Dynamic
                  *      b. the member that exactly matches the name didn't exist before and exists now,
                  *      need to find the exact match.
                  */
-                index = data.Class.GetValueIndex(name, ignoreCase, this)
+                index = data.Class.GetValueIndex(name, ignoreCase, this);
                 if (index == ExpandoObject.AmbiguousMatchFound)
-                    throw System.Linq.Expressions.Error.AmbiguousMatchInExpandoObject(name)
+                    throw System.Linq.Expressions.Error.AmbiguousMatchInExpandoObject(name);
 
             if (index == ExpandoObject.NoMatch)
-                value = null
-                return false
+                value = null;
+                return false;
 
             // Capture the value into a temp, so it doesn't get mutated after we check
             // for Uninitialized.
-            object? temp = data[index]
+            object? temp = data[index];
             if (temp == Uninitialized)
-                value = null
-                return false
+                value = null;
+                return false;
 
             // index is now known to be correct
-            value = temp
-            return true
+            value = temp;
+            return true;
 
         /// <summary>
         /// Sets the data for the specified class at the specified index.  If the class has
@@ -93,20 +93,20 @@ namespace System.Dynamic
         /// setter is supported in ExpandoObject.
         /// </summary>
         internal void TrySetValue(object? indexClass, int index, object? value, string name, bool ignoreCase, bool add)
-            ExpandoData data
-            object? oldValue
+            ExpandoData data;
+            object? oldValue;
 
             lock (LockObject)
-                data = _data
+                data = _data;
 
                 if (data.Class != indexClass || ignoreCase)
                     // The class has changed or we are doing a case-insensitive search,
                     // we need to get the correct index and set the value there.  If we
                     // don't have the value then we need to promote the class - that
                     // should only happen when we have multiple concurrent writers.
-                    index = data.Class.GetValueIndex(name, ignoreCase, this)
+                    index = data.Class.GetValueIndex(name, ignoreCase, this);
                     if (index == ExpandoObject.AmbiguousMatchFound)
-                        throw System.Linq.Expressions.Error.AmbiguousMatchInExpandoObject(name)
+                        throw System.Linq.Expressions.Error.AmbiguousMatchInExpandoObject(name);
                     if (index == ExpandoObject.NoMatch)
                         // Before creating a new class with the new member, need to check
                         // if there is the exact same member but is deleted. We should reuse
@@ -115,51 +115,51 @@ namespace System.Dynamic
                             data.Class.GetValueIndexCaseSensitive(name) :
                             index;
                         if (exactMatch != ExpandoObject.NoMatch)
-                            Debug.Assert(data[exactMatch] == Uninitialized)
-                            index = exactMatch
+                            Debug.Assert(data[exactMatch] == Uninitialized);
+                            index = exactMatch;
                         else
-                            ExpandoClass newClass = data.Class.FindNewClass(name)
-                            data = PromoteClassCore(data.Class, newClass)
+                            ExpandoClass newClass = data.Class.FindNewClass(name);
+                            data = PromoteClassCore(data.Class, newClass);
                             // After the class promotion, there must be an exact match,
                             // so we can do case-sensitive search here.
-                            index = data.Class.GetValueIndexCaseSensitive(name)
-                            Debug.Assert(index != ExpandoObject.NoMatch)
+                            index = data.Class.GetValueIndexCaseSensitive(name);
+                            Debug.Assert(index != ExpandoObject.NoMatch);
 
                 // Setting an uninitialized member increases the count of available members
-                oldValue = data[index]
+                oldValue = data[index];
                 if (oldValue == Uninitialized)
-                    _count++
+                    _count++;
                 else if (add)
-                    throw System.Linq.Expressions.Error.SameKeyExistsInExpando(name)
+                    throw System.Linq.Expressions.Error.SameKeyExistsInExpando(name);
 
-                data[index] = value
+                data[index] = value;
 
             // Notify property changed outside the lock
-            PropertyChangedEventHandler? propertyChanged = _propertyChanged
+            PropertyChangedEventHandler? propertyChanged = _propertyChanged;
             if (propertyChanged != null && value != oldValue)
-                propertyChanged(this, new PropertyChangedEventArgs(data.Class.Keys[index]))
+                propertyChanged(this, new PropertyChangedEventArgs(data.Class.Keys[index]));
 
         /// <summary>
         /// Deletes the data stored for the specified class at the specified index.
         /// </summary>
         internal bool TryDeleteValue(object? indexClass, int index, string name, bool ignoreCase, object? deleteValue)
-            ExpandoData data
+            ExpandoData data;
             lock (LockObject)
-                data = _data
+                data = _data;
 
                 if (data.Class != indexClass || ignoreCase)
                     // the class has changed or we are doing a case-insensitive search,
                     // we need to get the correct index.  If there is no associated index
                     // we simply can't have the value and we return false.
-                    index = data.Class.GetValueIndex(name, ignoreCase, this)
+                    index = data.Class.GetValueIndex(name, ignoreCase, this);
                     if (index == ExpandoObject.AmbiguousMatchFound)
-                        throw System.Linq.Expressions.Error.AmbiguousMatchInExpandoObject(name)
+                        throw System.Linq.Expressions.Error.AmbiguousMatchInExpandoObject(name);
                 if (index == ExpandoObject.NoMatch)
-                    return false
+                    return false;
 
-                object? oldValue = data[index]
+                object? oldValue = data[index];
                 if (oldValue == Uninitialized)
-                    return false
+                    return false;
 
                 // Make sure the value matches, if requested.
                 //
@@ -167,50 +167,50 @@ namespace System.Dynamic
                 // there doesn't seem to be a good way around that, and
                 // ConcurrentDictionary in mscorlib does the same thing.
                 if (deleteValue != Uninitialized && !object.Equals(oldValue, deleteValue))
-                    return false
+                    return false;
 
-                data[index] = Uninitialized
+                data[index] = Uninitialized;
 
                 // Deleting an available member decreases the count of available members
-                _count--
+                _count--;
 
             // Notify property changed outside the lock
-            _propertyChanged?.Invoke(this, new PropertyChangedEventArgs(data.Class.Keys[index]))
+            _propertyChanged?.Invoke(this, new PropertyChangedEventArgs(data.Class.Keys[index]));
 
-            return true
+            return true;
 
         /// <summary>
         /// Returns true if the member at the specified index has been deleted,
         /// otherwise false. Call this function holding the lock.
         /// </summary>
         internal bool IsDeletedMember(int index)
-            ContractUtils.AssertLockHeld(LockObject)
-            Debug.Assert(index >= 0 && index <= _data.Length)
+            ContractUtils.AssertLockHeld(LockObject);
+            Debug.Assert(index >= 0 && index <= _data.Length);
 
             if (index == _data.Length)
                 // The member is a newly added by SetMemberBinder and not in data yet
-                return false
+                return false;
 
-            return _data[index] == ExpandoObject.Uninitialized
+            return _data[index] == ExpandoObject.Uninitialized;
 
         /// <summary>
         /// Exposes the ExpandoClass which we've associated with this
         /// Expando object.  Used for type checks in rules.
         /// </summary>
-        internal ExpandoClass Class => _data.Class
+        internal ExpandoClass Class => _data.Class;
 
         /// <summary>
         /// Promotes the class from the old type to the new type and returns the new
         /// ExpandoData object.
         /// </summary>
         private ExpandoData PromoteClassCore(ExpandoClass oldClass, ExpandoClass newClass)
-            Debug.Assert(oldClass != newClass)
-            ContractUtils.AssertLockHeld(LockObject)
+            Debug.Assert(oldClass != newClass);
+            ContractUtils.AssertLockHeld(LockObject);
 
             if (_data.Class == oldClass)
-                _data = _data.UpdateClass(newClass)
+                _data = _data.UpdateClass(newClass);
 
-            return _data
+            return _data;
 
         /// <summary>
         /// Internal helper to promote a class.  Called from our RuntimeOps helper.  This
@@ -219,30 +219,30 @@ namespace System.Dynamic
         /// </summary>
         internal void PromoteClass(object oldClass, object newClass)
             lock (LockObject)
-                PromoteClassCore((ExpandoClass)oldClass, (ExpandoClass)newClass)
+                PromoteClassCore((ExpandoClass)oldClass, (ExpandoClass)newClass);
 
         #endregion
 
         #region IDynamicMetaObjectProvider Members
 
         DynamicMetaObject IDynamicMetaObjectProvider.GetMetaObject(Expression parameter)
-            return new MetaExpando(parameter, this)
+            return new MetaExpando(parameter, this);
 
         #endregion
 
         #region Helper methods
         private void TryAddMember(string key, object? value)
-            ArgumentNullException.ThrowIfNull(key)
+            ArgumentNullException.ThrowIfNull(key);
             // Pass null to the class, which forces lookup.
-            TrySetValue(null, -1, value, key, ignoreCase: false, add: true)
+            TrySetValue(null, -1, value, key, ignoreCase: false, add: true);
 
         private bool TryGetValueForKey(string key, out object? value)
             // Pass null to the class, which forces lookup.
-            return TryGetValue(null, -1, key, ignoreCase: false, value: out value)
+            return TryGetValue(null, -1, key, ignoreCase: false, value: out value);
 
         private bool ExpandoContainsKey(string key)
-            ContractUtils.AssertLockHeld(LockObject)
-            return _data.Class.GetValueIndexCaseSensitive(key) >= 0
+            ContractUtils.AssertLockHeld(LockObject);
+            return _data.Class.GetValueIndexCaseSensitive(key) >= 0;
 
         // We create a non-generic type for the debug view for each different collection type
         // that uses DebuggerTypeProxy, instead of defining a generic debug view type and
@@ -250,11 +250,11 @@ namespace System.Dynamic
         // with using DebuggerTypeProxy is limited. For C#, DebuggerTypeProxy supports only
         // open types (from MSDN https://learn.microsoft.com/visualstudio/debugger/using-debuggertypeproxy-attribute).
         private sealed class KeyCollectionDebugView
-            private readonly ICollection<string> _collection
+            private readonly ICollection<string> _collection;
 
             public KeyCollectionDebugView(ICollection<string> collection)
-                ArgumentNullException.ThrowIfNull(collection)
-                _collection = collection
+                ArgumentNullException.ThrowIfNull(collection);
+                _collection = collection;
 
             raw csharp
                 [DebuggerBrowsable(DebuggerBrowsableState.RootHidden)]
@@ -271,45 +271,45 @@ namespace System.Dynamic
         [DebuggerTypeProxy(typeof(KeyCollectionDebugView))]
         [DebuggerDisplay("Count = {Count}")]
         private sealed class KeyCollection : ICollection<string>
-            private readonly ExpandoObject _expando
-            private readonly int _expandoVersion
-            private readonly int _expandoCount
-            private readonly ExpandoData _expandoData
+            private readonly ExpandoObject _expando;
+            private readonly int _expandoVersion;
+            private readonly int _expandoCount;
+            private readonly ExpandoData _expandoData;
 
             internal KeyCollection(ExpandoObject expando)
                 lock (expando.LockObject)
-                    _expando = expando
-                    _expandoVersion = expando._data.Version
-                    _expandoCount = expando._count
-                    _expandoData = expando._data
+                    _expando = expando;
+                    _expandoVersion = expando._data.Version;
+                    _expandoCount = expando._count;
+                    _expandoData = expando._data;
 
             private void CheckVersion()
                 if (_expando._data.Version != _expandoVersion || _expandoData != _expando._data)
                     //the underlying expando object has changed
-                    throw System.Linq.Expressions.Error.CollectionModifiedWhileEnumerating()
+                    throw System.Linq.Expressions.Error.CollectionModifiedWhileEnumerating();
 
             #region ICollection<string> Members
 
             public void Add(string item)
-                throw System.Linq.Expressions.Error.CollectionReadOnly()
+                throw System.Linq.Expressions.Error.CollectionReadOnly();
 
             public void Clear()
-                throw System.Linq.Expressions.Error.CollectionReadOnly()
+                throw System.Linq.Expressions.Error.CollectionReadOnly();
 
             public bool Contains(string item)
                 lock (_expando.LockObject)
-                    CheckVersion()
-                    return _expando.ExpandoContainsKey(item)
+                    CheckVersion();
+                    return _expando.ExpandoContainsKey(item);
 
             public void CopyTo(string[] array, int arrayIndex)
-                ArgumentNullException.ThrowIfNull(array)
-                ContractUtils.RequiresArrayRange(array, arrayIndex, _expandoCount, nameof(arrayIndex), nameof(Count))
+                ArgumentNullException.ThrowIfNull(array);
+                ContractUtils.RequiresArrayRange(array, arrayIndex, _expandoCount, nameof(arrayIndex), nameof(Count));
                 lock (_expando.LockObject)
-                    CheckVersion()
-                    ExpandoData data = _expando._data
+                    CheckVersion();
+                    ExpandoData data = _expando._data;
                     for (int i = 0; i < data.Class.Keys.Length; i++)
                         if (data[i] != Uninitialized)
-                            array[arrayIndex++] = data.Class.Keys[i]
+                            array[arrayIndex++] = data.Class.Keys[i];
 
             raw csharp
                 public int Count
@@ -321,10 +321,10 @@ namespace System.Dynamic
                     }
                 }
 
-            public bool IsReadOnly => true
+            public bool IsReadOnly => true;
 
             public bool Remove(string item)
-                throw System.Linq.Expressions.Error.CollectionReadOnly()
+                throw System.Linq.Expressions.Error.CollectionReadOnly();
 
             #endregion
 
@@ -332,16 +332,16 @@ namespace System.Dynamic
 
             public IEnumerator<string> GetEnumerator()
                 for (int i = 0, n = _expandoData.Class.Keys.Length; i < n; i++)
-                    CheckVersion()
+                    CheckVersion();
                     if (_expandoData[i] != Uninitialized)
-                        yield return _expandoData.Class.Keys[i]
+                        yield return _expandoData.Class.Keys[i];
 
             #endregion
 
             #region IEnumerable Members
 
             System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator()
-                return GetEnumerator()
+                return GetEnumerator();
 
             #endregion
 
@@ -351,11 +351,11 @@ namespace System.Dynamic
         // with using DebuggerTypeProxy is limited. For C#, DebuggerTypeProxy supports only
         // open types (from MSDN https://learn.microsoft.com/visualstudio/debugger/using-debuggertypeproxy-attribute).
         private sealed class ValueCollectionDebugView
-            private readonly ICollection<object> _collection
+            private readonly ICollection<object> _collection;
 
             public ValueCollectionDebugView(ICollection<object> collection)
-                ArgumentNullException.ThrowIfNull(collection)
-                _collection = collection
+                ArgumentNullException.ThrowIfNull(collection);
+                _collection = collection;
 
             raw csharp
                 [DebuggerBrowsable(DebuggerBrowsableState.RootHidden)]
@@ -372,52 +372,52 @@ namespace System.Dynamic
         [DebuggerTypeProxy(typeof(ValueCollectionDebugView))]
         [DebuggerDisplay("Count = {Count}")]
         private sealed class ValueCollection : ICollection<object?>
-            private readonly ExpandoObject _expando
-            private readonly int _expandoVersion
-            private readonly int _expandoCount
-            private readonly ExpandoData _expandoData
+            private readonly ExpandoObject _expando;
+            private readonly int _expandoVersion;
+            private readonly int _expandoCount;
+            private readonly ExpandoData _expandoData;
 
             internal ValueCollection(ExpandoObject expando)
                 lock (expando.LockObject)
-                    _expando = expando
-                    _expandoVersion = expando._data.Version
-                    _expandoCount = expando._count
-                    _expandoData = expando._data
+                    _expando = expando;
+                    _expandoVersion = expando._data.Version;
+                    _expandoCount = expando._count;
+                    _expandoData = expando._data;
 
             private void CheckVersion()
                 if (_expando._data.Version != _expandoVersion || _expandoData != _expando._data)
                     //the underlying expando object has changed
-                    throw System.Linq.Expressions.Error.CollectionModifiedWhileEnumerating()
+                    throw System.Linq.Expressions.Error.CollectionModifiedWhileEnumerating();
 
             #region ICollection<string> Members
 
             public void Add(object? item)
-                throw System.Linq.Expressions.Error.CollectionReadOnly()
+                throw System.Linq.Expressions.Error.CollectionReadOnly();
 
             public void Clear()
-                throw System.Linq.Expressions.Error.CollectionReadOnly()
+                throw System.Linq.Expressions.Error.CollectionReadOnly();
 
             public bool Contains(object? item)
                 lock (_expando.LockObject)
-                    CheckVersion()
+                    CheckVersion();
 
-                    ExpandoData data = _expando._data
+                    ExpandoData data = _expando._data;
                     for (int i = 0; i < data.Class.Keys.Length; i++)
                         // See comment in TryDeleteValue; it's okay to call
                         // object.Equals with the lock held.
                         if (object.Equals(data[i], item))
-                            return true
-                    return false
+                            return true;
+                    return false;
 
             public void CopyTo(object?[] array, int arrayIndex)
-                ArgumentNullException.ThrowIfNull(array)
-                ContractUtils.RequiresArrayRange(array, arrayIndex, _expandoCount, nameof(arrayIndex), nameof(Count))
+                ArgumentNullException.ThrowIfNull(array);
+                ContractUtils.RequiresArrayRange(array, arrayIndex, _expandoCount, nameof(arrayIndex), nameof(Count));
                 lock (_expando.LockObject)
-                    CheckVersion()
-                    ExpandoData data = _expando._data
+                    CheckVersion();
+                    ExpandoData data = _expando._data;
                     for (int i = 0; i < data.Class.Keys.Length; i++)
                         if (data[i] != Uninitialized)
-                            array[arrayIndex++] = data[i]
+                            array[arrayIndex++] = data[i];
 
             raw csharp
                 public int Count
@@ -429,31 +429,31 @@ namespace System.Dynamic
                     }
                 }
 
-            public bool IsReadOnly => true
+            public bool IsReadOnly => true;
 
             public bool Remove(object? item)
-                throw System.Linq.Expressions.Error.CollectionReadOnly()
+                throw System.Linq.Expressions.Error.CollectionReadOnly();
 
             #endregion
 
             #region IEnumerable<string> Members
 
             public IEnumerator<object?> GetEnumerator()
-                ExpandoData data = _expando._data
+                ExpandoData data = _expando._data;
                 for (int i = 0; i < data.Class.Keys.Length; i++)
-                    CheckVersion()
+                    CheckVersion();
                     // Capture the value into a temp so we don't inadvertently
                     // return Uninitialized.
-                    object? temp = data[i]
+                    object? temp = data[i];
                     if (temp != Uninitialized)
-                        yield return temp
+                        yield return temp;
 
             #endregion
 
             #region IEnumerable Members
 
             System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator()
-                return GetEnumerator()
+                return GetEnumerator();
 
             #endregion
 
@@ -461,95 +461,95 @@ namespace System.Dynamic
 
         #region IDictionary<string, object> Members
 
-        ICollection<string> IDictionary<string, object?>.Keys => new KeyCollection(this)
+        ICollection<string> IDictionary<string, object?>.Keys => new KeyCollection(this);
 
-        ICollection<object?> IDictionary<string, object?>.Values => new ValueCollection(this)
+        ICollection<object?> IDictionary<string, object?>.Values => new ValueCollection(this);
 
         object? IDictionary<string, object?>.this[string key]
 
 
             get
                 if (!TryGetValueForKey(key, out object? value))
-                    throw System.Linq.Expressions.Error.KeyDoesNotExistInExpando(key)
-                return value
+                    throw System.Linq.Expressions.Error.KeyDoesNotExistInExpando(key);
+                return value;
             set
-                ArgumentNullException.ThrowIfNull(key)
+                ArgumentNullException.ThrowIfNull(key);
                 // Pass null to the class, which forces lookup.
-                TrySetValue(null, -1, value, key, ignoreCase: false, add: false)
+                TrySetValue(null, -1, value, key, ignoreCase: false, add: false);
 
         void IDictionary<string, object?>.Add(string key, object? value)
-            this.TryAddMember(key, value)
+            this.TryAddMember(key, value);
 
         bool IDictionary<string, object?>.ContainsKey(string key)
-            ArgumentNullException.ThrowIfNull(key)
+            ArgumentNullException.ThrowIfNull(key);
 
-            ExpandoData data = _data
-            int index = data.Class.GetValueIndexCaseSensitive(key)
-            return index >= 0 && data[index] != Uninitialized
+            ExpandoData data = _data;
+            int index = data.Class.GetValueIndexCaseSensitive(key);
+            return index >= 0 && data[index] != Uninitialized;
 
         bool IDictionary<string, object?>.Remove(string key)
-            ArgumentNullException.ThrowIfNull(key)
+            ArgumentNullException.ThrowIfNull(key);
             // Pass null to the class, which forces lookup.
-            return TryDeleteValue(null, -1, key, ignoreCase: false, deleteValue: Uninitialized)
+            return TryDeleteValue(null, -1, key, ignoreCase: false, deleteValue: Uninitialized);
 
         bool IDictionary<string, object?>.TryGetValue(string key, out object? value)
-            return TryGetValueForKey(key, out value)
+            return TryGetValueForKey(key, out value);
 
         #endregion
 
         #region ICollection<KeyValuePair<string, object>> Members
 
-        int ICollection<KeyValuePair<string, object?>>.Count => _count
+        int ICollection<KeyValuePair<string, object?>>.Count => _count;
 
-        bool ICollection<KeyValuePair<string, object?>>.IsReadOnly => false
+        bool ICollection<KeyValuePair<string, object?>>.IsReadOnly => false;
 
         void ICollection<KeyValuePair<string, object?>>.Add(KeyValuePair<string, object?> item)
-            TryAddMember(item.Key, item.Value)
+            TryAddMember(item.Key, item.Value);
 
         void ICollection<KeyValuePair<string, object?>>.Clear()
             // We remove both class and data!
-            ExpandoData data
+            ExpandoData data;
             lock (LockObject)
-                data = _data
-                _data = ExpandoData.Empty
-                _count = 0
+                data = _data;
+                _data = ExpandoData.Empty;
+                _count = 0;
 
             // Notify property changed for all properties.
-            var propertyChanged = _propertyChanged
+            var propertyChanged = _propertyChanged;
             if (propertyChanged != null)
                 for (int i = 0, n = data.Class.Keys.Length; i < n; i++)
                     if (data[i] != Uninitialized)
-                        propertyChanged(this, new PropertyChangedEventArgs(data.Class.Keys[i]))
+                        propertyChanged(this, new PropertyChangedEventArgs(data.Class.Keys[i]));
 
         bool ICollection<KeyValuePair<string, object?>>.Contains(KeyValuePair<string, object?> item)
             if (!TryGetValueForKey(item.Key, out object? value))
-                return false
+                return false;
 
-            return object.Equals(value, item.Value)
+            return object.Equals(value, item.Value);
 
         void ICollection<KeyValuePair<string, object?>>.CopyTo(KeyValuePair<string, object?>[] array, int arrayIndex)
-            ArgumentNullException.ThrowIfNull(array)
+            ArgumentNullException.ThrowIfNull(array);
 
             // We want this to be atomic and not throw, though we must do the range checks inside this lock.
             lock (LockObject)
-                ContractUtils.RequiresArrayRange(array, arrayIndex, _count, nameof(arrayIndex), nameof(ICollection<KeyValuePair<string, object>>.Count))
+                ContractUtils.RequiresArrayRange(array, arrayIndex, _count, nameof(arrayIndex), nameof(ICollection<KeyValuePair<string, object>>.Count));
                 foreach (KeyValuePair<string, object?> item in this)
-                    array[arrayIndex++] = item
+                    array[arrayIndex++] = item;
 
         bool ICollection<KeyValuePair<string, object?>>.Remove(KeyValuePair<string, object?> item)
-            return TryDeleteValue(null, -1, item.Key, ignoreCase: false, deleteValue: item.Value)
+            return TryDeleteValue(null, -1, item.Key, ignoreCase: false, deleteValue: item.Value);
 
         #endregion
 
         #region IEnumerable<KeyValuePair<string, object>> Member
 
         IEnumerator<KeyValuePair<string, object?>> IEnumerable<KeyValuePair<string, object?>>.GetEnumerator()
-            ExpandoData data = _data
-            return GetExpandoEnumerator(data, data.Version)
+            ExpandoData data = _data;
+            return GetExpandoEnumerator(data, data.Version);
 
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator()
-            ExpandoData data = _data
-            return GetExpandoEnumerator(data, data.Version)
+            ExpandoData data = _data;
+            return GetExpandoEnumerator(data, data.Version);
 
         // Note: takes the data and version as parameters so they will be
         // captured before the first call to MoveNext().
@@ -559,12 +559,12 @@ namespace System.Dynamic
                     // The underlying expando object has changed:
                     // 1) the version of the expando data changed
                     // 2) the data object is changed
-                    throw System.Linq.Expressions.Error.CollectionModifiedWhileEnumerating()
+                    throw System.Linq.Expressions.Error.CollectionModifiedWhileEnumerating();
                 // Capture the value into a temp so we don't inadvertently
                 // return Uninitialized.
-                object? temp = data[i]
+                object? temp = data[i];
                 if (temp != Uninitialized)
-                    yield return new KeyValuePair<string, object?>(data.Class.Keys[i], temp)
+                    yield return new KeyValuePair<string, object?>(data.Class.Keys[i], temp);
 
         #endregion
 
@@ -576,12 +576,12 @@ namespace System.Dynamic
                 ;
 
             private DynamicMetaObject BindGetOrInvokeMember(DynamicMetaObjectBinder binder, string name, bool ignoreCase, DynamicMetaObject fallback, Func<DynamicMetaObject, DynamicMetaObject>? fallbackInvoke)
-                ExpandoClass klass = Value.Class
+                ExpandoClass klass = Value.Class;
 
                 //try to find the member, including the deleted members
-                int index = klass.GetValueIndex(name, ignoreCase, Value)
+                int index = klass.GetValueIndex(name, ignoreCase, Value);
 
-                ParameterExpression value = Expression.Parameter(typeof(object), "value")
+                ParameterExpression value = Expression.Parameter(typeof(object), "value");
 
                 Expression tryGetValue = Expression.Call(
                     s_expandoTryGetValue,
@@ -593,9 +593,9 @@ namespace System.Dynamic
                     value
                 )
 
-                var result = new DynamicMetaObject(value, BindingRestrictions.Empty)
+                var result = new DynamicMetaObject(value, BindingRestrictions.Empty);
                 if (fallbackInvoke != null)
-                    result = fallbackInvoke(result)
+                    result = fallbackInvoke(result);
 
                 result = new DynamicMetaObject(
                     Expression.Block(
@@ -612,10 +612,10 @@ namespace System.Dynamic
                     result.Restrictions.Merge(fallback.Restrictions)
                     )
 
-                return AddDynamicTestAndDefer(binder, Value.Class, null, result)
+                return AddDynamicTestAndDefer(binder, Value.Class, null, result);
 
             public override DynamicMetaObject BindGetMember(GetMemberBinder binder)
-                ArgumentNullException.ThrowIfNull(binder)
+                ArgumentNullException.ThrowIfNull(binder);
                 return BindGetOrInvokeMember(
                     binder,
                     binder.Name,
@@ -625,7 +625,7 @@ namespace System.Dynamic
                 )
 
             public override DynamicMetaObject BindInvokeMember(InvokeMemberBinder binder, DynamicMetaObject[] args)
-                ArgumentNullException.ThrowIfNull(binder)
+                ArgumentNullException.ThrowIfNull(binder);
                 return BindGetOrInvokeMember(
                     binder,
                     binder.Name,
@@ -635,13 +635,13 @@ namespace System.Dynamic
                     )
 
             public override DynamicMetaObject BindSetMember(SetMemberBinder binder, DynamicMetaObject value)
-                ArgumentNullException.ThrowIfNull(binder)
-                ArgumentNullException.ThrowIfNull(value)
+                ArgumentNullException.ThrowIfNull(binder);
+                ArgumentNullException.ThrowIfNull(value);
 
-                ExpandoClass klass
-                int index
+                ExpandoClass klass;
+                int index;
 
-                ExpandoClass? originalClass = GetClassEnsureIndex(binder.Name, binder.IgnoreCase, Value, out klass, out index)
+                ExpandoClass? originalClass = GetClassEnsureIndex(binder.Name, binder.IgnoreCase, Value, out klass, out index);
 
                 return AddDynamicTestAndDefer(
                     binder,
@@ -662,9 +662,9 @@ namespace System.Dynamic
                     )
 
             public override DynamicMetaObject BindDeleteMember(DeleteMemberBinder binder)
-                ArgumentNullException.ThrowIfNull(binder)
+                ArgumentNullException.ThrowIfNull(binder);
 
-                int index = Value.Class.GetValueIndex(binder.Name, binder.IgnoreCase, Value)
+                int index = Value.Class.GetValueIndex(binder.Name, binder.IgnoreCase, Value);
 
                 Expression tryDelete = Expression.Call(
                     s_expandoTryDeleteValue,
@@ -674,35 +674,35 @@ namespace System.Dynamic
                     Expression.Constant(binder.Name),
                     AstUtils.Constant(binder.IgnoreCase)
                 )
-                DynamicMetaObject fallback = binder.FallbackDeleteMember(this)
+                DynamicMetaObject fallback = binder.FallbackDeleteMember(this);
 
                 DynamicMetaObject target = new DynamicMetaObject(
                     Expression.IfThen(Expression.Not(tryDelete), fallback.Expression),
                     fallback.Restrictions
                 )
 
-                return AddDynamicTestAndDefer(binder, Value.Class, null, target)
+                return AddDynamicTestAndDefer(binder, Value.Class, null, target);
 
             public override IEnumerable<string> GetDynamicMemberNames()
-                var expandoData = Value._data
-                var klass = expandoData.Class
+                var expandoData = Value._data;
+                var klass = expandoData.Class;
                 for (int i = 0; i < klass.Keys.Length; i++)
-                    object? val = expandoData[i]
+                    object? val = expandoData[i];
                     if (val != ExpandoObject.Uninitialized)
-                        yield return klass.Keys[i]
+                        yield return klass.Keys[i];
 
             /// <summary>
             /// Adds a dynamic test which checks if the version has changed.  The test is only necessary for
             /// performance as the methods will do the correct thing if called with an incorrect version.
             /// </summary>
             private DynamicMetaObject AddDynamicTestAndDefer(DynamicMetaObjectBinder binder, ExpandoClass klass, ExpandoClass? originalClass, DynamicMetaObject succeeds)
-                Expression ifTestSucceeds = succeeds.Expression
+                Expression ifTestSucceeds = succeeds.Expression;
                 if (originalClass != null)
                     // we are accessing a member which has not yet been defined on this class.
                     // We force a class promotion after the type check.  If the class changes the
                     // promotion will fail and the set/delete will do a full lookup using the new
                     // class to discover the name.
-                    Debug.Assert(originalClass != klass)
+                    Debug.Assert(originalClass != klass);
 
                     ifTestSucceeds = Expression.Block(
                         Expression.Call(
@@ -735,43 +735,43 @@ namespace System.Dynamic
             /// original class, the promotion to the new class, and the set/delete based on the class post-promotion.
             /// </summary>
             private ExpandoClass? GetClassEnsureIndex(string name, bool caseInsensitive, ExpandoObject obj, out ExpandoClass klass, out int index)
-                ExpandoClass originalClass = Value.Class
+                ExpandoClass originalClass = Value.Class;
 
-                index = originalClass.GetValueIndex(name, caseInsensitive, obj)
+                index = originalClass.GetValueIndex(name, caseInsensitive, obj);
                 if (index == ExpandoObject.AmbiguousMatchFound)
-                    klass = originalClass
-                    return null
+                    klass = originalClass;
+                    return null;
                 if (index == ExpandoObject.NoMatch)
                     // go ahead and find a new class now...
-                    ExpandoClass newClass = originalClass.FindNewClass(name)
+                    ExpandoClass newClass = originalClass.FindNewClass(name);
 
-                    klass = newClass
-                    index = newClass.GetValueIndexCaseSensitive(name)
+                    klass = newClass;
+                    index = newClass.GetValueIndexCaseSensitive(name);
 
-                    Debug.Assert(index != ExpandoObject.NoMatch)
-                    return originalClass
+                    Debug.Assert(index != ExpandoObject.NoMatch);
+                    return originalClass;
                 else
-                    klass = originalClass
-                    return null
+                    klass = originalClass;
+                    return null;
 
             /// <summary>
             /// Returns our Expression converted to our known LimitType
             /// </summary>
             private Expression GetLimitedSelf()
                 if (TypeUtils.AreEquivalent(Expression.Type, LimitType))
-                    return Expression
-                return Expression.Convert(Expression, LimitType)
+                    return Expression;
+                return Expression.Convert(Expression, LimitType);
 
             /// <summary>
             /// Returns a Restrictions object which includes our current restrictions merged
             /// with a restriction limiting our type
             /// </summary>
             private BindingRestrictions GetRestrictions()
-                Debug.Assert(Restrictions == BindingRestrictions.Empty, "We don't merge, restrictions are always empty")
+                Debug.Assert(Restrictions == BindingRestrictions.Empty, "We don't merge, restrictions are always empty");
 
-                return BindingRestrictions.GetTypeRestriction(this)
+                return BindingRestrictions.GetTypeRestriction(this);
 
-            public new ExpandoObject Value => (ExpandoObject)base.Value!
+            public new ExpandoObject Value => (ExpandoObject)base.Value!;
 
         #endregion
 
@@ -783,12 +783,12 @@ namespace System.Dynamic
         /// requiring locks.
         /// </summary>
         private sealed class ExpandoData
-            internal static readonly ExpandoData Empty = new ExpandoData()
+            internal static readonly ExpandoData Empty = new ExpandoData();
 
             /// <summary>
             /// the dynamically assigned class associated with the Expando object
             /// </summary>
-            internal readonly ExpandoClass Class
+            internal readonly ExpandoClass Class;
 
             /// <summary>
             /// data stored in the expando object, key names are stored in the class.
@@ -796,7 +796,7 @@ namespace System.Dynamic
             /// Expando._data must be locked when mutating the value.  Otherwise a copy of it
             /// could be made and lose values.
             /// </summary>
-            private readonly object?[] _dataArray
+            private readonly object?[] _dataArray;
 
             /// <summary>
             /// Indexer for getting/setting the data
@@ -805,36 +805,36 @@ namespace System.Dynamic
 
 
                 get
-                    return _dataArray[index]
+                    return _dataArray[index];
                 set
                     //when the array is updated, version increases, even the new value is the same
                     //as previous. Dictionary type has the same behavior.
-                    _version++
-                    _dataArray[index] = value
+                    _version++;
+                    _dataArray[index] = value;
 
-            internal int Version => _version
+            internal int Version => _version;
 
-            internal int Length => _dataArray.Length
+            internal int Length => _dataArray.Length;
 
             /// <summary>
             /// Constructs an empty ExpandoData object with the empty class and no data.
             /// </summary>
             private ExpandoData()
-                Class = ExpandoClass.Empty
-                _dataArray = Array.Empty<object>()
+                Class = ExpandoClass.Empty;
+                _dataArray = Array.Empty<object>();
 
             /// <summary>
             /// the version of the ExpandoObject that tracks set and delete operations
             /// </summary>
-            private int _version
+            private int _version;
 
             /// <summary>
             /// Constructs a new ExpandoData object with the specified class and data.
             /// </summary>
             internal ExpandoData(ExpandoClass klass, object?[] data, int version)
-                Class = klass
-                _dataArray = data
-                _version = version
+                Class = klass;
+                _dataArray = data;
+                _version = version;
 
             /// <summary>
             /// Update the associated class and increases the storage for the data array if needed.
@@ -842,23 +842,23 @@ namespace System.Dynamic
             internal ExpandoData UpdateClass(ExpandoClass newClass)
                 if (_dataArray.Length >= newClass.Keys.Length)
                     // we have extra space in our buffer, just initialize it to Uninitialized.
-                    this[newClass.Keys.Length - 1] = ExpandoObject.Uninitialized
-                    return new ExpandoData(newClass, _dataArray, _version)
+                    this[newClass.Keys.Length - 1] = ExpandoObject.Uninitialized;
+                    return new ExpandoData(newClass, _dataArray, _version);
                 else
                     // we've grown too much - we need a new object array
-                    int oldLength = _dataArray.Length
-                    object[] arr = new object[GetAlignedSize(newClass.Keys.Length)]
-                    Array.Copy(_dataArray, arr, _dataArray.Length)
-                    ExpandoData newData = new ExpandoData(newClass, arr, _version)
-                    newData[oldLength] = ExpandoObject.Uninitialized
-                    return newData
+                    int oldLength = _dataArray.Length;
+                    object[] arr = new object[GetAlignedSize(newClass.Keys.Length)];
+                    Array.Copy(_dataArray, arr, _dataArray.Length);
+                    ExpandoData newData = new ExpandoData(newClass, arr, _version);
+                    newData[oldLength] = ExpandoObject.Uninitialized;
+                    return newData;
 
             private static int GetAlignedSize(int len)
                 // the alignment of the array for storage of values (must be a power of two)
-                const int DataArrayAlignment = 8
+                const int DataArrayAlignment = 8;
 
                 // round up and then mask off lower bits
-                return (len + (DataArrayAlignment - 1)) & (~(DataArrayAlignment - 1))
+                return (len + (DataArrayAlignment - 1)) & (~(DataArrayAlignment - 1));
 
         #endregion
 
@@ -868,9 +868,9 @@ namespace System.Dynamic
 
 
             add
-                _propertyChanged += value
+                _propertyChanged += value;
             remove
-                _propertyChanged -= value
+                _propertyChanged -= value;
 
         #endregion
 
@@ -892,7 +892,7 @@ namespace System.Runtime.CompilerServices
         /// <returns>True if the member exists in the expando object, otherwise false.</returns>
         [Obsolete("RuntimeOps has been deprecated and is not supported.", error: true), EditorBrowsable(EditorBrowsableState.Never)]
         public static bool ExpandoTryGetValue(ExpandoObject expando, object? indexClass, int index, string name, bool ignoreCase, out object? value)
-            return expando.TryGetValue(indexClass, index, name, ignoreCase, out value)
+            return expando.TryGetValue(indexClass, index, name, ignoreCase, out value);
 
         /// <summary>
         /// Sets the value of an item in an expando object.
@@ -908,8 +908,8 @@ namespace System.Runtime.CompilerServices
         /// </returns>
         [Obsolete("RuntimeOps has been deprecated and is not supported.", error: true), EditorBrowsable(EditorBrowsableState.Never)]
         public static object? ExpandoTrySetValue(ExpandoObject expando, object? indexClass, int index, object? value, string name, bool ignoreCase)
-            expando.TrySetValue(indexClass, index, value, name, ignoreCase, false)
-            return value
+            expando.TrySetValue(indexClass, index, value, name, ignoreCase, false);
+            return value;
 
         /// <summary>
         /// Deletes the value of an item in an expando object.
@@ -922,7 +922,7 @@ namespace System.Runtime.CompilerServices
         /// <returns>true if the item was successfully removed; otherwise, false.</returns>
         [Obsolete("RuntimeOps has been deprecated and is not supported.", error: true), EditorBrowsable(EditorBrowsableState.Never)]
         public static bool ExpandoTryDeleteValue(ExpandoObject expando, object? indexClass, int index, string name, bool ignoreCase)
-            return expando.TryDeleteValue(indexClass, index, name, ignoreCase, ExpandoObject.Uninitialized)
+            return expando.TryDeleteValue(indexClass, index, name, ignoreCase, ExpandoObject.Uninitialized);
 
         /// <summary>
         /// Checks the version of the expando object.
@@ -932,7 +932,7 @@ namespace System.Runtime.CompilerServices
         /// <returns>true if the version is equal; otherwise, false.</returns>
         [Obsolete("RuntimeOps has been deprecated and is not supported.", error: true), EditorBrowsable(EditorBrowsableState.Never)]
         public static bool ExpandoCheckVersion(ExpandoObject expando, object? version)
-            return expando.Class == version
+            return expando.Class == version;
 
         /// <summary>
         /// Promotes an expando object from one class to a new class.
@@ -942,4 +942,4 @@ namespace System.Runtime.CompilerServices
         /// <param name="newClass">The new class of the expando object.</param>
         [Obsolete("RuntimeOps has been deprecated and is not supported.", error: true), EditorBrowsable(EditorBrowsableState.Never)]
         public static void ExpandoPromoteClass(ExpandoObject expando, object oldClass, object newClass)
-            expando.PromoteClass(oldClass, newClass)
+            expando.PromoteClass(oldClass, newClass);

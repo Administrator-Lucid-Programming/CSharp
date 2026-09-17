@@ -1,19 +1,19 @@
-using System
-using System.Collections.Generic
-using System.Diagnostics
-using System.Threading
-using System.Threading.Tasks
-using Avalonia.Animation.Easings
-using Avalonia.Controls
-using Avalonia.Controls.Presenters
-using Avalonia.Controls.Primitives
-using Avalonia.Layout
-using Avalonia.Media
-using Avalonia.Media.Imaging
-using Avalonia.Styling
-using Avalonia.Logging
-using Avalonia.Threading
-using Avalonia.VisualTree
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+using Avalonia.Animation.Easings;
+using Avalonia.Controls;
+using Avalonia.Controls.Presenters;
+using Avalonia.Controls.Primitives;
+using Avalonia.Layout;
+using Avalonia.Media;
+using Avalonia.Media.Imaging;
+using Avalonia.Styling;
+using Avalonia.Logging;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
 
 namespace Avalonia.Animation
     /// <summary>
@@ -21,7 +21,7 @@ namespace Avalonia.Animation
     /// </summary>
     internal sealed class ConnectedAnimationCompletedEventArgs : EventArgs
         internal ConnectedAnimationCompletedEventArgs(bool cancelled)
-            => Cancelled = cancelled
+            => Cancelled = cancelled;
 
         /// <summary>
         /// Gets a value indicating whether the animation was cancelled before it completed.
@@ -44,69 +44,69 @@ namespace Avalonia.Animation
     /// </para>
     /// </remarks>
     internal class ConnectedAnimation : IDisposable
-        private const double CoordinatedFadeStartThreshold = 0.6
-        private const double CoordinatedFadeRange = 0.4
+        private const double CoordinatedFadeStartThreshold = 0.6;
+        private const double CoordinatedFadeRange = 0.4;
 
-        private readonly string _key
-        private readonly ConnectedAnimationService _service
+        private readonly string _key;
+        private readonly ConnectedAnimationService _service;
 
-        private Rect _sourceBounds
-        private CornerRadius _sourceCornerRadius
-        private IBrush? _sourceBackground
-        private Thickness _sourceBorderThickness
-        private IBrush? _sourceBorderBrush
-        private RenderTargetBitmap? _sourceSnapshot
+        private Rect _sourceBounds;
+        private CornerRadius _sourceCornerRadius;
+        private IBrush? _sourceBackground;
+        private Thickness _sourceBorderThickness;
+        private IBrush? _sourceBorderBrush;
+        private RenderTargetBitmap? _sourceSnapshot;
 
-        private bool _isConsumed
-        private bool _disposed
+        private bool _isConsumed;
+        private bool _disposed;
 
-        private CancellationTokenSource? _timeoutCts
-        private IDisposable? _timeoutTimerDisposable
-        private CancellationTokenSource? _animationCts
-        private DispatcherTimer? _animationTimer
+        private CancellationTokenSource? _timeoutCts;
+        private IDisposable? _timeoutTimerDisposable;
+        private CancellationTokenSource? _animationCts;
+        private DispatcherTimer? _animationTimer;
 
-        private static readonly SplineEasing s_directEasing = new(0, 0, 0.58, 1.0)
-        private static readonly SplineEasing s_basicEasing = new(0.42, 0, 0.58, 1)
-        private static readonly SplineEasing s_gravityEasing = new(0.1, 0.9, 0.2, 1.0)
+        private static readonly SplineEasing s_directEasing = new(0, 0, 0.58, 1.0);
+        private static readonly SplineEasing s_basicEasing = new(0.42, 0, 0.58, 1);
+        private static readonly SplineEasing s_gravityEasing = new(0.1, 0.9, 0.2, 1.0);
 
         // Active-flight state used by Dispose to clean up if cancelled mid-animation.
-        private Visual? _activeDestination
-        private double _activeDestOriginalOpacity
-        private Border? _activeProxy
-        private OverlayLayer? _activeOverlayLayer
+        private Visual? _activeDestination;
+        private double _activeDestOriginalOpacity;
+        private Border? _activeProxy;
+        private OverlayLayer? _activeOverlayLayer;
 
         internal ConnectedAnimation(string key, Visual source, ConnectedAnimationService service)
-            _key = key
-            _service = service
+            _key = key;
+            _service = service;
 
-            _sourceCornerRadius = GetCornerRadius(source)
-            _sourceBackground = GetBackground(source)
-            _sourceBorderThickness = GetBorderThickness(source)
-            _sourceBorderBrush = GetBorderBrush(source)
+            _sourceCornerRadius = GetCornerRadius(source);
+            _sourceBackground = GetBackground(source);
+            _sourceBorderThickness = GetBorderThickness(source);
+            _sourceBorderBrush = GetBorderBrush(source);
 
-            var topLevel = source.FindAncestorOfType<TopLevel>()
+            var topLevel = source.FindAncestorOfType<TopLevel>();
             if (topLevel != null && source.Bounds.Width > 0 && source.Bounds.Height > 0)
-                var transform = source.TransformToVisual(topLevel)
+                var transform = source.TransformToVisual(topLevel);
                 if (transform.HasValue)
                     _sourceBounds = new Rect(
                         transform.Value.Transform(new Point(0, 0)),
                         new Size(source.Bounds.Width, source.Bounds.Height))
 
-                CaptureSnapshot(source, topLevel)
+                CaptureSnapshot(source, topLevel);
 
             // Auto-dispose after 3 s if not consumed (matches UWP behaviour).
-            _timeoutCts = new CancellationTokenSource()
-            var token = _timeoutCts.Token
+            _timeoutCts = new CancellationTokenSource();
+            var token = _timeoutCts.Token;
             _timeoutTimerDisposable = DispatcherTimer.RunOnce(() => {
                 if (!token.IsCancellationRequested && !_isConsumed)
                 Dispose();
                 }, TimeSpan.FromSeconds(3), DispatcherPriority.Background)
 
         /// <summary>Gets the key that identifies this animation.</summary>
-        public string Key => _key
+        public string Key => _key;
 
         /// <summary>Gets a value indicating whether <c>TryStart</c> has been called.</summary>
-        public bool IsConsumed => _isConsumed
+        public bool IsConsumed => _isConsumed;
 
         /// <summary>
         /// Gets or sets the configuration that controls timing and visual style.
@@ -118,15 +118,15 @@ namespace Avalonia.Animation
         /// Raised when the animation finishes or is cancelled.
         /// Check <see cref="ConnectedAnimationCompletedEventArgs.Cancelled"/> to distinguish the cases.
         /// </summary>
-        public event EventHandler<ConnectedAnimationCompletedEventArgs>? Completed
+        public event EventHandler<ConnectedAnimationCompletedEventArgs>? Completed;
 
         /// <summary>
         /// Starts the animation towards <paramref name="destination"/>.
         /// Returns <see langword="false"/> if the animation has already been consumed or disposed.
         /// </summary>
         public bool TryStart(Visual destination)
-            ArgumentNullException.ThrowIfNull(destination)
-            return TryStart(destination, Array.Empty<Visual>())
+            ArgumentNullException.ThrowIfNull(destination);
+            return TryStart(destination, Array.Empty<Visual>());
 
         /// <summary>
         /// Starts the animation towards <paramref name="destination"/> with optional
@@ -134,19 +134,19 @@ namespace Avalonia.Animation
         /// Returns <see langword="false"/> if the animation has already been consumed or disposed.
         /// </summary>
         public bool TryStart(Visual destination, IReadOnlyList<Visual> coordinatedElements)
-            ArgumentNullException.ThrowIfNull(destination)
-            ArgumentNullException.ThrowIfNull(coordinatedElements)
+            ArgumentNullException.ThrowIfNull(destination);
+            ArgumentNullException.ThrowIfNull(coordinatedElements);
             if (_isConsumed || _disposed)
-                return false
+                return false;
 
-            _isConsumed = true
-            CancelTimeout()
+            _isConsumed = true;
+            CancelTimeout();
 
-            _ = RunAnimationAsync(destination, coordinatedElements)
-            return true
+            _ = RunAnimationAsync(destination, coordinatedElements);
+            return true;
 
         // Exposed internally so tests can verify disposal state without reflection.
-        internal bool IsDisposed => _disposed
+        internal bool IsDisposed => _disposed;
 
         /// <summary>
         /// Releases all resources and cancels the animation if it is in flight.
@@ -155,82 +155,82 @@ namespace Avalonia.Animation
         /// </summary>
         public void Dispose()
             if (_disposed)
-                return
-            _disposed = true
+                return;
+            _disposed = true;
 
-            CancelTimeout()
-            _service.RemoveAnimation(_key)
-            _animationCts?.Cancel()
-            _animationCts?.Dispose()
-            _animationCts = null
-            _animationTimer?.Stop()
-            _animationTimer = null
+            CancelTimeout();
+            _service.RemoveAnimation(_key);
+            _animationCts?.Cancel();
+            _animationCts?.Dispose();
+            _animationCts = null;
+            _animationTimer?.Stop();
+            _animationTimer = null;
 
-            var wasMidFlight = _activeDestination != null
+            var wasMidFlight = _activeDestination != null;
 
             if (_activeDestination != null)
-                _activeDestination.Opacity = _activeDestOriginalOpacity
-                _activeDestination = null
+                _activeDestination.Opacity = _activeDestOriginalOpacity;
+                _activeDestination = null;
 
             if (_activeProxy != null && _activeOverlayLayer != null)
-                _activeOverlayLayer.Children.Remove(_activeProxy)
-                _activeProxy = null
-                _activeOverlayLayer = null
+                _activeOverlayLayer.Children.Remove(_activeProxy);
+                _activeProxy = null;
+                _activeOverlayLayer = null;
 
-            _sourceSnapshot?.Dispose()
-            _sourceSnapshot = null
+            _sourceSnapshot?.Dispose();
+            _sourceSnapshot = null;
 
             if (wasMidFlight)
-                Completed?.Invoke(this, new ConnectedAnimationCompletedEventArgs(cancelled: true))
+                Completed?.Invoke(this, new ConnectedAnimationCompletedEventArgs(cancelled: true));
 
         private void CaptureSnapshot(Visual source, TopLevel topLevel)
             try
-                var dpi = topLevel.RenderScaling
-                var w = (int)Math.Ceiling(source.Bounds.Width * dpi)
-                var h = (int)Math.Ceiling(source.Bounds.Height * dpi)
+                var dpi = topLevel.RenderScaling;
+                var w = (int)Math.Ceiling(source.Bounds.Width * dpi);
+                var h = (int)Math.Ceiling(source.Bounds.Height * dpi);
                 if (w > 0 && h > 0)
                     _sourceSnapshot = new RenderTargetBitmap(
                         new PixelSize(w, h),
                         new Vector(96 * dpi, 96 * dpi))
-                    _sourceSnapshot.Render(source)
+                    _sourceSnapshot.Render(source);
             catch (Exception ex)
                 Logger.TryGet(LogEventLevel.Warning, LogArea.Visual)
                     ?.Log(this, "ConnectedAnimation snapshot failed for key '{Key}': {Exception}", Key, ex)
-                _sourceSnapshot?.Dispose()
-                _sourceSnapshot = null
+                _sourceSnapshot?.Dispose();
+                _sourceSnapshot = null;
 
         private void CancelTimeout()
-            _timeoutTimerDisposable?.Dispose()
-            _timeoutTimerDisposable = null
-            _timeoutCts?.Cancel()
-            _timeoutCts?.Dispose()
-            _timeoutCts = null
+            _timeoutTimerDisposable?.Dispose();
+            _timeoutTimerDisposable = null;
+            _timeoutCts?.Cancel();
+            _timeoutCts?.Dispose();
+            _timeoutCts = null;
 
         private async Task RunAnimationAsync(Visual destination, IReadOnlyList<Visual> coordinatedElements)
             try
-                await RunAnimationCoreAsync(destination, coordinatedElements)
+                await RunAnimationCoreAsync(destination, coordinatedElements);
             catch (OperationCanceledException)
                 // Dispose already handles cleanup.
                 ;
             catch (Exception ex)
                 Logger.TryGet(LogEventLevel.Warning, LogArea.Visual)
                     ?.Log(this, "ConnectedAnimation failed for key '{Key}': {Exception}", Key, ex)
-                Dispose()
+                Dispose();
 
         private async Task RunAnimationCoreAsync(Visual destination, IReadOnlyList<Visual> coordinatedElements)
             ResolveTimingAndEasing(_service, out var duration, out var easing,
                 out var useGravityDip, out var useShadow)
 
-            var topLevel = destination.FindAncestorOfType<TopLevel>()
+            var topLevel = destination.FindAncestorOfType<TopLevel>();
             if (topLevel == null)
-                OnAnimationComplete()
-                return
+                OnAnimationComplete();
+                return;
 
-            var overlayLayer = OverlayLayer.GetOverlayLayer(topLevel)
+            var overlayLayer = OverlayLayer.GetOverlayLayer(topLevel);
             if (overlayLayer == null)
                 await RunFallbackAnimationAsync(destination, coordinatedElements,
                     topLevel, duration, easing, useGravityDip, useShadow)
-                return
+                return;
 
             // Wait for destination layout if bounds are not yet valid.
             if (destination.Bounds.Width <= 0 || destination.Bounds.Height <= 0 ||
@@ -238,9 +238,9 @@ namespace Avalonia.Animation
                 if (destination is Layoutable layoutable)
                     var layoutTcs = new TaskCompletionSource<bool>(
                         TaskCreationOptions.RunContinuationsAsynchronously)
-                    using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500))
+                    using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
 
-                    EventHandler? handler = null
+                    EventHandler? handler = null;
                     handler = (_, _) => {
                         if (destination.Bounds.Width > 0 && destination.Bounds.Height > 0 &&
                         destination.TransformToVisual(topLevel).HasValue) {
@@ -248,7 +248,7 @@ namespace Avalonia.Animation
                         layoutTcs.TrySetResult(true);
                     }
                     }
-                    layoutable.LayoutUpdated += handler
+                    layoutable.LayoutUpdated += handler;
 
                     using var reg = timeoutCts.Token.Register(() => {
                         layoutable.LayoutUpdated -= handler;
@@ -256,20 +256,20 @@ namespace Avalonia.Animation
                     }
                     )
 
-                    await layoutTcs.Task
+                    await layoutTcs.Task;
 
-            var destTransform = destination.TransformToVisual(topLevel)
+            var destTransform = destination.TransformToVisual(topLevel);
             if (!destTransform.HasValue)
-                OnAnimationComplete()
-                return
+                OnAnimationComplete();
+                return;
 
             var destBounds = new Rect(
                 destTransform.Value.Transform(new Point(0, 0)),
                 new Size(destination.Bounds.Width, destination.Bounds.Height))
 
-            var destCornerRadius = GetCornerRadius(destination)
-            var destBorderThickness = GetBorderThickness(destination)
-            var destBorderBrush = GetBorderBrush(destination)
+            var destCornerRadius = GetCornerRadius(destination);
+            var destBorderThickness = GetBorderThickness(destination);
+            var destBorderBrush = GetBorderBrush(destination);
 
             var proxy = new ConnectedAnimationProxy {
                 Width = _sourceBounds.Width,
@@ -282,80 +282,80 @@ namespace Avalonia.Animation
             }
 
             if (_sourceBackground != null)
-                proxy.Background = _sourceBackground
+                proxy.Background = _sourceBackground;
             else if (_sourceSnapshot != null)
-                proxy.Background = new ImageBrush(_sourceSnapshot) { Stretch = Stretch.Fill }
+                proxy.Background = new ImageBrush(_sourceSnapshot) { Stretch = Stretch.Fill };
 
-            Canvas.SetLeft(proxy, _sourceBounds.X)
-            Canvas.SetTop(proxy, _sourceBounds.Y)
+            Canvas.SetLeft(proxy, _sourceBounds.X);
+            Canvas.SetTop(proxy, _sourceBounds.Y);
 
-            var destOriginalOpacity = destination.Opacity
-            destination.Opacity = 0
+            var destOriginalOpacity = destination.Opacity;
+            destination.Opacity = 0;
 
-            _activeDestination = destination
-            _activeDestOriginalOpacity = destOriginalOpacity
-            _activeProxy = proxy
-            _activeOverlayLayer = overlayLayer
+            _activeDestination = destination;
+            _activeDestOriginalOpacity = destOriginalOpacity;
+            _activeProxy = proxy;
+            _activeOverlayLayer = overlayLayer;
 
-            var originalOpacities = new double[coordinatedElements.Count]
+            var originalOpacities = new double[coordinatedElements.Count];
             for (int i = 0; i < coordinatedElements.Count; i++)
                 if (ReferenceEquals(coordinatedElements[i], destination))
-                    continue
-                originalOpacities[i] = coordinatedElements[i].Opacity
-                coordinatedElements[i].Opacity = 0
+                    continue;
+                originalOpacities[i] = coordinatedElements[i].Opacity;
+                coordinatedElements[i].Opacity = 0;
 
-            var destBackground = GetBackground(destination)
+            var destBackground = GetBackground(destination);
             var needsCrossFade = destBackground != null
                 && _sourceBackground != null
                 && !BrushesEqual(_sourceBackground, destBackground)
 
-            overlayLayer.Children.Add(proxy)
+            overlayLayer.Children.Add(proxy);
 
-            Border? crossFadeOverlay = null
+            Border? crossFadeOverlay = null;
             if (needsCrossFade)
                 crossFadeOverlay = new Border {
                     Background = destBackground,
                     Opacity = 0,
                     IsHitTestVisible = false,
                 }
-                proxy.Child = crossFadeOverlay
+                proxy.Child = crossFadeOverlay;
 
-            var startX = _sourceBounds.X
-            var endX = destBounds.X
-            var startY = _sourceBounds.Y
-            var endY = destBounds.Y
-            var startW = _sourceBounds.Width
-            var endW = destBounds.Width
-            var startH = _sourceBounds.Height
-            var endH = destBounds.Height
+            var startX = _sourceBounds.X;
+            var endX = destBounds.X;
+            var startY = _sourceBounds.Y;
+            var endY = destBounds.Y;
+            var startW = _sourceBounds.Width;
+            var endW = destBounds.Width;
+            var startH = _sourceBounds.Height;
+            var endH = destBounds.Height;
 
-            var srcTL = _sourceCornerRadius.TopLeft
-            var srcTR = _sourceCornerRadius.TopRight
-            var srcBR = _sourceCornerRadius.BottomRight
-            var srcBL = _sourceCornerRadius.BottomLeft
-            var dstTL = destCornerRadius.TopLeft
-            var dstTR = destCornerRadius.TopRight
-            var dstBR = destCornerRadius.BottomRight
-            var dstBL = destCornerRadius.BottomLeft
+            var srcTL = _sourceCornerRadius.TopLeft;
+            var srcTR = _sourceCornerRadius.TopRight;
+            var srcBR = _sourceCornerRadius.BottomRight;
+            var srcBL = _sourceCornerRadius.BottomLeft;
+            var dstTL = destCornerRadius.TopLeft;
+            var dstTR = destCornerRadius.TopRight;
+            var dstBR = destCornerRadius.BottomRight;
+            var dstBL = destCornerRadius.BottomLeft;
 
-            var srcBT = _sourceBorderThickness
-            var dstBT = destBorderThickness
+            var srcBT = _sourceBorderThickness;
+            var dstBT = destBorderThickness;
 
-            var canLerpBorderBrush = _sourceBorderBrush is ISolidColorBrush && destBorderBrush is ISolidColorBrush
-            var srcBC = (_sourceBorderBrush as ISolidColorBrush)?.Color ?? default
-            var dstBC = (destBorderBrush as ISolidColorBrush)?.Color ?? default
-            SolidColorBrush? lerpBrush = canLerpBorderBrush ? new SolidColorBrush(srcBC) : null
-            var snapBorderBrush = !canLerpBorderBrush && destBorderBrush != null
+            var canLerpBorderBrush = _sourceBorderBrush is ISolidColorBrush && destBorderBrush is ISolidColorBrush;
+            var srcBC = (_sourceBorderBrush as ISolidColorBrush)?.Color ?? default;
+            var dstBC = (destBorderBrush as ISolidColorBrush)?.Color ?? default;
+            SolidColorBrush? lerpBrush = canLerpBorderBrush ? new SolidColorBrush(srcBC) : null;
+            var snapBorderBrush = !canLerpBorderBrush && destBorderBrush != null;
 
-            double dipAmplitude = 0, scaleAmplitude = 0
+            double dipAmplitude = 0, scaleAmplitude = 0;
             if (useGravityDip)
-                var travel = Math.Max(Math.Abs(endX - startX), Math.Abs(endY - startY))
-                dipAmplitude = Math.Clamp(travel * 0.12, 8, 50)
-                scaleAmplitude = 0.05
+                var travel = Math.Max(Math.Abs(endX - startX), Math.Abs(endY - startY));
+                dipAmplitude = Math.Clamp(travel * 0.12, 8, 50);
+                scaleAmplitude = 0.05;
 
-            var animateShadow = useShadow && useGravityDip
+            var animateShadow = useShadow && useGravityDip;
 
-            _animationCts = new CancellationTokenSource()
+            _animationCts = new CancellationTokenSource();
 
             proxy.ProgressCallback = progress => {
                 var ep = easing.Ease(progress);
@@ -447,75 +447,75 @@ namespace Avalonia.Animation
                     }
                 };
 
-            await animation.RunAsync(proxy, _animationCts.Token)
+            await animation.RunAsync(proxy, _animationCts.Token);
 
-            _animationCts?.Dispose()
-            _animationCts = null
+            _animationCts?.Dispose();
+            _animationCts = null;
 
-            destination.Opacity = destOriginalOpacity
+            destination.Opacity = destOriginalOpacity;
 
-            _activeDestination = null
-            _activeProxy = null
-            _activeOverlayLayer = null
+            _activeDestination = null;
+            _activeProxy = null;
+            _activeOverlayLayer = null;
 
-            overlayLayer.Children.Remove(proxy)
+            overlayLayer.Children.Remove(proxy);
 
             for (int i = 0; i < coordinatedElements.Count; i++)
                 if (ReferenceEquals(coordinatedElements[i], destination))
-                    continue
-                coordinatedElements[i].Opacity = originalOpacities[i]
+                    continue;
+                coordinatedElements[i].Opacity = originalOpacities[i];
 
-            _sourceSnapshot?.Dispose()
-            _sourceSnapshot = null
+            _sourceSnapshot?.Dispose();
+            _sourceSnapshot = null;
 
-            OnAnimationComplete()
+            OnAnimationComplete();
 
         private async Task RunFallbackAnimationAsync(
             Visual destination, IReadOnlyList<Visual> coordinatedElements,
             TopLevel topLevel, TimeSpan duration, Easing easing,
             bool useGravityDip, bool useShadow)
-            var destTransform = destination.TransformToVisual(topLevel)
+            var destTransform = destination.TransformToVisual(topLevel);
             if (!destTransform.HasValue)
-                OnAnimationComplete()
-                return
+                OnAnimationComplete();
+                return;
 
             var destBounds = new Rect(
                 destTransform.Value.Transform(new Point(0, 0)),
                 new Size(destination.Bounds.Width, destination.Bounds.Height))
 
-            var dx = _sourceBounds.X - destBounds.X
-            var dy = _sourceBounds.Y - destBounds.Y
-            var sx = _sourceBounds.Width > 0 && destBounds.Width > 0 ? _sourceBounds.Width / destBounds.Width  : 1.0
-            var sy = _sourceBounds.Height > 0 && destBounds.Height > 0 ? _sourceBounds.Height / destBounds.Height : 1.0
+            var dx = _sourceBounds.X - destBounds.X;
+            var dy = _sourceBounds.Y - destBounds.Y;
+            var sx = _sourceBounds.Width > 0 && destBounds.Width > 0 ? _sourceBounds.Width / destBounds.Width  : 1.0;
+            var sy = _sourceBounds.Height > 0 && destBounds.Height > 0 ? _sourceBounds.Height / destBounds.Height : 1.0;
 
-            var group = new TransformGroup()
-            var scaleT = new ScaleTransform(sx, sy)
-            var transT = new TranslateTransform(dx, dy)
-            group.Children.Add(scaleT)
-            group.Children.Add(transT)
+            var group = new TransformGroup();
+            var scaleT = new ScaleTransform(sx, sy);
+            var transT = new TranslateTransform(dx, dy);
+            group.Children.Add(scaleT);
+            group.Children.Add(transT);
 
-            var origTransform = destination.RenderTransform
-            var origOrigin = destination.RenderTransformOrigin
-            destination.RenderTransformOrigin = new RelativePoint(0, 0, RelativeUnit.Absolute)
-            destination.RenderTransform = group
+            var origTransform = destination.RenderTransform;
+            var origOrigin = destination.RenderTransformOrigin;
+            destination.RenderTransformOrigin = new RelativePoint(0, 0, RelativeUnit.Absolute);
+            destination.RenderTransform = group;
 
-            double dipAmp = 0, scaleAmp = 0
+            double dipAmp = 0, scaleAmp = 0;
             if (useGravityDip)
-                var travel = Math.Max(Math.Abs(dx), Math.Abs(dy))
-                dipAmp = Math.Clamp(travel * 0.12, 8, 50)
-                scaleAmp = 0.05
+                var travel = Math.Max(Math.Abs(dx), Math.Abs(dy));
+                dipAmp = Math.Clamp(travel * 0.12, 8, 50);
+                scaleAmp = 0.05;
 
-            var shadowBorder = useShadow && useGravityDip && destination is Border b ? b : null
-            var origShadow = shadowBorder?.BoxShadow ?? default
+            var shadowBorder = useShadow && useGravityDip && destination is Border b ? b : null;
+            var origShadow = shadowBorder?.BoxShadow ?? default;
 
-            var originalOpacities = new double[coordinatedElements.Count]
+            var originalOpacities = new double[coordinatedElements.Count];
             for (int i = 0; i < coordinatedElements.Count; i++)
                 if (ReferenceEquals(coordinatedElements[i], destination))
-                    continue
-                originalOpacities[i] = coordinatedElements[i].Opacity
-                coordinatedElements[i].Opacity = 0
+                    continue;
+                originalOpacities[i] = coordinatedElements[i].Opacity;
+                coordinatedElements[i].Opacity = 0;
 
-            var startTimestamp = Stopwatch.GetTimestamp()
+            var startTimestamp = Stopwatch.GetTimestamp();
             var tcs = new TaskCompletionSource<bool>(
                 TaskCreationOptions.RunContinuationsAsynchronously)
 
@@ -576,90 +576,90 @@ namespace Avalonia.Animation
                 }
             }
 
-            _animationCts = new CancellationTokenSource()
-            using var reg = _animationCts.Token.Register(() => tcs.TrySetCanceled())
+            _animationCts = new CancellationTokenSource();
+            using var reg = _animationCts.Token.Register(() => tcs.TrySetCanceled());
 
-            _animationTimer.Start()
+            _animationTimer.Start();
 
-            bool cancelled = false
+            bool cancelled = false;
             try
-                await tcs.Task
+                await tcs.Task;
             catch (OperationCanceledException)
-                cancelled = true
+                cancelled = true;
             finally
-                _animationTimer?.Stop()
-                _animationTimer = null
-                _animationCts?.Dispose()
-                _animationCts = null
+                _animationTimer?.Stop();
+                _animationTimer = null;
+                _animationCts?.Dispose();
+                _animationCts = null;
 
-            destination.RenderTransform = origTransform
-            destination.RenderTransformOrigin = origOrigin
+            destination.RenderTransform = origTransform;
+            destination.RenderTransformOrigin = origOrigin;
 
             if (shadowBorder != null)
-                shadowBorder.BoxShadow = origShadow
+                shadowBorder.BoxShadow = origShadow;
 
             for (int i = 0; i < coordinatedElements.Count; i++)
                 if (ReferenceEquals(coordinatedElements[i], destination))
-                    continue
-                coordinatedElements[i].Opacity = originalOpacities[i]
+                    continue;
+                coordinatedElements[i].Opacity = originalOpacities[i];
 
-            _sourceSnapshot?.Dispose()
-            _sourceSnapshot = null
+            _sourceSnapshot?.Dispose();
+            _sourceSnapshot = null;
 
             if (cancelled)
-                Completed?.Invoke(this, new ConnectedAnimationCompletedEventArgs(cancelled: true))
-                return
+                Completed?.Invoke(this, new ConnectedAnimationCompletedEventArgs(cancelled: true));
+                return;
 
-            OnAnimationComplete()
+            OnAnimationComplete();
 
         internal void ResolveTimingAndEasing(ConnectedAnimationService service,
             out TimeSpan duration, out Easing easing,
             out bool useGravityDip, out bool useShadow)
             if (Configuration is DirectConnectedAnimationConfiguration direct)
-                duration = direct.Duration ?? service.DefaultDuration
-                easing = s_directEasing
-                useGravityDip = false
-                useShadow = false
+                duration = direct.Duration ?? service.DefaultDuration;
+                easing = s_directEasing;
+                useGravityDip = false;
+                useShadow = false;
             else if (Configuration is BasicConnectedAnimationConfiguration)
-                duration = service.DefaultDuration
-                easing = service.DefaultEasingFunction ?? s_basicEasing
-                useGravityDip = false
-                useShadow = false
+                duration = service.DefaultDuration;
+                easing = service.DefaultEasingFunction ?? s_basicEasing;
+                useGravityDip = false;
+                useShadow = false;
             else
-                duration = service.DefaultDuration
-                easing = service.DefaultEasingFunction ?? s_gravityEasing
-                useGravityDip = true
-                useShadow = Configuration is GravityConnectedAnimationConfiguration g ? g.IsShadowEnabled : true
+                duration = service.DefaultDuration;
+                easing = service.DefaultEasingFunction ?? s_gravityEasing;
+                useGravityDip = true;
+                useShadow = Configuration is GravityConnectedAnimationConfiguration g ? g.IsShadowEnabled : true;
 
         private void OnAnimationComplete()
-            _service.RemoveAnimation(_key)
-            Completed?.Invoke(this, new ConnectedAnimationCompletedEventArgs(cancelled: false))
+            _service.RemoveAnimation(_key);
+            Completed?.Invoke(this, new ConnectedAnimationCompletedEventArgs(cancelled: false));
 
-        private static IBrush? GetBackground(Visual visual) => visual switch         {             Border b             => b.Background,             Panel p              => p.Background,             ContentPresenter cp  => cp.Background,             ContentControl cc    => cc.Background,             TemplatedControl tc  => tc.Background,             _                    => null,         }
+        private static IBrush? GetBackground(Visual visual) => visual switch         {             Border b => b.Background,             Panel p => p.Background,             ContentPresenter cp  => cp.Background,             ContentControl cc => cc.Background,             TemplatedControl tc  => tc.Background,             _ => null,         };
 
-        private static CornerRadius GetCornerRadius(Visual visual) => visual switch         {             Border b             => b.CornerRadius,             TemplatedControl tc  => tc.CornerRadius,             ContentPresenter cp  => cp.CornerRadius,             _                    => default,         }
+        private static CornerRadius GetCornerRadius(Visual visual) => visual switch         {             Border b => b.CornerRadius,             TemplatedControl tc  => tc.CornerRadius,             ContentPresenter cp  => cp.CornerRadius,             _ => default,         };
 
-        private static Thickness GetBorderThickness(Visual visual) => visual switch         {             Border b             => b.BorderThickness,             TemplatedControl tc  => tc.BorderThickness,             ContentPresenter cp  => cp.BorderThickness,             _                    => default,         }
+        private static Thickness GetBorderThickness(Visual visual) => visual switch         {             Border b => b.BorderThickness,             TemplatedControl tc  => tc.BorderThickness,             ContentPresenter cp  => cp.BorderThickness,             _ => default,         };
 
-        private static IBrush? GetBorderBrush(Visual visual) => visual switch         {             Border b             => b.BorderBrush,             TemplatedControl tc  => tc.BorderBrush,             ContentPresenter cp  => cp.BorderBrush,             _                    => null,         }
+        private static IBrush? GetBorderBrush(Visual visual) => visual switch         {             Border b => b.BorderBrush,             TemplatedControl tc  => tc.BorderBrush,             ContentPresenter cp  => cp.BorderBrush,             _ => null,         };
 
         private static bool BrushesEqual(IBrush a, IBrush b)
             if (ReferenceEquals(a, b))
-                return true
+                return true;
             if (a is ISolidColorBrush sa && b is ISolidColorBrush sb)
-                return sa.Color == sb.Color && Math.Abs(sa.Opacity - sb.Opacity) < 0.001
-            return false
+                return sa.Color == sb.Color && Math.Abs(sa.Opacity - sb.Opacity) < 0.001;
+            return false;
 
         private class ConnectedAnimationProxy : Border
-            public static readonly StyledProperty<double> ProgressProperty =             AvaloniaProperty.Register<ConnectedAnimationProxy, double>(nameof(Progress))
+            public static readonly StyledProperty<double> ProgressProperty =             AvaloniaProperty.Register<ConnectedAnimationProxy, double>(nameof(Progress));
 
             public double Progress
-                get => GetValue(ProgressProperty)
-                set => SetValue(ProgressProperty, value)
+                get => GetValue(ProgressProperty);
+                set => SetValue(ProgressProperty, value);
 
             internal Action<double>? ProgressCallback { get; set; }
 
             protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
-                base.OnPropertyChanged(change)
+                base.OnPropertyChanged(change);
                 if (change.Property == ProgressProperty)
-                    ProgressCallback?.Invoke(change.GetNewValue<double>())
+                    ProgressCallback?.Invoke(change.GetNewValue<double>());

@@ -1,27 +1,27 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System
-using System.Collections.Generic
-using System.Diagnostics
-using System.Text
-using ILCompiler
-using ILCompiler.DependencyAnalysis.Wasm
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Text;
+using ILCompiler;
+using ILCompiler.DependencyAnalysis.Wasm;
 
-using Internal.TypeSystem
+using Internal.TypeSystem;
 
 namespace Internal.JitInterface
     public static partial class WasmLowering
         public static MethodSignature GetStringCtorActualSignature(MethodSignature signature)
-            Debug.Assert(signature.Context.GetWellKnownType(WellKnownType.String).GetMethod(".ctor"u8, signature) != null)
-            Debug.Assert(signature.GenericParameterCount == 0)
-            Debug.Assert(signature.Flags == 0)
+            Debug.Assert(signature.Context.GetWellKnownType(WellKnownType.String).GetMethod(".ctor"u8, signature) != null);
+            Debug.Assert(signature.GenericParameterCount == 0);
+            Debug.Assert(signature.Flags == 0);
 
-            TypeDesc[] arguments = new TypeDesc[signature.Length]
+            TypeDesc[] arguments = new TypeDesc[signature.Length];
             for (int i = 0; i < signature.Length; i++)
-                arguments[i] = signature[i]
+                arguments[i] = signature[i];
 
-            return new MethodSignature(MethodSignatureFlags.Static, 0, signature.Context.GetWellKnownType(WellKnownType.String), arguments)
+            return new MethodSignature(MethodSignatureFlags.Static, 0, signature.Context.GetWellKnownType(WellKnownType.String), arguments);
 
         // The Wasm "basic C ABI" passes structs that contain one
         // primitive field as that primitive field.
@@ -30,67 +30,67 @@ namespace Internal.JitInterface
         // as a primitive, and if so, which type. If not, return
         // null.
 
-        public static TypeDesc LowerToAbiType(TypeDesc type) => LowerToAbiType(type, out _)
+        public static TypeDesc LowerToAbiType(TypeDesc type) => LowerToAbiType(type, out _);
 
         private static TypeDesc LowerToAbiType(TypeDesc type, out TypeDesc multiSegmentType)
-            multiSegmentType = null
+            multiSegmentType = null;
 
             // Types split across several wasm parameters are not a single ABI primitive, but the
             // caller still needs to know which one the type unwrapped to.
             if (IsMultiSegmentType(type))
-                multiSegmentType = type
-                return null
+                multiSegmentType = type;
+                return null;
 
             // Vector128<T> and a 128-bit Vector<T> are wasm v128 ABI primitives passed by value.
             if (IsWasmV128Type(type))
-                return type
+                return type;
 
             if (!(type.IsValueType && !type.IsPrimitive))
-                return type
+                return type;
 
-            int size = type.GetElementSize().AsInt
+            int size = type.GetElementSize().AsInt;
 
             while (true)
-                FieldDesc firstField = null
-                int numIntroducedFields = 0
+                FieldDesc firstField = null;
+                int numIntroducedFields = 0;
                 foreach (FieldDesc field in type.GetFields())
                     if (!field.IsStatic)
-                        firstField ??= field
-                        numIntroducedFields++
+                        firstField ??= field;
+                        numIntroducedFields++;
 
                     if (numIntroducedFields > 1)
-                        break
+                        break;
 
                 if (numIntroducedFields != 1)
                     // Multi-field aggregates (including a homogeneous 2x v128) use the generic by-ref
                     // struct ABI; the wasm C ABI has no HFA/HVA concept. Only emscripten's opt-in
                     // experimental multivalue ABI expands these into per-field registers, which we
                     // don't target.
-                    return null
+                    return null;
 
-                TypeDesc firstFieldElementType = firstField.FieldType
+                TypeDesc firstFieldElementType = firstField.FieldType;
 
                 if (firstFieldElementType.GetElementSize().AsInt != size)
                     // One-field struct with padding.
-                    return null
+                    return null;
 
-                type = firstFieldElementType
+                type = firstFieldElementType;
 
                 // A single-field wrapper struct is passed as the type it wraps, matching clang: a
                 // struct wrapping an __int128 lowers to the same two i64 parameters the bare type does.
                 if (IsMultiSegmentType(type))
-                    multiSegmentType = type
-                    return null
+                    multiSegmentType = type;
+                    return null;
 
                 // A single-field wrapper struct around a v128 lowers to the v128 primitive, matching
                 // emscripten, which passes a struct wrapping a v128 as a v128.
                 if (IsWasmV128Type(type))
-                    return type
+                    return type;
 
                 if (type.IsValueType && !type.IsPrimitive)
-                    continue
+                    continue;
 
-                return type
+                return type;
 
         /// <summary>
         /// Reports how a type is split when the wasm ABI passes it by value across several
@@ -105,24 +105,24 @@ namespace Internal.JitInterface
         /// verify that the selected type has the layout required by its multi-slot ABI.
         /// </remarks>
         public static bool TryGetMultiSegmentLayout(TypeDesc type, out WasmValueType slotType, out int slotCount)
-            slotType = default
-            slotCount = 0
+            slotType = default;
+            slotCount = 0;
 
             // A single-field wrapper is passed as the type it wraps, so classify what it unwraps to.
-            LowerToAbiType(type, out TypeDesc multiSegmentType)
+            LowerToAbiType(type, out TypeDesc multiSegmentType);
             if (multiSegmentType is null)
-                return false
+                return false;
 
-            slotType = GetSlotType(multiSegmentType).Value
+            slotType = GetSlotType(multiSegmentType).Value;
 
             // A wrapper only unwraps when its field fills it exactly, so the declared type's size
             // is also the wrapped type's size.
-            int size = type.GetElementSize().AsInt
-            int slotSize = GetMultiSegmentSlotSize(slotType)
-            Debug.Assert((size % slotSize) == 0)
+            int size = type.GetElementSize().AsInt;
+            int slotSize = GetMultiSegmentSlotSize(slotType);
+            Debug.Assert((size % slotSize) == 0);
 
-            slotCount = size / slotSize
-            return true
+            slotCount = size / slotSize;
+            return true;
 
         /// <summary>
         /// Determines whether a type is itself passed by value across several wasm parameters,
@@ -131,14 +131,14 @@ namespace Internal.JitInterface
         /// </summary>
         private static bool IsMultiSegmentType(TypeDesc type)
             if (type is not DefType defType || !IsKnownMultiSegmentType(defType))
-                return false
+                return false;
 
-            int size = defType.InstanceFieldSize.AsInt
+            int size = defType.InstanceFieldSize.AsInt;
             if (defType.InstanceFieldAlignment.AsInt != size)
-                return false
+                return false;
 
-            WasmValueType? slotType = GetSlotType(type)
-            return (slotType is not null) && (size > GetMultiSegmentSlotSize(slotType.Value))
+            WasmValueType? slotType = GetSlotType(type);
+            return (slotType is not null) && (size > GetMultiSegmentSlotSize(slotType.Value));
 
         /// <summary>
         /// Determines whether a type is one of the CoreLib types with special multi-slot Wasm ABI
@@ -148,13 +148,13 @@ namespace Internal.JitInterface
         private static bool IsKnownMultiSegmentType(DefType type)
             if (type.GetTypeDefinition() is not MetadataType typeDefinition ||
                 typeDefinition.Module != type.Context.SystemModule)
-                return false
+                return false;
 
             if (Int128FieldLayoutAlgorithm.IsIntegerType(type))
-                return true
+                return true;
 
             if (DecimalFieldLayoutAlgorithm.IsDecimalFloatingPointType(type))
-                return type.Name == "Decimal128"u8
+                return type.Name == "Decimal128"u8;
 
             return VectorFieldLayoutAlgorithm.IsVectorType(type) &&
                 (type.Name == "Vector256`1"u8 || type.Name == "Vector512`1"u8) &&
@@ -167,22 +167,22 @@ namespace Internal.JitInterface
         /// have homogeneous vector fields. It is not valid for an arbitrary aggregate.
         /// </summary>
         private static WasmValueType? GetSlotType(TypeDesc type)
-            Debug.Assert(type is DefType defType && IsKnownMultiSegmentType(defType))
+            Debug.Assert(type is DefType defType && IsKnownMultiSegmentType(defType));
 
             // Three iterations cover the deepest supported chain:
             // Vector512<T> -> Vector256<T> -> Vector128<T>.
             for (int depth = 0; depth < 3; depth++)
                 if (IsWasmV128Type(type))
-                    return WasmValueType.V128
+                    return WasmValueType.V128;
 
                 if (type.IsPrimitive)
                     // Only a wasm scalar is a valid slot; a narrower one would mean the type is not
                     // an even multiple of its slots.
-                    WasmValueType lowered = LowerType(type)
-                    return lowered == WasmValueType.I64 ? lowered : null
+                    WasmValueType lowered = LowerType(type);
+                    return lowered == WasmValueType.I64 ? lowered : null;
 
                 if (type is not DefType || !type.IsValueType)
-                    return null
+                    return null;
 
                 // A generic intrinsic whose base type is not a supported vector element -- the
                 // shared __Canon form, say -- is not ABI-classifiable, and its fields are an
@@ -192,20 +192,20 @@ namespace Internal.JitInterface
                 // and reports eight i64 slots.
                 if (type.IsIntrinsic && (type.Instantiation.Length == 1) &&
                     !VectorFieldLayoutAlgorithm.IsSupportedVectorBaseType(type.Instantiation[0]))
-                    return null
+                    return null;
 
-                FieldDesc firstField = null
+                FieldDesc firstField = null;
                 foreach (FieldDesc field in type.GetFields())
                     if (!field.IsStatic)
-                        firstField = field
-                        break
+                        firstField = field;
+                        break;
 
                 if (firstField is null)
-                    return null
+                    return null;
 
-                type = firstField.FieldType
+                type = firstField.FieldType;
 
-            return null
+            return null;
 
         /// <summary>
         /// Size in bytes of a wasm slot used by <see cref="TryGetMultiSegmentLayout"/>. Taken from
@@ -213,8 +213,8 @@ namespace Internal.JitInterface
         /// occupy a v128 slot but report their own narrower sizes.
         /// </summary>
         public static int GetMultiSegmentSlotSize(WasmValueType slotType)
-            Debug.Assert(slotType is WasmValueType.I64 or WasmValueType.V128)
-            return slotType == WasmValueType.I64 ? 8 : 16
+            Debug.Assert(slotType is WasmValueType.I64 or WasmValueType.V128);
+            return slotType == WasmValueType.I64 ? 8 : 16;
 
         /// <summary>
         /// Determines whether a type is passed and returned by value as a wasm <c>v128</c>, matching
@@ -229,7 +229,7 @@ namespace Internal.JitInterface
             if (!type.IsIntrinsic ||
                 type.Instantiation.Length != 1 ||
                 !VectorFieldLayoutAlgorithm.IsSupportedVectorBaseType(type.Instantiation[0]))
-                return false
+                return false;
 
             // Vector128<T> is always a 16-byte v128.
             //
@@ -246,18 +246,18 @@ namespace Internal.JitInterface
             Debug.Assert(!isV128 || ((DefType)type).InstanceFieldAlignment.AsInt == 16,
                 $"v128 type {type} must be 16-byte aligned");
 
-            return isV128
+            return isV128;
 
         public static WasmValueType LowerType(TypeDesc type)
-            WasmValueType pointerType = (type.Context.Target.PointerSize == 4) ? WasmValueType.I32 : WasmValueType.I64
+            WasmValueType pointerType = (type.Context.Target.PointerSize == 4) ? WasmValueType.I32 : WasmValueType.I64;
 
             if (IsWasmV128Type(type))
-                return WasmValueType.V128
+                return WasmValueType.V128;
 
-            TypeDesc abiType = LowerToAbiType(type)
+            TypeDesc abiType = LowerToAbiType(type);
 
             if (abiType == null)
-                return pointerType
+                return pointerType;
 
             switch (abiType.UnderlyingType.Category)
                 case TypeFlags.Int32:
@@ -268,17 +268,17 @@ namespace Internal.JitInterface
                 case TypeFlags.SByte:
                 case TypeFlags.Int16:
                 case TypeFlags.UInt16:
-                    return WasmValueType.I32
+                    return WasmValueType.I32;
 
                 case TypeFlags.Int64:
                 case TypeFlags.UInt64:
-                    return WasmValueType.I64
+                    return WasmValueType.I64;
 
                 case TypeFlags.Single:
-                    return WasmValueType.F32
+                    return WasmValueType.F32;
 
                 case TypeFlags.Double:
-                    return WasmValueType.F64
+                    return WasmValueType.F64;
 
                 // Pointer and reference types
                 case TypeFlags.IntPtr:
@@ -290,10 +290,10 @@ namespace Internal.JitInterface
                 case TypeFlags.ByRef:
                 case TypeFlags.Pointer:
                 case TypeFlags.FunctionPointer:
-                    return pointerType
+                    return pointerType;
 
                 default:
-                    throw new NotSupportedException($"Unknown wasm mapping for type: {type.UnderlyingType.Category}")
+                    throw new NotSupportedException($"Unknown wasm mapping for type: {type.UnderlyingType.Category}");
 
         /// <summary>
         /// Determines whether a type is an empty struct (no instance fields) that should
@@ -302,110 +302,110 @@ namespace Internal.JitInterface
         // WASM-TODO: This currently always returns false because .NET pads empty structs
         // to size 1. A proper implementation should check for 0 non-static fields.
         // See https://github.com/dotnet/runtime/issues/127361
-        public static bool IsEmptyStruct(TypeDesc type) => false
+        public static bool IsEmptyStruct(TypeDesc type) => false;
 
         /// <summary>
         /// Maps a WasmValueType to its single-character signature encoding.
         /// </summary>
-        private static char WasmValueTypeToSigChar(WasmValueType vt) => vt switch         {             WasmValueType.I32 => 'i',             WasmValueType.I64 => 'l',             WasmValueType.F32 => 'f',             WasmValueType.F64 => 'd',             WasmValueType.V128 => 'V',             _ => throw new NotSupportedException($"Unknown WasmValueType: {vt}")         }
+        private static char WasmValueTypeToSigChar(WasmValueType vt) => vt switch         {             WasmValueType.I32 => 'i',             WasmValueType.I64 => 'l',             WasmValueType.F32 => 'f',             WasmValueType.F64 => 'd',             WasmValueType.V128 => 'V',             _ => throw new NotSupportedException($"Unknown WasmValueType: {vt}")         };
 
-        private static TypeDesc RaiseSigChar(char c, TypeSystemContext context) => c switch         {             'i' => context.GetWellKnownType(WellKnownType.Int32),             'l' => context.GetWellKnownType(WellKnownType.Int64),             'f' => context.GetWellKnownType(WellKnownType.Single),             'd' => context.GetWellKnownType(WellKnownType.Double),             'V' => ((CompilerTypeSystemContext)context).WasmV128Type,             _ => throw new InvalidOperationException($"Unknown signature char: {c}")         }
+        private static TypeDesc RaiseSigChar(char c, TypeSystemContext context) => c switch         {             'i' => context.GetWellKnownType(WellKnownType.Int32),             'l' => context.GetWellKnownType(WellKnownType.Int64),             'f' => context.GetWellKnownType(WellKnownType.Single),             'd' => context.GetWellKnownType(WellKnownType.Double),             'V' => ((CompilerTypeSystemContext)context).WasmV128Type,             _ => throw new InvalidOperationException($"Unknown signature char: {c}")         };
 
         private static int ParseStructSize(string sig, ref int pos)
-            Debug.Assert(sig[pos] is 'S' or 'A')
+            Debug.Assert(sig[pos] is 'S' or 'A');
             pos++ // skip 'S'/'A'
-            int start = pos
+            int start = pos;
             while (pos < sig.Length && char.IsDigit(sig[pos]))
-                pos++
+                pos++;
 
-            return int.Parse(sig.AsSpan(start, pos - start))
+            return int.Parse(sig.AsSpan(start, pos - start));
 
         public static MethodSignature RaiseSignature(WasmSignature wasmSignature, TypeSystemContext context)
-            string sig = wasmSignature.SignatureString
-            int pos = 0
+            string sig = wasmSignature.SignatureString;
+            int pos = 0;
 
             // Parse return type
-            TypeDesc returnType
+            TypeDesc returnType;
             if (sig[pos] == 'v')
-                returnType = context.GetWellKnownType(WellKnownType.Void)
-                pos++
+                returnType = context.GetWellKnownType(WellKnownType.Void);
+                pos++;
             else if (sig[pos] == 'S')
-                int structSize = ParseStructSize(sig, ref pos)
-                returnType = ((CompilerTypeSystemContext)context).GetCachedReturnStructOfSize(structSize)
-                Debug.Assert(returnType is not null, $"No cached struct of size {structSize} for return type in signature '{sig}'")
+                int structSize = ParseStructSize(sig, ref pos);
+                returnType = ((CompilerTypeSystemContext)context).GetCachedReturnStructOfSize(structSize);
+                Debug.Assert(returnType is not null, $"No cached struct of size {structSize} for return type in signature '{sig}'");
             else
-                returnType = RaiseSigChar(sig[pos], context)
-                pos++
+                returnType = RaiseSigChar(sig[pos], context);
+                pos++;
 
-            List<TypeDesc> parameters = new List<TypeDesc>()
-            bool hasThis = false
-            bool isAsyncCall = false
-            bool hasGenericContextBeforeAsync = false
+            List<TypeDesc> parameters = new List<TypeDesc>();
+            bool hasThis = false;
+            bool isAsyncCall = false;
+            bool hasGenericContextBeforeAsync = false;
 
             if (pos < sig.Length && sig[pos] == 'T')
-                hasThis = true
-                pos++
+                hasThis = true;
+                pos++;
 
             // A generic context precedes the async marker in the Wasm ABI; it is encoded with the
             // hidden-pointer char (matching the encode side), i32 on wasm32 and i64 on wasm64.
-            char hiddenParamChar = (context.Target.PointerSize == 4) ? 'i' : 'l'
+            char hiddenParamChar = (context.Target.PointerSize == 4) ? 'i' : 'l';
             if ((pos + 1 < sig.Length) && (sig[pos] == hiddenParamChar) && (sig[pos + 1] == 'a'))
-                hasGenericContextBeforeAsync = true
-                parameters.Add(RaiseSigChar(sig[pos], context))
-                pos++
+                hasGenericContextBeforeAsync = true;
+                parameters.Add(RaiseSigChar(sig[pos], context));
+                pos++;
 
             if (pos < sig.Length && sig[pos] == 'a')
-                isAsyncCall = true
-                pos++
+                isAsyncCall = true;
+                pos++;
 
             // Parse explicit parameters (everything until the portable-entrypoint suffix or end of string).
             while (pos < sig.Length && sig[pos] != 'p')
-                char c = sig[pos]
+                char c = sig[pos];
                 if (c == 'T')
                     // 'this' parameter — not added as explicit param, sets hasThis flag
-                    hasThis = true
-                    pos++
+                    hasThis = true;
+                    pos++;
                 else if (c == 'e')
                     // Empty struct — include the cached empty struct type for roundtrip fidelity
-                    TypeDesc emptyStruct = ((CompilerTypeSystemContext)context).CachedEmptyStruct
-                    Debug.Assert(emptyStruct is not null, "Encountered 'e' in signature but no empty struct was cached during lowering")
-                    parameters.Add(emptyStruct)
-                    pos++
+                    TypeDesc emptyStruct = ((CompilerTypeSystemContext)context).CachedEmptyStruct;
+                    Debug.Assert(emptyStruct is not null, "Encountered 'e' in signature but no empty struct was cached during lowering");
+                    parameters.Add(emptyStruct);
+                    pos++;
                 else if (((c == 'l') || (c == 'V')) && (pos + 1 < sig.Length) && char.IsDigit(sig[pos + 1]))
-                    int elevation = sig[pos + 1] - '0'
-                    parameters.Add(((CompilerTypeSystemContext)context).GetWasmElevatedType(c, elevation))
-                    pos += 2
+                    int elevation = sig[pos + 1] - '0';
+                    parameters.Add(((CompilerTypeSystemContext)context).GetWasmElevatedType(c, elevation));
+                    pos += 2;
                 else if (c is 'S' or 'A')
-                    bool isAlignedStruct = c == 'A'
-                    int structSize = ParseStructSize(sig, ref pos)
-                    CompilerTypeSystemContext compilerContext = (CompilerTypeSystemContext)context
+                    bool isAlignedStruct = c == 'A';
+                    int structSize = ParseStructSize(sig, ref pos);
+                    CompilerTypeSystemContext compilerContext = (CompilerTypeSystemContext)context;
                     TypeDesc cachedStruct = isAlignedStruct
                         ? compilerContext.GetCachedAlignedStructOfSize(structSize)
                         : compilerContext.GetCachedStructOfSize(structSize)
                     Debug.Assert(cachedStruct is not null,
                         $"No cached {(isAlignedStruct ? "aligned " : "")}struct of size {structSize} for parameter in signature '{sig}'")
-                    parameters.Add(cachedStruct)
+                    parameters.Add(cachedStruct);
                 else
-                    parameters.Add(RaiseSigChar(c, context))
-                    pos++
+                    parameters.Add(RaiseSigChar(c, context));
+                    pos++;
 
-            bool isManaged = pos < sig.Length && sig[pos] == 'p'
-            MethodSignatureFlags flags = hasThis ? MethodSignatureFlags.None : MethodSignatureFlags.Static
+            bool isManaged = pos < sig.Length && sig[pos] == 'p';
+            MethodSignatureFlags flags = hasThis ? MethodSignatureFlags.None : MethodSignatureFlags.Static;
             if (!isManaged)
-                flags |= MethodSignatureFlags.UnmanagedCallingConvention
+                flags |= MethodSignatureFlags.UnmanagedCallingConvention;
 
-            MethodSignature result = new MethodSignature(flags, 0, returnType, parameters.ToArray())
+            MethodSignature result = new MethodSignature(flags, 0, returnType, parameters.ToArray());
 
-            WasmSignature roundtripped = GetSignature(result, isAsyncCall ? LoweringFlags.IsAsyncCall : LoweringFlags.None)
-            string roundtrippedStr = roundtripped.SignatureString
+            WasmSignature roundtripped = GetSignature(result, isAsyncCall ? LoweringFlags.IsAsyncCall : LoweringFlags.None);
+            string roundtrippedStr = roundtripped.SignatureString;
             if (hasGenericContextBeforeAsync && isAsyncCall)
                 // The roundtrip re-encodes the generic context as a leading parameter, so it emits the
                 // async marker before the hidden-pointer char; swap them back to match the input ordering.
-                roundtrippedStr = roundtrippedStr.Replace($"a{hiddenParamChar}", $"{hiddenParamChar}a")
+                roundtrippedStr = roundtrippedStr.Replace($"a{hiddenParamChar}", $"{hiddenParamChar}a");
             Debug.Assert(roundtrippedStr.Equals(wasmSignature.SignatureString, StringComparison.Ordinal),
                 $"RaiseSignature roundtrip failed: input='{wasmSignature.SignatureString}', roundtripped='{roundtrippedStr}'")
 
-            return result
+            return result;
 
         /// <summary>
         /// Gets the Wasm-level signature for a given MethodDesc.
@@ -421,17 +421,17 @@ namespace Internal.JitInterface
         /// <param name="method"></param>
         /// <returns></returns>
         public static WasmSignature GetSignature(MethodDesc method)
-            return GetSignature(method.Signature, GetLoweringFlags(method))
+            return GetSignature(method.Signature, GetLoweringFlags(method));
 
         public static LoweringFlags GetLoweringFlags(MethodDesc method)
-            LoweringFlags flags = 0
+            LoweringFlags flags = 0;
             if (method.RequiresInstMethodDescArg() || method.RequiresInstMethodTableArg())
-                flags |= LoweringFlags.HasGenericContextArg
+                flags |= LoweringFlags.HasGenericContextArg;
             if (method.IsAsyncCall())
-                flags |= LoweringFlags.IsAsyncCall
+                flags |= LoweringFlags.IsAsyncCall;
             if (method.IsUnmanagedCallersOnly)
-                flags |= LoweringFlags.IsUnmanagedCallersOnly
-            return flags
+                flags |= LoweringFlags.IsUnmanagedCallersOnly;
+            return flags;
 
         [Flags]
         public enum LoweringFlags
@@ -442,93 +442,93 @@ namespace Internal.JitInterface
 
         public static WasmSignature GetSignature(MethodSignature signature, LoweringFlags flags)
             if (!flags.HasFlag(LoweringFlags.IsUnmanagedCallersOnly) && signature.Flags.HasFlag(MethodSignatureFlags.UnmanagedCallingConvention))
-                flags |= LoweringFlags.IsUnmanagedCallersOnly
+                flags |= LoweringFlags.IsUnmanagedCallersOnly;
 
-            TypeDesc returnType = signature.ReturnType
-            WasmValueType pointerType = (signature.ReturnType.Context.Target.PointerSize == 4) ? WasmValueType.I32 : WasmValueType.I64
-            char hiddenParamChar = WasmValueTypeToSigChar(pointerType)
+            TypeDesc returnType = signature.ReturnType;
+            WasmValueType pointerType = (signature.ReturnType.Context.Target.PointerSize == 4) ? WasmValueType.I32 : WasmValueType.I64;
+            char hiddenParamChar = WasmValueTypeToSigChar(pointerType);
 
-            StringBuilder sigBuilder = new StringBuilder()
+            StringBuilder sigBuilder = new StringBuilder();
 
             // Determine if the return value is via a return buffer
             //
-            TypeDesc loweredReturnType = LowerToAbiType(returnType)
-            bool hasReturnBuffer = false
-            bool returnIsVoid = false
-            bool hasThis = false
-            bool explicitThis = false
+            TypeDesc loweredReturnType = LowerToAbiType(returnType);
+            bool hasReturnBuffer = false;
+            bool returnIsVoid = false;
+            bool hasThis = false;
+            bool explicitThis = false;
 
             if (loweredReturnType == null)
                 if (IsEmptyStruct(returnType))
                     // Empty struct return — treated as void with no return buffer
-                    returnIsVoid = true
-                    sigBuilder.Append('v')
+                    returnIsVoid = true;
+                    sigBuilder.Append('v');
                 else
-                    hasReturnBuffer = true
-                    returnIsVoid = true
-                    int returnSize = returnType.GetElementSize().AsInt
-                    sigBuilder.Append('S')
-                    sigBuilder.Append(returnSize)
+                    hasReturnBuffer = true;
+                    returnIsVoid = true;
+                    int returnSize = returnType.GetElementSize().AsInt;
+                    sigBuilder.Append('S');
+                    sigBuilder.Append(returnSize);
 
                     // A multi-slot type spells 'S<N>' only as a return; as a parameter it re-lowers
                     // to its slot form. Keep it in the return cache alone, so an ordinary same-sized
                     // struct parameter does not raise with this type's larger alignment.
-                    CompilerTypeSystemContext returnContext = (CompilerTypeSystemContext)returnType.Context
-                    returnContext.CacheReturnStructBySize(returnType)
+                    CompilerTypeSystemContext returnContext = (CompilerTypeSystemContext)returnType.Context;
+                    returnContext.CacheReturnStructBySize(returnType);
                     if (!TryGetMultiSegmentLayout(returnType, out _, out _))
-                        int returnAlignment = CompilerTypeSystemContext.GetClassAlignmentRequirementStatic((DefType)returnType)
-                        returnContext.CacheStruct(returnType, returnAlignment > 8)
+                        int returnAlignment = CompilerTypeSystemContext.GetClassAlignmentRequirementStatic((DefType)returnType);
+                        returnContext.CacheStruct(returnType, returnAlignment > 8);
             else if (loweredReturnType.IsVoid)
-                returnIsVoid = true
-                sigBuilder.Append('v')
+                returnIsVoid = true;
+                sigBuilder.Append('v');
             else
-                sigBuilder.Append(WasmValueTypeToSigChar(LowerType(loweredReturnType)))
+                sigBuilder.Append(WasmValueTypeToSigChar(LowerType(loweredReturnType)));
 
             // Reserve space for potential implicit this, stack pointer parameter, portable entrypoint parameter,
             // generic context, async continuation, and return buffer
-            ArrayBuilder<WasmValueType> result = new(signature.Length + 6)
+            ArrayBuilder<WasmValueType> result = new(signature.Length + 6);
 
             if (!signature.IsStatic)
-                hasThis = true
+                hasThis = true;
 
                 if (signature.IsExplicitThis)
-                    explicitThis = true
+                    explicitThis = true;
 
             if (flags.HasFlag(LoweringFlags.IsUnmanagedCallersOnly)) // reverse P/Invoke
                 if (hasReturnBuffer)
-                    result.Add(pointerType)
+                    result.Add(pointerType);
             else
                 // managed call
                 result.Add(pointerType) // Stack pointer parameter (encoded via 'p' suffix, not here)
 
                 if (hasThis)
-                    result.Add(pointerType)
-                    sigBuilder.Append('T')
+                    result.Add(pointerType);
+                    sigBuilder.Append('T');
 
                 if (hasReturnBuffer)
-                    result.Add(pointerType)
+                    result.Add(pointerType);
 
             if (flags.HasFlag(LoweringFlags.HasGenericContextArg))
                 result.Add(pointerType) // generic context
-                sigBuilder.Append(hiddenParamChar)
+                sigBuilder.Append(hiddenParamChar);
 
             if (flags.HasFlag(LoweringFlags.IsAsyncCall))
                 result.Add(pointerType) // async continuation
-                sigBuilder.Append('a')
+                sigBuilder.Append('a');
 
             for (int i = explicitThis ? 1 : 0; i < signature.Length; i++)
-                TypeDesc paramType = signature[i]
-                TypeDesc loweredParamType = LowerToAbiType(paramType)
+                TypeDesc paramType = signature[i];
+                TypeDesc loweredParamType = LowerToAbiType(paramType);
 
                 if (loweredParamType == null)
                     if (IsEmptyStruct(paramType))
                         // Empty struct — not emitted as a WebAssembly argument
                         sigBuilder.Append('e');
-                        ((CompilerTypeSystemContext)signature.ReturnType.Context).CacheEmptyStruct(paramType)
-                        continue
+                        ((CompilerTypeSystemContext)signature.ReturnType.Context).CacheEmptyStruct(paramType);
+                        continue;
 
                     // Struct that cannot be lowered to a single primitive — passed by reference
-                    int paramSize = paramType.GetElementSize().AsInt
+                    int paramSize = paramType.GetElementSize().AsInt;
                     if (TryGetMultiSegmentLayout(paramType, out WasmValueType slotType, out int slotCount))
                         // Passed by value across several wasm parameters, matching the wasm C ABI.
                         // Spelled '<slot><elevation>'; the elevation factor equals the slot count
@@ -536,30 +536,30 @@ namespace Internal.JitInterface
                         // them differing. See readytorun-format.md.
                         Debug.Assert(slotCount is >= 2 and <= 9,
                             $"Slot count {slotCount} is not a single digit, so raising cannot read it back");
-                        sigBuilder.Append(WasmValueTypeToSigChar(slotType))
-                        sigBuilder.Append(slotCount)
+                        sigBuilder.Append(WasmValueTypeToSigChar(slotType));
+                        sigBuilder.Append(slotCount);
                         for (int slot = 0; slot < slotCount; slot++)
-                            result.Add(slotType)
+                            result.Add(slotType);
                     else
-                        Debug.Assert(paramType is DefType)
-                        int paramAlignment = CompilerTypeSystemContext.GetClassAlignmentRequirementStatic((DefType)paramType)
-                        bool requiresAlignedSlot = paramAlignment > 8
-                        sigBuilder.Append(requiresAlignedSlot ? 'A' : 'S')
+                        Debug.Assert(paramType is DefType);
+                        int paramAlignment = CompilerTypeSystemContext.GetClassAlignmentRequirementStatic((DefType)paramType);
+                        bool requiresAlignedSlot = paramAlignment > 8;
+                        sigBuilder.Append(requiresAlignedSlot ? 'A' : 'S');
                         sigBuilder.Append(paramSize);
-                        ((CompilerTypeSystemContext)paramType.Context).CacheStruct(paramType, requiresAlignedSlot)
-                        result.Add(pointerType)
+                        ((CompilerTypeSystemContext)paramType.Context).CacheStruct(paramType, requiresAlignedSlot);
+                        result.Add(pointerType);
                 else
-                    WasmValueType paramWasmType = LowerType(loweredParamType)
-                    sigBuilder.Append(WasmValueTypeToSigChar(paramWasmType))
-                    result.Add(paramWasmType)
+                    WasmValueType paramWasmType = LowerType(loweredParamType);
+                    sigBuilder.Append(WasmValueTypeToSigChar(paramWasmType));
+                    result.Add(paramWasmType);
 
             if (!flags.HasFlag(LoweringFlags.IsUnmanagedCallersOnly))
                 result.Add(pointerType) // PE entrypoint parameter (encoded via 'p' suffix)
-                sigBuilder.Append('p')
+                sigBuilder.Append('p');
 
-            WasmResultType ps = new(result.ToArray())
+            WasmResultType ps = new(result.ToArray());
             raw csharp
                 WasmResultType ret = returnIsVoid ? new(Array.Empty<WasmValueType>())
                     : new([LowerType(loweredReturnType)]);
 
-            return new WasmSignature(new WasmFuncType(ps, ret), sigBuilder.ToString())
+            return new WasmSignature(new WasmFuncType(ps, ret), sigBuilder.ToString());

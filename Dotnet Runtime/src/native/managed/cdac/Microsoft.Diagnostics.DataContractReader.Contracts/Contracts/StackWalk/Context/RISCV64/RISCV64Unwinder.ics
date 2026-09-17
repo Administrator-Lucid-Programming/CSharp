@@ -1,10 +1,10 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System
-using System.Diagnostics.CodeAnalysis
-using System.Runtime.InteropServices
-using static Microsoft.Diagnostics.DataContractReader.Contracts.StackWalkHelpers.RISCV64Context
+using System;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
+using static Microsoft.Diagnostics.DataContractReader.Contracts.StackWalkHelpers.RISCV64Context;
 
 namespace Microsoft.Diagnostics.DataContractReader.Contracts.StackWalkHelpers.RISCV64;
 
@@ -35,22 +35,22 @@ internal class RISCV64Unwinder(Target target)
 
     #endregion
 
-    private readonly Target _target = target
-    private readonly IExecutionManager _eman = target.Contracts.ExecutionManager
+    private readonly Target _target = target;
+    private readonly IExecutionManager _eman = target.Contracts.ExecutionManager;
 
     #region Entrypoint
 
     public bool Unwind(ref RISCV64Context context)
         if (_eman.GetCodeBlockHandle(context.InstructionPointer) is not CodeBlockHandle cbh)
-            return false
+            return false;
 
-        TargetPointer imageBase = _eman.GetUnwindInfoBaseAddress(cbh)
-        Data.RuntimeFunction functionEntry = _target.ProcessedData.GetOrAdd<Data.RuntimeFunction>(_eman.GetUnwindInfo(cbh))
+        TargetPointer imageBase = _eman.GetUnwindInfoBaseAddress(cbh);
+        Data.RuntimeFunction functionEntry = _target.ProcessedData.GetOrAdd<Data.RuntimeFunction>(_eman.GetUnwindInfo(cbh));
 
-        ulong startingPc = context.Pc
-        ulong startingSp = context.Sp
+        ulong startingPc = context.Pc;
+        ulong startingSp = context.Sp;
 
-        bool status = VirtualUnwind(ref context, imageBase, functionEntry)
+        bool status = VirtualUnwind(ref context, imageBase, functionEntry);
 
         //
         // If we fail the unwind, clear the PC to 0. This is recognized by
@@ -59,14 +59,14 @@ internal class RISCV64Unwinder(Target target)
         //
 
         if (!status)
-            context.Pc = 0
+            context.Pc = 0;
 
         // PC == 0 means unwinding is finished.
         // Same if no forward progress is made
         if (context.Pc == 0 || (startingPc == context.Pc && startingSp == context.Sp))
-            return false
+            return false;
 
-        return true
+        return true;
 
     #endregion
     #region Unwinder
@@ -75,7 +75,7 @@ internal class RISCV64Unwinder(Target target)
         // FunctionEntry could be null if the function is a pure leaf/trivial function.
         // This is not a valid case for managed code and not handled here.
 
-        uint controlPcRva = (uint)(context.Pc - imageBase.Value)
+        uint controlPcRva = (uint)(context.Pc - imageBase.Value);
 
         //
         // Identify the compact .pdata format versus the full .pdata+.xdata format.
@@ -83,7 +83,7 @@ internal class RISCV64Unwinder(Target target)
         // RISC-V64 does not have a compact format like ARM64, so we only handle the full format.
         //
 
-        return VirtualUnwindFull(ref context, controlPcRva, imageBase, functionEntry)
+        return VirtualUnwindFull(ref context, controlPcRva, imageBase, functionEntry);
 
     private bool VirtualUnwindFull(
         ref RISCV64Context context,
@@ -95,22 +95,22 @@ internal class RISCV64Unwinder(Target target)
         // will return us to the return address of a call and set the flag
         // appropriately (it will be cleared again if the special cases apply).
         //
-        context.ContextFlags |= (uint)ContextFlagsValues.CONTEXT_UNWOUND_TO_CALL
+        context.ContextFlags |= (uint)ContextFlagsValues.CONTEXT_UNWOUND_TO_CALL;
 
         //
         // By default, unwinding is done by popping to the RA, then copying
         // that RA to the PC. However, some special opcodes require different
         // behavior.
         //
-        bool finalPcFromRa = true
+        bool finalPcFromRa = true;
 
         //
         // Fetch the header word from the .xdata blob
         //
 
-        TargetPointer unwindDataPtr = imageBase + functionEntry.UnwindData
-        uint headerWord = _target.Read<uint>(unwindDataPtr)
-        unwindDataPtr += 4
+        TargetPointer unwindDataPtr = imageBase + functionEntry.UnwindData;
+        uint headerWord = _target.Read<uint>(unwindDataPtr);
+        unwindDataPtr += 4;
 
         //
         // Verify the version before we do anything else
@@ -118,27 +118,27 @@ internal class RISCV64Unwinder(Target target)
 
         if (((headerWord >> 18) & 3) != 0)
             // unsupported version
-            return false
+            return false;
 
-        uint functionLength = headerWord & 0x3ffffu
-        uint offsetInFunction = (controlPcRva - functionEntry.BeginAddress) / 2
+        uint functionLength = headerWord & 0x3ffffu;
+        uint offsetInFunction = (controlPcRva - functionEntry.BeginAddress) / 2;
 
         //
         // Determine the number of epilog scope records and the maximum number
         // of unwind codes.
         //
-        uint unwindWords = (headerWord >> 27) & 31
-        uint epilogScopeCount = (headerWord >> 22) & 31
+        uint unwindWords = (headerWord >> 27) & 31;
+        uint epilogScopeCount = (headerWord >> 22) & 31;
         if (epilogScopeCount == 0 && unwindWords == 0)
-            epilogScopeCount = _target.Read<uint>(unwindDataPtr)
-            unwindDataPtr += 4
-            unwindWords = (epilogScopeCount >> 16) & 0xff
-            epilogScopeCount &= 0xffff
+            epilogScopeCount = _target.Read<uint>(unwindDataPtr);
+            unwindDataPtr += 4;
+            unwindWords = (epilogScopeCount >> 16) & 0xff;
+            epilogScopeCount &= 0xffff;
 
-        uint unwindIndex = 0
+        uint unwindIndex = 0;
         if ((headerWord & (1 << 21)) != 0)
-            unwindIndex = epilogScopeCount
-            epilogScopeCount = 0
+            unwindIndex = epilogScopeCount;
+            epilogScopeCount = 0;
 
         //
         // Exception data is not supported in this implementation and is not used by managed code.
@@ -150,9 +150,9 @@ internal class RISCV64Unwinder(Target target)
         // that immediately follow the epilog scope list.
         //
 
-        TargetPointer unwindCodePtr = unwindDataPtr + 4 * epilogScopeCount
-        TargetPointer unwindCodesEndPtr = unwindCodePtr + 4 * unwindWords
-        uint skipHalfwords = 0
+        TargetPointer unwindCodePtr = unwindDataPtr + 4 * epilogScopeCount;
+        TargetPointer unwindCodesEndPtr = unwindCodePtr + 4 * unwindWords;
+        uint skipHalfwords = 0;
 
         //
         // If we're near the start of the function, and this function has a prolog,
@@ -168,12 +168,12 @@ internal class RISCV64Unwinder(Target target)
         //      larger than this value, it is guaranteed to be in the body of the
         //      function.
         //
-        uint scopeSize
+        uint scopeSize;
         if (offsetInFunction < 2 * (4 * unwindWords))
-            scopeSize = 2 * ComputeScopeSize(unwindCodePtr, unwindCodesEndPtr, isEpilog: false)
+            scopeSize = 2 * ComputeScopeSize(unwindCodePtr, unwindCodesEndPtr, isEpilog: false);
 
             if (offsetInFunction < scopeSize)
-                skipHalfwords = scopeSize - offsetInFunction
+                skipHalfwords = scopeSize - offsetInFunction;
 
         if (skipHalfwords > 0)
             // Found that we are in the middle of a prolog, no need to check for epilog scopes
@@ -196,16 +196,16 @@ internal class RISCV64Unwinder(Target target)
         //
         else if ((headerWord & (1 << 21)) != 0)
             if (offsetInFunction + 2 * (4 * unwindWords - unwindIndex) >= functionLength)
-                scopeSize = 2 * ComputeScopeSize(unwindCodePtr + unwindIndex, unwindCodesEndPtr, isEpilog: true)
-                uint scopeStart = functionLength - scopeSize
+                scopeSize = 2 * ComputeScopeSize(unwindCodePtr + unwindIndex, unwindCodesEndPtr, isEpilog: true);
+                uint scopeStart = functionLength - scopeSize;
 
                 //
                 // N.B. This code assumes that no handleable exceptions can occur in
                 //      the prolog or in a chained shrink-wrapping prolog region.
                 //
                 if (offsetInFunction >= scopeStart)
-                    unwindCodePtr += unwindIndex
-                    skipHalfwords = offsetInFunction - scopeStart
+                    unwindCodePtr += unwindIndex;
+                    skipHalfwords = offsetInFunction - scopeStart;
 
         //
         // In the multiple-epilog case, we scan forward to see if we are within
@@ -215,25 +215,25 @@ internal class RISCV64Unwinder(Target target)
         //
         else
             for (uint scopeNum = 0; scopeNum < epilogScopeCount; scopeNum++)
-                headerWord = _target.Read<uint>(unwindDataPtr)
-                unwindDataPtr += 4
+                headerWord = _target.Read<uint>(unwindDataPtr);
+                unwindDataPtr += 4;
 
                 //
                 // The scope records are stored in order. If we hit a record that
                 // starts after our current position, we must not be in an epilog.
                 //
-                uint scopeStart = headerWord & 0x3ffffu
+                uint scopeStart = headerWord & 0x3ffffu;
                 if (offsetInFunction < scopeStart)
-                    break
+                    break;
 
-                unwindIndex = headerWord >> 22
+                unwindIndex = headerWord >> 22;
                 if (offsetInFunction < scopeStart + 2 * (4 * unwindWords - unwindIndex))
-                    scopeSize = 2 * ComputeScopeSize(unwindCodePtr + unwindIndex, unwindCodesEndPtr, isEpilog: true)
+                    scopeSize = 2 * ComputeScopeSize(unwindCodePtr + unwindIndex, unwindCodesEndPtr, isEpilog: true);
 
                     if (offsetInFunction < scopeStart + scopeSize)
-                        unwindCodePtr += unwindIndex
-                        skipHalfwords = offsetInFunction - scopeStart
-                        break
+                        unwindCodePtr += unwindIndex;
+                        skipHalfwords = offsetInFunction - scopeStart;
+                        break;
 
         //
         // Skip over unwind codes until we account for the number of halfwords
@@ -241,36 +241,36 @@ internal class RISCV64Unwinder(Target target)
         //
 
         while (unwindCodePtr < unwindCodesEndPtr && skipHalfwords > 0)
-            byte curCode = _target.Read<byte>(unwindCodePtr)
+            byte curCode = _target.Read<byte>(unwindCodePtr);
             if (OpcodeIsEnd(curCode))
-                break
-            unwindCodePtr += UnwindCodeSizeTable[curCode]
-            skipHalfwords -= 2
+                break;
+            unwindCodePtr += UnwindCodeSizeTable[curCode];
+            skipHalfwords -= 2;
 
         //
         // Now execute codes until we hit the end.
         //
 
-        uint accumulatedSaveNexts = 0
+        uint accumulatedSaveNexts = 0;
         while (unwindCodePtr < unwindCodesEndPtr)
-            byte curCode = _target.Read<byte>(unwindCodePtr)
-            unwindCodePtr += 1
+            byte curCode = _target.Read<byte>(unwindCodePtr);
+            unwindCodePtr += 1;
 
-            bool isEndCode = OpcodeIsEnd(curCode)
+            bool isEndCode = OpcodeIsEnd(curCode);
             if (!ProcessUnwindCode(ref context, curCode, ref unwindCodePtr, unwindCodesEndPtr, ref accumulatedSaveNexts, ref finalPcFromRa))
-                return false
+                return false;
 
             if (isEndCode)
-                break
+                break;
 
         //
         // If we succeeded, post-process the final state.
         //
 
         if (finalPcFromRa)
-            context.Pc = context.Ra
+            context.Pc = context.Ra;
 
-        return true
+        return true;
 
     private uint ComputeScopeSize(TargetPointer unwindCodePtr, TargetPointer unwindCodesEndPtr, bool isEpilog)
         //
@@ -278,22 +278,22 @@ internal class RISCV64Unwinder(Target target)
         // While iterating, accumulate the total scope size.
         //
 
-        uint scopeSize = 0
+        uint scopeSize = 0;
         while (unwindCodePtr < unwindCodesEndPtr)
-            byte opcode = _target.Read<byte>(unwindCodePtr)
+            byte opcode = _target.Read<byte>(unwindCodePtr);
             if (OpcodeIsEnd(opcode))
-                break
+                break;
 
-            unwindCodePtr += UnwindCodeSizeTable[opcode]
-            scopeSize++
+            unwindCodePtr += UnwindCodeSizeTable[opcode];
+            scopeSize++;
 
         if (isEpilog)
-            scopeSize++
+            scopeSize++;
 
-        return scopeSize
+        return scopeSize;
 
     private static bool OpcodeIsEnd(byte opcode)
-        return (opcode & 0xfe) == 0xe4
+        return (opcode & 0xfe) == 0xe4;
 
     private bool ProcessUnwindCode(ref RISCV64Context context, byte curCode, ref TargetPointer unwindCodePtr, TargetPointer unwindCodesEndPtr, ref uint accumulatedSaveNexts, ref bool finalPcFromRa)
         try
@@ -304,8 +304,8 @@ internal class RISCV64Unwinder(Target target)
             if (curCode <= 0x1f)
                 if (accumulatedSaveNexts != 0)
                     // invalid sequence
-                    return false
-                context.Sp += 16u * (uint)(curCode & 0x1f)
+                    return false;
+                context.Sp += 16u * (uint)(curCode & 0x1f);
 
             //
             // alloc_m (11000xxx|xxxxxxxx): allocate large stack with size < 32k (2^11 * 16)
@@ -314,13 +314,13 @@ internal class RISCV64Unwinder(Target target)
             else if ((curCode & 0xf8) == 0xc0)
                 if (accumulatedSaveNexts != 0)
                     // invalid sequence
-                    return false
+                    return false;
                 if (unwindCodePtr >= unwindCodesEndPtr)
-                    return false
-                byte nextCode = _target.Read<byte>(unwindCodePtr)
-                unwindCodePtr += 1
-                context.Sp += 16u * ((curCode & 7u) << 8)
-                context.Sp += 16u * nextCode
+                    return false;
+                byte nextCode = _target.Read<byte>(unwindCodePtr);
+                unwindCodePtr += 1;
+                context.Sp += 16u * ((curCode & 7u) << 8);
+                context.Sp += 16u * nextCode;
 
             //
             // save_reg (11010000|000xxxxx|zzzzzzzz): save reg r(1+#X) at [sp+#Z*8], offset <= 2047
@@ -329,17 +329,17 @@ internal class RISCV64Unwinder(Target target)
             else if (curCode == 0xd0)
                 if (accumulatedSaveNexts != 0)
                     // invalid sequence
-                    return false
+                    return false;
                 if (unwindCodePtr + 1 >= unwindCodesEndPtr)
-                    return false
-                byte nextCode = _target.Read<byte>(unwindCodePtr)
-                unwindCodePtr += 1
-                byte nextCode1 = _target.Read<byte>(unwindCodePtr)
-                unwindCodePtr += 1
+                    return false;
+                byte nextCode = _target.Read<byte>(unwindCodePtr);
+                unwindCodePtr += 1;
+                byte nextCode1 = _target.Read<byte>(unwindCodePtr);
+                unwindCodePtr += 1;
 
-                uint regNum = 1u + nextCode
-                uint offset = 8u * nextCode1
-                SetRegisterFromOffset(ref context, regNum, context.Sp + offset)
+                uint regNum = 1u + nextCode;
+                uint offset = 8u * nextCode1;
+                SetRegisterFromOffset(ref context, regNum, context.Sp + offset);
 
             //
             // save_freg (1101110x|xxxxzzzz|zzzzzzzz): save reg f(8+#X) at [sp+#Z*8], offset <= 32767
@@ -348,13 +348,13 @@ internal class RISCV64Unwinder(Target target)
             else if ((curCode & 0xfe) == 0xdc)
                 if (accumulatedSaveNexts != 0)
                     // invalid sequence
-                    return false
+                    return false;
                 if (unwindCodePtr + 1 >= unwindCodesEndPtr)
-                    return false
-                byte nextCode = _target.Read<byte>(unwindCodePtr)
-                unwindCodePtr += 1
-                byte nextCode1 = _target.Read<byte>(unwindCodePtr)
-                unwindCodePtr += 1
+                    return false;
+                byte nextCode = _target.Read<byte>(unwindCodePtr);
+                unwindCodePtr += 1;
+                byte nextCode1 = _target.Read<byte>(unwindCodePtr);
+                unwindCodePtr += 1;
 
             //
             // alloc_l (11100000|xxxxxxxx|xxxxxxxx|xxxxxxxx): allocate large stack with size < 256M
@@ -363,16 +363,16 @@ internal class RISCV64Unwinder(Target target)
             else if (curCode == 0xe0)
                 if (accumulatedSaveNexts != 0)
                     // invalid sequence
-                    return false
+                    return false;
                 if (unwindCodePtr + 2 >= unwindCodesEndPtr)
-                    return false
-                byte nextCode1 = _target.Read<byte>(unwindCodePtr)
-                unwindCodePtr += 1
-                byte nextCode2 = _target.Read<byte>(unwindCodePtr)
-                unwindCodePtr += 1
-                byte nextCode3 = _target.Read<byte>(unwindCodePtr)
-                unwindCodePtr += 1
-                context.Sp += 16u * (uint)((nextCode1 << 16) | (nextCode2 << 8) | nextCode3)
+                    return false;
+                byte nextCode1 = _target.Read<byte>(unwindCodePtr);
+                unwindCodePtr += 1;
+                byte nextCode2 = _target.Read<byte>(unwindCodePtr);
+                unwindCodePtr += 1;
+                byte nextCode3 = _target.Read<byte>(unwindCodePtr);
+                unwindCodePtr += 1;
+                context.Sp += 16u * (uint)((nextCode1 << 16) | (nextCode2 << 8) | nextCode3);
 
             //
             // set_fp (11100001): set up fp: with: ori fp,sp,0
@@ -381,8 +381,8 @@ internal class RISCV64Unwinder(Target target)
             else if (curCode == 0xe1)
                 if (accumulatedSaveNexts != 0)
                     // invalid sequence
-                    return false
-                context.Sp = context.Fp
+                    return false;
+                context.Sp = context.Fp;
 
             //
             // add_fp (11100010|000xxxxx|xxxxxxxx): set up fp with: addi.d fp,sp,#x*8
@@ -391,14 +391,14 @@ internal class RISCV64Unwinder(Target target)
             else if (curCode == 0xe2)
                 if (accumulatedSaveNexts != 0)
                     // invalid sequence
-                    return false
+                    return false;
                 if (unwindCodePtr + 1 >= unwindCodesEndPtr)
-                    return false
-                byte nextCode = _target.Read<byte>(unwindCodePtr)
-                unwindCodePtr += 1
-                byte nextCode1 = _target.Read<byte>(unwindCodePtr)
-                unwindCodePtr += 1
-                context.Sp = context.Fp - 8u * ((uint)((nextCode << 8) | nextCode1))
+                    return false;
+                byte nextCode = _target.Read<byte>(unwindCodePtr);
+                unwindCodePtr += 1;
+                byte nextCode1 = _target.Read<byte>(unwindCodePtr);
+                unwindCodePtr += 1;
+                context.Sp = context.Fp - 8u * ((uint)((nextCode << 8) | nextCode1));
 
             //
             // nop (11100011): no unwind operation is required
@@ -407,7 +407,7 @@ internal class RISCV64Unwinder(Target target)
             else if (curCode == 0xe3)
                 if (accumulatedSaveNexts != 0)
                     // invalid sequence
-                    return false
+                    return false;
 
             //
             // end (11100100): end of unwind code
@@ -416,9 +416,9 @@ internal class RISCV64Unwinder(Target target)
             else if (curCode == 0xe4)
                 if (accumulatedSaveNexts != 0)
                     // invalid sequence
-                    return false
+                    return false;
 
-                return true
+                return true;
 
             //
             // end_c (11100101): end of unwind code in current chained scope.
@@ -435,12 +435,12 @@ internal class RISCV64Unwinder(Target target)
             else if (curCode >= 0xe8 && curCode <= 0xec)
                 if (accumulatedSaveNexts != 0)
                     // invalid sequence
-                    return false
+                    return false;
 
                 if (!UnwindCustom(ref context, curCode))
-                    return false
+                    return false;
 
-                finalPcFromRa = false
+                finalPcFromRa = false;
 
             //
             // Anything else is invalid
@@ -448,23 +448,23 @@ internal class RISCV64Unwinder(Target target)
 
             else
                 // invalid sequence
-                return false
+                return false;
 
-            return true
+            return true;
         catch
-            return false
+            return false;
 
     private unsafe bool UnwindCustom(
         ref RISCV64Context context,
         byte customCode)
-        ulong startingSp = context.Sp
+        ulong startingSp = context.Sp;
 
         switch (customCode)
             //
             // Trap frame case — not applicable for RISCV64 (no kernel trap frame defined)
             //
             case 0xE8: // MSFT_OP_TRAP_FRAME:
-                return false
+                return false;
 
             //
             // Machine frame case
@@ -473,10 +473,10 @@ internal class RISCV64Unwinder(Target target)
                     //
                     // Restore the SP and PC, and clear the unwound-to-call flag
                     //
-                    context.Sp = _target.Read<ulong>(startingSp + 0)
-                    context.Pc = _target.Read<ulong>(startingSp + 8)
-                    context.ContextFlags &= (uint)~ContextFlagsValues.CONTEXT_UNWOUND_TO_CALL
-                    break
+                    context.Sp = _target.Read<ulong>(startingSp + 0);
+                    context.Pc = _target.Read<ulong>(startingSp + 8);
+                    context.ContextFlags &= (uint)~ContextFlagsValues.CONTEXT_UNWOUND_TO_CALL;
+                    break;
 
             //
             // Context case
@@ -485,124 +485,124 @@ internal class RISCV64Unwinder(Target target)
                     //
                     // Restore all general-purpose registers from the CONTEXT on the stack
                     //
-                    TargetPointer sourceAddress = startingSp + (uint)Marshal.OffsetOf<RISCV64Context>(nameof(RISCV64Context.Ra))
-                    context.Ra = _target.Read<ulong>(sourceAddress)
+                    TargetPointer sourceAddress = startingSp + (uint)Marshal.OffsetOf<RISCV64Context>(nameof(RISCV64Context.Ra));
+                    context.Ra = _target.Read<ulong>(sourceAddress);
 
-                    sourceAddress = startingSp + (uint)Marshal.OffsetOf<RISCV64Context>(nameof(RISCV64Context.Sp))
-                    context.Sp = _target.Read<ulong>(sourceAddress)
+                    sourceAddress = startingSp + (uint)Marshal.OffsetOf<RISCV64Context>(nameof(RISCV64Context.Sp));
+                    context.Sp = _target.Read<ulong>(sourceAddress);
 
-                    sourceAddress = startingSp + (uint)Marshal.OffsetOf<RISCV64Context>(nameof(RISCV64Context.Gp))
-                    context.Gp = _target.Read<ulong>(sourceAddress)
+                    sourceAddress = startingSp + (uint)Marshal.OffsetOf<RISCV64Context>(nameof(RISCV64Context.Gp));
+                    context.Gp = _target.Read<ulong>(sourceAddress);
 
-                    sourceAddress = startingSp + (uint)Marshal.OffsetOf<RISCV64Context>(nameof(RISCV64Context.Tp))
-                    context.Tp = _target.Read<ulong>(sourceAddress)
+                    sourceAddress = startingSp + (uint)Marshal.OffsetOf<RISCV64Context>(nameof(RISCV64Context.Tp));
+                    context.Tp = _target.Read<ulong>(sourceAddress);
 
-                    sourceAddress = startingSp + (uint)Marshal.OffsetOf<RISCV64Context>(nameof(RISCV64Context.T0))
-                    context.T0 = _target.Read<ulong>(sourceAddress)
-                    sourceAddress += sizeof(ulong)
-                    context.T1 = _target.Read<ulong>(sourceAddress)
-                    sourceAddress += sizeof(ulong)
-                    context.T2 = _target.Read<ulong>(sourceAddress)
+                    sourceAddress = startingSp + (uint)Marshal.OffsetOf<RISCV64Context>(nameof(RISCV64Context.T0));
+                    context.T0 = _target.Read<ulong>(sourceAddress);
+                    sourceAddress += sizeof(ulong);
+                    context.T1 = _target.Read<ulong>(sourceAddress);
+                    sourceAddress += sizeof(ulong);
+                    context.T2 = _target.Read<ulong>(sourceAddress);
 
-                    sourceAddress = startingSp + (uint)Marshal.OffsetOf<RISCV64Context>(nameof(RISCV64Context.Fp))
-                    context.Fp = _target.Read<ulong>(sourceAddress)
+                    sourceAddress = startingSp + (uint)Marshal.OffsetOf<RISCV64Context>(nameof(RISCV64Context.Fp));
+                    context.Fp = _target.Read<ulong>(sourceAddress);
 
-                    sourceAddress = startingSp + (uint)Marshal.OffsetOf<RISCV64Context>(nameof(RISCV64Context.S1))
-                    context.S1 = _target.Read<ulong>(sourceAddress)
+                    sourceAddress = startingSp + (uint)Marshal.OffsetOf<RISCV64Context>(nameof(RISCV64Context.S1));
+                    context.S1 = _target.Read<ulong>(sourceAddress);
 
-                    sourceAddress = startingSp + (uint)Marshal.OffsetOf<RISCV64Context>(nameof(RISCV64Context.A0))
-                    context.A0 = _target.Read<ulong>(sourceAddress)
-                    sourceAddress += sizeof(ulong)
-                    context.A1 = _target.Read<ulong>(sourceAddress)
-                    sourceAddress += sizeof(ulong)
-                    context.A2 = _target.Read<ulong>(sourceAddress)
-                    sourceAddress += sizeof(ulong)
-                    context.A3 = _target.Read<ulong>(sourceAddress)
-                    sourceAddress += sizeof(ulong)
-                    context.A4 = _target.Read<ulong>(sourceAddress)
-                    sourceAddress += sizeof(ulong)
-                    context.A5 = _target.Read<ulong>(sourceAddress)
-                    sourceAddress += sizeof(ulong)
-                    context.A6 = _target.Read<ulong>(sourceAddress)
-                    sourceAddress += sizeof(ulong)
-                    context.A7 = _target.Read<ulong>(sourceAddress)
+                    sourceAddress = startingSp + (uint)Marshal.OffsetOf<RISCV64Context>(nameof(RISCV64Context.A0));
+                    context.A0 = _target.Read<ulong>(sourceAddress);
+                    sourceAddress += sizeof(ulong);
+                    context.A1 = _target.Read<ulong>(sourceAddress);
+                    sourceAddress += sizeof(ulong);
+                    context.A2 = _target.Read<ulong>(sourceAddress);
+                    sourceAddress += sizeof(ulong);
+                    context.A3 = _target.Read<ulong>(sourceAddress);
+                    sourceAddress += sizeof(ulong);
+                    context.A4 = _target.Read<ulong>(sourceAddress);
+                    sourceAddress += sizeof(ulong);
+                    context.A5 = _target.Read<ulong>(sourceAddress);
+                    sourceAddress += sizeof(ulong);
+                    context.A6 = _target.Read<ulong>(sourceAddress);
+                    sourceAddress += sizeof(ulong);
+                    context.A7 = _target.Read<ulong>(sourceAddress);
 
-                    sourceAddress = startingSp + (uint)Marshal.OffsetOf<RISCV64Context>(nameof(RISCV64Context.S2))
-                    context.S2 = _target.Read<ulong>(sourceAddress)
-                    sourceAddress += sizeof(ulong)
-                    context.S3 = _target.Read<ulong>(sourceAddress)
-                    sourceAddress += sizeof(ulong)
-                    context.S4 = _target.Read<ulong>(sourceAddress)
-                    sourceAddress += sizeof(ulong)
-                    context.S5 = _target.Read<ulong>(sourceAddress)
-                    sourceAddress += sizeof(ulong)
-                    context.S6 = _target.Read<ulong>(sourceAddress)
-                    sourceAddress += sizeof(ulong)
-                    context.S7 = _target.Read<ulong>(sourceAddress)
-                    sourceAddress += sizeof(ulong)
-                    context.S8 = _target.Read<ulong>(sourceAddress)
-                    sourceAddress += sizeof(ulong)
-                    context.S9 = _target.Read<ulong>(sourceAddress)
-                    sourceAddress += sizeof(ulong)
-                    context.S10 = _target.Read<ulong>(sourceAddress)
-                    sourceAddress += sizeof(ulong)
-                    context.S11 = _target.Read<ulong>(sourceAddress)
+                    sourceAddress = startingSp + (uint)Marshal.OffsetOf<RISCV64Context>(nameof(RISCV64Context.S2));
+                    context.S2 = _target.Read<ulong>(sourceAddress);
+                    sourceAddress += sizeof(ulong);
+                    context.S3 = _target.Read<ulong>(sourceAddress);
+                    sourceAddress += sizeof(ulong);
+                    context.S4 = _target.Read<ulong>(sourceAddress);
+                    sourceAddress += sizeof(ulong);
+                    context.S5 = _target.Read<ulong>(sourceAddress);
+                    sourceAddress += sizeof(ulong);
+                    context.S6 = _target.Read<ulong>(sourceAddress);
+                    sourceAddress += sizeof(ulong);
+                    context.S7 = _target.Read<ulong>(sourceAddress);
+                    sourceAddress += sizeof(ulong);
+                    context.S8 = _target.Read<ulong>(sourceAddress);
+                    sourceAddress += sizeof(ulong);
+                    context.S9 = _target.Read<ulong>(sourceAddress);
+                    sourceAddress += sizeof(ulong);
+                    context.S10 = _target.Read<ulong>(sourceAddress);
+                    sourceAddress += sizeof(ulong);
+                    context.S11 = _target.Read<ulong>(sourceAddress);
 
-                    sourceAddress = startingSp + (uint)Marshal.OffsetOf<RISCV64Context>(nameof(RISCV64Context.T3))
-                    context.T3 = _target.Read<ulong>(sourceAddress)
-                    sourceAddress += sizeof(ulong)
-                    context.T4 = _target.Read<ulong>(sourceAddress)
-                    sourceAddress += sizeof(ulong)
-                    context.T5 = _target.Read<ulong>(sourceAddress)
-                    sourceAddress += sizeof(ulong)
-                    context.T6 = _target.Read<ulong>(sourceAddress)
+                    sourceAddress = startingSp + (uint)Marshal.OffsetOf<RISCV64Context>(nameof(RISCV64Context.T3));
+                    context.T3 = _target.Read<ulong>(sourceAddress);
+                    sourceAddress += sizeof(ulong);
+                    context.T4 = _target.Read<ulong>(sourceAddress);
+                    sourceAddress += sizeof(ulong);
+                    context.T5 = _target.Read<ulong>(sourceAddress);
+                    sourceAddress += sizeof(ulong);
+                    context.T6 = _target.Read<ulong>(sourceAddress);
 
                     //
                     // Restore SP, RA, PC, and floating-point status
                     //
-                    sourceAddress = startingSp + (uint)Marshal.OffsetOf<RISCV64Context>(nameof(RISCV64Context.Pc))
-                    context.Pc = _target.Read<ulong>(sourceAddress)
+                    sourceAddress = startingSp + (uint)Marshal.OffsetOf<RISCV64Context>(nameof(RISCV64Context.Pc));
+                    context.Pc = _target.Read<ulong>(sourceAddress);
 
-                    sourceAddress = startingSp + (uint)Marshal.OffsetOf<RISCV64Context>(nameof(RISCV64Context.F))
+                    sourceAddress = startingSp + (uint)Marshal.OffsetOf<RISCV64Context>(nameof(RISCV64Context.F));
                     for (uint regIndex = 0; regIndex < 32; regIndex++)
-                        context.F[regIndex] = _target.Read<ulong>(sourceAddress)
-                        sourceAddress += sizeof(ulong)
+                        context.F[regIndex] = _target.Read<ulong>(sourceAddress);
+                        sourceAddress += sizeof(ulong);
 
-                    sourceAddress = startingSp + (uint)Marshal.OffsetOf<RISCV64Context>(nameof(RISCV64Context.Fcsr))
-                    context.Fcsr = _target.Read<uint>(sourceAddress)
+                    sourceAddress = startingSp + (uint)Marshal.OffsetOf<RISCV64Context>(nameof(RISCV64Context.Fcsr));
+                    context.Fcsr = _target.Read<uint>(sourceAddress);
 
                     //
                     // Inherit the unwound-to-call flag from this context
                     //
-                    sourceAddress = startingSp + (uint)Marshal.OffsetOf<RISCV64Context>(nameof(RISCV64Context.ContextFlags))
-                    context.ContextFlags &= (uint)~ContextFlagsValues.CONTEXT_UNWOUND_TO_CALL
+                    sourceAddress = startingSp + (uint)Marshal.OffsetOf<RISCV64Context>(nameof(RISCV64Context.ContextFlags));
+                    context.ContextFlags &= (uint)~ContextFlagsValues.CONTEXT_UNWOUND_TO_CALL;
                     context.ContextFlags |=
                     _target.Read<uint>(sourceAddress) & (uint)ContextFlagsValues.CONTEXT_UNWOUND_TO_CALL
-                    break
+                    break;
 
             case 0xEB: // MSFT_OP_EC_CONTEXT:
                 // Not applicable for RISCV64
-                return false
+                return false;
 
             case 0xEC: // MSFT_OP_CLEAR_UNWOUND_TO_CALL
-                context.ContextFlags &= (uint)~ContextFlagsValues.CONTEXT_UNWOUND_TO_CALL
-                context.Pc = context.Ra
-                break
+                context.ContextFlags &= (uint)~ContextFlagsValues.CONTEXT_UNWOUND_TO_CALL;
+                context.Pc = context.Ra;
+                break;
 
             default:
-                return false
+                return false;
 
-        return true
+        return true;
 
     private void SetRegisterFromOffset(ref RISCV64Context context, uint regNum, ulong address)
         try
-            ulong value = _target.ReadPointer(address).Value
-            SetRegisterValue(ref context, regNum, value)
+            ulong value = _target.ReadPointer(address).Value;
+            SetRegisterValue(ref context, regNum, value);
         catch
             // Ignore read failures
             ;
 
     private static void SetRegisterValue(ref RISCV64Context context, uint regNum, ulong value)
-        context.TrySetRegister((int)regNum, new TargetNUInt(value))
+        context.TrySetRegister((int)regNum, new TargetNUInt(value));
 
     #endregion

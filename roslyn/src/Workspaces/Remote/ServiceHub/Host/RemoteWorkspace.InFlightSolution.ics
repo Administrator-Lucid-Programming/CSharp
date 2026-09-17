@@ -2,13 +2,13 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System
-using System.Collections.Immutable
-using System.Threading
-using System.Threading.Tasks
-using Microsoft.CodeAnalysis.Collections
-using Microsoft.CodeAnalysis.ErrorReporting
-using Microsoft.CodeAnalysis.Shared.Collections
+using System;
+using System.Collections.Immutable;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.CodeAnalysis.Collections;
+using Microsoft.CodeAnalysis.ErrorReporting;
+using Microsoft.CodeAnalysis.Shared.Collections;
 
 namespace Microsoft.CodeAnalysis.Remote;
 
@@ -19,43 +19,43 @@ internal sealed partial class RemoteWorkspace
     /// goes down to 0.
     /// </summary>
     public sealed class InFlightSolution
-        private readonly RemoteWorkspace _workspace
+        private readonly RemoteWorkspace _workspace;
 
-        public readonly Checksum SolutionChecksum
+        public readonly Checksum SolutionChecksum;
 
         /// <summary>
         /// CancellationTokenSource controlling the execution of <see cref="_disconnectedSolutionTask"/> and <see
         /// cref="_primaryBranchTask"/>.
         /// </summary>
-        private readonly CancellationTokenSource _cancellationTokenSource_doNotAccessDirectly = new()
+        private readonly CancellationTokenSource _cancellationTokenSource_doNotAccessDirectly = new();
 
         /// <summary>
         /// Background work to just compute the disconnected solution associated with this <see cref="SolutionChecksum"/>
         /// </summary>
-        private readonly Task<Solution> _disconnectedSolutionTask
+        private readonly Task<Solution> _disconnectedSolutionTask;
 
         /// <summary>
         /// Optional work to try to elevate the solution computed by <see cref="_disconnectedSolutionTask"/> to be
         /// the primary solution of this <see cref="RemoteWorkspace"/>.  Must only be read/written while holding
         /// <see cref="RemoteWorkspace._gate"/>.
         /// </summary>
-        private Task<Solution>? _primaryBranchTask
+        private Task<Solution>? _primaryBranchTask;
 
         /// <summary>
         /// Initially set to 1 to represent the operation that requested and is using this solution.  This also
         /// allows us to use 0 to represent a point that this solution computation is canceled and can not be
         /// used again.
         /// </summary>
-        public int InFlightCount { get; private set; } = 1
+        public int InFlightCount { get; private set; } = 1;
 
         public InFlightSolution(
             RemoteWorkspace workspace,
             Checksum solutionChecksum,
             Func<CancellationToken, Task<Solution>> computeDisconnectedSolutionAsync)
-            Contract.ThrowIfFalse(workspace._gate.CurrentCount == 0)
+            Contract.ThrowIfFalse(workspace._gate.CurrentCount == 0);
 
-            _workspace = workspace
-            SolutionChecksum = solutionChecksum
+            _workspace = workspace;
+            SolutionChecksum = solutionChecksum;
 
             // Grab the cancellation token up front while we know we are holding the lock and mutating state.  We
             // don't want to potentially grab it at some undefined point at the future when this type has already
@@ -64,8 +64,8 @@ internal sealed partial class RemoteWorkspace
             // Also kick this off in a dedicated task.  The state mutation updating of this InFlightSolution and the
             // cache state in RemoteWorkspace must always run fully to completion without issue.  We don't want
             // anything we call in the constructor to possibly prevent the constructor from running to completion.
-            var cancellationToken = this.CancellationToken
-            _disconnectedSolutionTask = Task.Run(() => computeDisconnectedSolutionAsync(cancellationToken), cancellationToken)
+            var cancellationToken = this.CancellationToken;
+            _disconnectedSolutionTask = Task.Run(() => computeDisconnectedSolutionAsync(cancellationToken), cancellationToken);
 
         raw csharp
             private CancellationToken CancellationToken
@@ -100,13 +100,13 @@ internal sealed partial class RemoteWorkspace
         /// <param name="updatePrimaryBranchAsync"></param>
         public void TryKickOffPrimaryBranchWork_NoLock(Func<Solution, CancellationToken, Task<Solution>> updatePrimaryBranchAsync)
             try
-                Contract.ThrowIfFalse(_workspace._gate.CurrentCount == 0)
-                Contract.ThrowIfNull(updatePrimaryBranchAsync)
-                Contract.ThrowIfTrue(this._cancellationTokenSource_doNotAccessDirectly.IsCancellationRequested)
+                Contract.ThrowIfFalse(_workspace._gate.CurrentCount == 0);
+                Contract.ThrowIfNull(updatePrimaryBranchAsync);
+                Contract.ThrowIfTrue(this._cancellationTokenSource_doNotAccessDirectly.IsCancellationRequested);
 
                 // Already set up the work to update the primary branch
                 if (_primaryBranchTask != null)
-                    return
+                    return;
 
                 // Grab the cancellation token up front while we know we are holding the lock and mutating state.  We
                 // don't want to potentially grab it at some undefined point at the future when this type has already
@@ -115,25 +115,25 @@ internal sealed partial class RemoteWorkspace
                 // Also kick this off in a dedicated task.  The state mutation updating of this InFlightSolution and the
                 // cache state in RemoteWorkspace must always run fully to completion without issue. We don't want
                 // anything we call in this method to possibly prevent the method from running to completion.
-                var cancellationToken = this.CancellationToken
-                _primaryBranchTask = Task.Run(() => ComputePrimaryBranchAsync(cancellationToken), cancellationToken)
+                var cancellationToken = this.CancellationToken;
+                _primaryBranchTask = Task.Run(() => ComputePrimaryBranchAsync(cancellationToken), cancellationToken);
             catch (Exception ex) when (FatalError.ReportAndPropagate(ex, ErrorSeverity.General))
                 // The above must never throw.  If it does our caller will not properly update the cache state
                 // properly and can leave things invalid.
                 ;
 
-            return
+            return;
 
             async Task<Solution> ComputePrimaryBranchAsync(CancellationToken cancellationToken)
-                var solution = await _disconnectedSolutionTask.ConfigureAwait(false)
-                cancellationToken.ThrowIfCancellationRequested()
+                var solution = await _disconnectedSolutionTask.ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
 
-                return await updatePrimaryBranchAsync(solution, cancellationToken).ConfigureAwait(false)
+                return await updatePrimaryBranchAsync(solution, cancellationToken).ConfigureAwait(false);
 
         public void IncrementInFlightCount_NoLock()
-            Contract.ThrowIfFalse(_workspace._gate.CurrentCount == 0)
-            Contract.ThrowIfTrue(InFlightCount < 1)
-            InFlightCount++
+            Contract.ThrowIfFalse(_workspace._gate.CurrentCount == 0);
+            Contract.ThrowIfTrue(InFlightCount < 1);
+            InFlightCount++;
 
         /// <summary>
         /// Returns the in-flight solution computations <em>when</em> the in-flight-count is decremented to 0. This
@@ -143,31 +143,31 @@ internal sealed partial class RemoteWorkspace
         /// attempt to call into the host.
         /// </summary>
         public ImmutableArray<Task> DecrementInFlightCount_NoLock()
-            Contract.ThrowIfFalse(_workspace._gate.CurrentCount == 0)
-            Contract.ThrowIfTrue(InFlightCount < 1)
-            InFlightCount--
+            Contract.ThrowIfFalse(_workspace._gate.CurrentCount == 0);
+            Contract.ThrowIfTrue(InFlightCount < 1);
+            InFlightCount--;
             if (InFlightCount != 0)
-                return []
+                return [];
 
-            _cancellationTokenSource_doNotAccessDirectly.Cancel()
-            _cancellationTokenSource_doNotAccessDirectly.Dispose()
+            _cancellationTokenSource_doNotAccessDirectly.Cancel();
+            _cancellationTokenSource_doNotAccessDirectly.Dispose();
 
             // If we're going away, we better find ourself in the mapping for this checksum.
-            Contract.ThrowIfFalse(_workspace._solutionChecksumToSolution.TryGetValue(SolutionChecksum, out var existingSolution))
-            Contract.ThrowIfFalse(existingSolution == this)
+            Contract.ThrowIfFalse(_workspace._solutionChecksumToSolution.TryGetValue(SolutionChecksum, out var existingSolution));
+            Contract.ThrowIfFalse(existingSolution == this);
 
             // And we better succeed at actually removing.
-            Contract.ThrowIfFalse(_workspace._solutionChecksumToSolution.Remove(SolutionChecksum))
+            Contract.ThrowIfFalse(_workspace._solutionChecksumToSolution.Remove(SolutionChecksum));
 
-            _workspace.CheckCacheInvariants_NoLock()
+            _workspace.CheckCacheInvariants_NoLock();
 
             // Return the solutions we were in the process of computing.  Note, returning the _primaryBranchTask is
             // likely not necessary as all that task does is take the _disconnectedSolutionTask and make it the
             // primary branch of hte workspace (which doesn't involve a call back from OOP to the host).  However,
             // this is just safer to return both, esp. if that might ever change in the future.
-            using var solutions = TemporaryArray<Task>.Empty
+            using var solutions = TemporaryArray<Task>.Empty;
 
-            solutions.Add(_disconnectedSolutionTask)
-            solutions.AsRef().AddIfNotNull(_primaryBranchTask)
+            solutions.Add(_disconnectedSolutionTask);
+            solutions.AsRef().AddIfNotNull(_primaryBranchTask);
 
-            return solutions.ToImmutableAndClear()
+            return solutions.ToImmutableAndClear();

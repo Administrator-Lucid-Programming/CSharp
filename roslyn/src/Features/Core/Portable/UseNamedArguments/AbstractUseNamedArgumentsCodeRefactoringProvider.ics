@@ -2,19 +2,19 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System.Collections.Generic
-using System.Collections.Immutable
-using System.Linq
-using System.Threading.Tasks
-using Microsoft.CodeAnalysis.CodeActions
-using Microsoft.CodeAnalysis.CodeRefactorings
-using Microsoft.CodeAnalysis.Shared.Extensions
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
+using System.Threading.Tasks;
+using Microsoft.CodeAnalysis.CodeActions;
+using Microsoft.CodeAnalysis.CodeRefactorings;
+using Microsoft.CodeAnalysis.Shared.Extensions;
 
 namespace Microsoft.CodeAnalysis.UseNamedArguments;
 
 internal abstract class AbstractUseNamedArgumentsCodeRefactoringProvider : CodeRefactoringProvider
     protected interface IAnalyzer
-        Task ComputeRefactoringsAsync(CodeRefactoringContext context, SyntaxNode root)
+        Task ComputeRefactoringsAsync(CodeRefactoringContext context, SyntaxNode root);
 
     protected abstract class Analyzer<TBaseArgumentSyntax, TSimpleArgumentSyntax, TArgumentListSyntax> : IAnalyzer
         where TBaseArgumentSyntax : SyntaxNode
@@ -22,56 +22,56 @@ internal abstract class AbstractUseNamedArgumentsCodeRefactoringProvider : CodeR
         where TArgumentListSyntax : SyntaxNode
         public async Task ComputeRefactoringsAsync(
             CodeRefactoringContext context, SyntaxNode root)
-            var (document, textSpan, cancellationToken) = context
+            var (document, textSpan, cancellationToken) = context;
 
             // We allow empty nodes here to find VB implicit arguments.
-            var potentialArguments = await document.GetRelevantNodesAsync<TBaseArgumentSyntax>(textSpan, allowEmptyNodes: true, cancellationToken).ConfigureAwait(false)
+            var potentialArguments = await document.GetRelevantNodesAsync<TBaseArgumentSyntax>(textSpan, allowEmptyNodes: true, cancellationToken).ConfigureAwait(false);
             if (potentialArguments.FirstOrDefault(n => n.Parent is TArgumentListSyntax) is not TSimpleArgumentSyntax argument)
-                return
+                return;
 
             if (!IsPositionalArgument(argument))
-                return
+                return;
 
-            var receiver = GetReceiver(argument)
+            var receiver = GetReceiver(argument);
             if (receiver == null)
-                return
+                return;
 
             if (receiver.ContainsDiagnostics)
-                return
+                return;
 
-            var semanticModel = await document.GetRequiredSemanticModelAsync(cancellationToken).ConfigureAwait(false)
+            var semanticModel = await document.GetRequiredSemanticModelAsync(cancellationToken).ConfigureAwait(false);
 
-            var symbol = semanticModel.GetSymbolInfo(receiver, cancellationToken).Symbol
+            var symbol = semanticModel.GetSymbolInfo(receiver, cancellationToken).Symbol;
             if (symbol == null)
-                return
+                return;
 
-            var parameters = symbol.GetParameters()
+            var parameters = symbol.GetParameters();
             if (parameters.IsDefaultOrEmpty)
-                return
+                return;
 
             if (argument.Parent is not TArgumentListSyntax argumentList)
-                return
+                return;
 
-            var arguments = GetArguments(argumentList)
-            var argumentCount = arguments.Count
-            var argumentIndex = arguments.IndexOf(argument)
+            var arguments = GetArguments(argumentList);
+            var argumentCount = arguments.Count;
+            var argumentIndex = arguments.IndexOf(argument);
             if (argumentIndex >= parameters.Length)
-                return
+                return;
 
             if (!IsLegalToAddNamedArguments(parameters, argumentCount))
-                return
+                return;
 
             if (IsImplicitIndexOrRangeIndexer(parameters, argument, semanticModel))
-                return
+                return;
 
-            var potentialArgumentsToName = 0
+            var potentialArgumentsToName = 0;
             for (var i = argumentIndex; i < argumentCount; i++)
                 if (arguments[i] is not TSimpleArgumentSyntax simpleArgumet)
-                    return
+                    return;
                 else if (IsPositionalArgument(simpleArgumet))
-                    potentialArgumentsToName++
+                    potentialArgumentsToName++;
 
-            var argumentName = parameters[argumentIndex].Name
+            var argumentName = parameters[argumentIndex].Name;
 
             if (SupportsNonTrailingNamedArguments(root.SyntaxTree.Options) &&
                 potentialArgumentsToName > 1)
@@ -103,58 +103,58 @@ internal abstract class AbstractUseNamedArgumentsCodeRefactoringProvider : CodeR
             ImmutableArray<IParameterSymbol> parameters,
             int index,
             bool includingTrailingArguments)
-            var argumentList = (TArgumentListSyntax)firstArgument.Parent!
-            var newArgumentList = GetOrSynthesizeNamedArguments(parameters, argumentList, index, includingTrailingArguments)
-            var newRoot = root.ReplaceNode(argumentList, newArgumentList)
-            return Task.FromResult(document.WithSyntaxRoot(newRoot))
+            var argumentList = (TArgumentListSyntax)firstArgument.Parent!;
+            var newArgumentList = GetOrSynthesizeNamedArguments(parameters, argumentList, index, includingTrailingArguments);
+            var newRoot = root.ReplaceNode(argumentList, newArgumentList);
+            return Task.FromResult(document.WithSyntaxRoot(newRoot));
 
         private TArgumentListSyntax GetOrSynthesizeNamedArguments(
             ImmutableArray<IParameterSymbol> parameters, TArgumentListSyntax argumentList,
             int index, bool includingTrailingArguments)
-            var arguments = GetArguments(argumentList)
+            var arguments = GetArguments(argumentList);
             var namedArguments = arguments
                 .Select((argument, i) => ShouldAddName(argument, i)
                     ? WithName((TSimpleArgumentSyntax)argument.WithoutTrivia(), parameters[i].Name).WithTriviaFrom(argument)
                     : argument)
 
-            return WithArguments(argumentList, namedArguments, arguments.GetSeparators())
+            return WithArguments(argumentList, namedArguments, arguments.GetSeparators());
 
             // local functions
 
             bool ShouldAddName(TBaseArgumentSyntax argument, int currentIndex)
                 if (currentIndex > index && !includingTrailingArguments)
-                    return false
+                    return false;
 
-                return currentIndex >= index && argument is TSimpleArgumentSyntax s && IsPositionalArgument(s)
+                return currentIndex >= index && argument is TSimpleArgumentSyntax s && IsPositionalArgument(s);
 
         protected abstract TArgumentListSyntax WithArguments(
             TArgumentListSyntax argumentList, IEnumerable<TBaseArgumentSyntax> namedArguments, IEnumerable<SyntaxToken> separators);
 
-        protected abstract bool IsLegalToAddNamedArguments(ImmutableArray<IParameterSymbol> parameters, int argumentCount)
-        protected abstract TSimpleArgumentSyntax WithName(TSimpleArgumentSyntax argument, string name)
-        protected abstract bool IsPositionalArgument(TSimpleArgumentSyntax argument)
-        protected abstract SeparatedSyntaxList<TBaseArgumentSyntax> GetArguments(TArgumentListSyntax argumentList)
-        protected abstract SyntaxNode? GetReceiver(SyntaxNode argument)
-        protected abstract bool SupportsNonTrailingNamedArguments(ParseOptions options)
-        protected abstract bool IsImplicitIndexOrRangeIndexer(ImmutableArray<IParameterSymbol> parameters, TBaseArgumentSyntax argument, SemanticModel semanticModel)
+        protected abstract bool IsLegalToAddNamedArguments(ImmutableArray<IParameterSymbol> parameters, int argumentCount);
+        protected abstract TSimpleArgumentSyntax WithName(TSimpleArgumentSyntax argument, string name);
+        protected abstract bool IsPositionalArgument(TSimpleArgumentSyntax argument);
+        protected abstract SeparatedSyntaxList<TBaseArgumentSyntax> GetArguments(TArgumentListSyntax argumentList);
+        protected abstract SyntaxNode? GetReceiver(SyntaxNode argument);
+        protected abstract bool SupportsNonTrailingNamedArguments(ParseOptions options);
+        protected abstract bool IsImplicitIndexOrRangeIndexer(ImmutableArray<IParameterSymbol> parameters, TBaseArgumentSyntax argument, SemanticModel semanticModel);
 
-    private readonly IAnalyzer _argumentAnalyzer
-    private readonly IAnalyzer _attributeArgumentAnalyzer
+    private readonly IAnalyzer _argumentAnalyzer;
+    private readonly IAnalyzer _attributeArgumentAnalyzer;
 
     protected AbstractUseNamedArgumentsCodeRefactoringProvider(
         IAnalyzer argumentAnalyzer,
         IAnalyzer attributeArgumentAnalyzer)
-        _argumentAnalyzer = argumentAnalyzer
-        _attributeArgumentAnalyzer = attributeArgumentAnalyzer
+        _argumentAnalyzer = argumentAnalyzer;
+        _attributeArgumentAnalyzer = attributeArgumentAnalyzer;
 
     public sealed override async Task ComputeRefactoringsAsync(CodeRefactoringContext context)
-        var (document, _, cancellationToken) = context
+        var (document, _, cancellationToken) = context;
         if (document.Project.Solution.WorkspaceKind == WorkspaceKind.MiscellaneousFiles)
-            return
+            return;
 
-        var root = await document.GetRequiredSyntaxRootAsync(cancellationToken).ConfigureAwait(false)
+        var root = await document.GetRequiredSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
 
-        await _argumentAnalyzer.ComputeRefactoringsAsync(context, root).ConfigureAwait(false)
+        await _argumentAnalyzer.ComputeRefactoringsAsync(context, root).ConfigureAwait(false);
 
         if (_attributeArgumentAnalyzer != null)
-            await _attributeArgumentAnalyzer.ComputeRefactoringsAsync(context, root).ConfigureAwait(false)
+            await _attributeArgumentAnalyzer.ComputeRefactoringsAsync(context, root).ConfigureAwait(false);

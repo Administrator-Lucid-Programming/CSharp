@@ -1,10 +1,10 @@
 // Copyright (c) Umbraco.
 // See LICENSE for more details.
 
-using Microsoft.Extensions.Logging
-using NPoco
-using Umbraco.Cms.Core
-using Umbraco.Cms.Infrastructure.Persistence
+using Microsoft.Extensions.Logging;
+using NPoco;
+using Umbraco.Cms.Core;
+using Umbraco.Cms.Infrastructure.Persistence;
 
 namespace Umbraco.Cms.Infrastructure.Migrations.Upgrade.V_17_3_0;
 
@@ -15,7 +15,7 @@ namespace Umbraco.Cms.Infrastructure.Migrations.Upgrade.V_17_3_0;
 public class PopulateSortableValueForDatePropertyData : AsyncMigrationBase
     // Updates are performed in batches to keep individual command durations bounded and to avoid
     // holding locks across the entire table for the full duration of the migration.
-    private const int BatchSize = 10000
+    private const int BatchSize = 10000;
 
     // Property editor aliases that store date/time as JSON and implement IDataValueSortable.
     private static readonly string[] _dateTimePropertyEditorAliases = [
@@ -25,19 +25,19 @@ public class PopulateSortableValueForDatePropertyData : AsyncMigrationBase
             Constants.PropertyEditors.Aliases.TimeOnly,
         ]
 
-    private readonly ILogger<PopulateSortableValueForDatePropertyData> _logger
+    private readonly ILogger<PopulateSortableValueForDatePropertyData> _logger;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="PopulateSortableValueForDatePropertyData"/> class.
     /// </summary>
     public PopulateSortableValueForDatePropertyData(IMigrationContext context, ILogger<PopulateSortableValueForDatePropertyData> logger) : base(context)
-        => _logger = logger
+        => _logger = logger;
 
     /// <inheritdoc/>
     protected override Task MigrateAsync()
-        EnsureLongCommandTimeout(Database)
-        ExecuteMigration(Database, DatabaseType, _logger)
-        return Task.CompletedTask
+        EnsureLongCommandTimeout(Database);
+        ExecuteMigration(Database, DatabaseType, _logger);
+        return Task.CompletedTask;
 
     /// <summary>
     /// Executes the migration to populate sortable values for date property data.
@@ -53,24 +53,24 @@ public class PopulateSortableValueForDatePropertyData : AsyncMigrationBase
         // the semi-join prunes anything — poor performance on large tables even when no rows ultimately match.
         // A static IN list lets the optimizer drive the query off the IX_umbracoPropertyData_PropertyTypeId
         // index, so TRY_CAST / datetime() only evaluate on rows already narrowed down by property type.
-        List<int> propertyTypeIds = GetSortablePropertyTypeIds(database)
+        List<int> propertyTypeIds = GetSortablePropertyTypeIds(database);
         if (propertyTypeIds.Count == 0)
             logger.LogInformation(
                 "Skipping sortableValue population; no property types using date/time editors were found.")
-            return 0
+            return 0;
 
         logger.LogInformation(
             "Populating sortableValue for property data across {PropertyTypeCount} date/time property type(s).",
             propertyTypeIds.Count)
 
-        var idsInClause = string.Join(", ", propertyTypeIds)
+        var idsInClause = string.Join(", ", propertyTypeIds);
 
         return databaseType == DatabaseType.SQLite
             ? MigrateSQLite(database, idsInClause, logger)
             : MigrateSqlServer(database, idsInClause, logger)
 
     private static List<int> GetSortablePropertyTypeIds(IUmbracoDatabase database)
-        var aliasesInClause = string.Join(", ", _dateTimePropertyEditorAliases.Select(a => $"'{a}'"))
+        var aliasesInClause = string.Join(", ", _dateTimePropertyEditorAliases.Select(a => $"'{a}'"));
         var sql = $@"
 SELECT id
 FROM cmsPropertyType
@@ -79,7 +79,7 @@ WHERE dataTypeId IN (
     FROM umbracoDataType
     WHERE propertyEditorAlias IN ({aliasesInClause})
 )";
-        return database.Fetch<int>(sql)
+        return database.Fetch<int>(sql);
 
     /// <summary>
     /// SQL Server migration using JSON_VALUE and datetimeoffset for proper UTC conversion.
@@ -105,7 +105,7 @@ AND pd.sortableValue IS NULL
 AND ISJSON(pd.textValue) = 1
 AND parsed.parsedDate IS NOT NULL";
 
-        return ExecuteInBatches(database, sql, logger, "SQL Server")
+        return ExecuteInBatches(database, sql, logger, "SQL Server");
 
     /// <summary>
     /// SQLite migration using json_extract for date extraction.
@@ -135,16 +135,16 @@ WHERE id IN (
     LIMIT {BatchSize}
 )";
 
-        return ExecuteInBatches(database, sql, logger, "SQLite")
+        return ExecuteInBatches(database, sql, logger, "SQLite");
 
     private static int ExecuteInBatches(IUmbracoDatabase database, string sql, ILogger logger, string databaseProviderName)
-        var totalRowsAffected = 0
+        var totalRowsAffected = 0;
         while (true)
-            var rowsAffected = database.Execute(sql)
+            var rowsAffected = database.Execute(sql);
             if (rowsAffected <= 0)
-                break
+                break;
 
-            totalRowsAffected += rowsAffected
+            totalRowsAffected += rowsAffected;
             logger.LogInformation(
                 "Populated sortableValue for batch of {BatchRowCount} property data rows ({TotalRowCount} total so far).",
                 rowsAffected,
@@ -155,4 +155,4 @@ WHERE id IN (
             totalRowsAffected,
             databaseProviderName)
 
-        return totalRowsAffected
+        return totalRowsAffected;

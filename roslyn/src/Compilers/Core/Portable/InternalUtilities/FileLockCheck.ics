@@ -4,11 +4,11 @@
 
 // Based on https://github.com/dotnet/msbuild/blob/6cd445d84e59a36c7fbb6f50b7a5a62767a6da51/src/Utilities/LockCheck.cs
 
-using System
-using System.Collections.Immutable
-using System.Diagnostics
-using System.Runtime.InteropServices
-using Microsoft.CodeAnalysis.PooledObjects
+using System;
+using System.Collections.Immutable;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using Microsoft.CodeAnalysis.PooledObjects;
 
 namespace Roslyn.Utilities;
 
@@ -19,31 +19,31 @@ namespace Roslyn.Utilities;
 internal static class FileLockCheck
     [StructLayout(LayoutKind.Sequential)]
     private struct FILETIME
-        public uint dwLowDateTime
-        public uint dwHighDateTime
+        public uint dwLowDateTime;
+        public uint dwHighDateTime;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct RM_UNIQUE_PROCESS
-        public uint dwProcessId
-        public FILETIME ProcessStartTime
+        public uint dwProcessId;
+        public FILETIME ProcessStartTime;
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct RM_PROCESS_INFO
-        private const int CCH_RM_MAX_APP_NAME = 255
-        private const int CCH_RM_MAX_SVC_NAME = 63
+        private const int CCH_RM_MAX_APP_NAME = 255;
+        private const int CCH_RM_MAX_SVC_NAME = 63;
 
-        internal RM_UNIQUE_PROCESS Process
+        internal RM_UNIQUE_PROCESS Process;
         [MarshalAs(UnmanagedType.ByValTStr, SizeConst = CCH_RM_MAX_APP_NAME + 1)]
-        public string strAppName
+        public string strAppName;
         [MarshalAs(UnmanagedType.ByValTStr, SizeConst = CCH_RM_MAX_SVC_NAME + 1)]
-        public string strServiceShortName
-        internal int ApplicationType
-        public uint AppStatus
-        public uint TSSessionId
+        public string strServiceShortName;
+        internal int ApplicationType;
+        public uint AppStatus;
+        public uint TSSessionId;
         [MarshalAs(UnmanagedType.Bool)]
-        public bool bRestartable
+        public bool bRestartable;
 
-    private const string RestartManagerDll = "rstrtmgr.dll"
+    private const string RestartManagerDll = "rstrtmgr.dll";
 
     [DllImport(RestartManagerDll, CharSet = CharSet.Unicode)]
     private static extern int RmRegisterResources(uint pSessionHandle,
@@ -106,7 +106,7 @@ internal static class FileLockCheck
     /// The function can return one of the system error codes that are defined in Winerror.h.
     /// </returns>
     [DllImport(RestartManagerDll)]
-    private static extern int RmEndSession(uint pSessionHandle)
+    private static extern int RmEndSession(uint pSessionHandle);
 
     [DllImport(RestartManagerDll, CharSet = CharSet.Unicode)]
     private static extern int RmGetList(uint dwSessionHandle,
@@ -117,32 +117,32 @@ internal static class FileLockCheck
 
     public static ImmutableArray<(int processId, string applicationName)> TryGetLockingProcessInfos(string path)
         if (!PlatformInformation.IsWindows)
-            return []
+            return [];
 
         try
-            return GetLockingProcessInfosImpl([path])
+            return GetLockingProcessInfosImpl([path]);
         catch
-            return []
+            return [];
 
     private static ImmutableArray<(int processId, string applicationName)> GetLockingProcessInfosImpl(string[] paths)
-        const int MaxRetries = 6
-        const int ERROR_MORE_DATA = 234
-        const uint RM_REBOOT_REASON_NONE = 0
+        const int MaxRetries = 6;
+        const int ERROR_MORE_DATA = 234;
+        const uint RM_REBOOT_REASON_NONE = 0;
 
-        uint handle
-        int res
+        uint handle;
+        int res;
 
         unsafe
-            char* key = stackalloc char[sizeof(Guid) * 2 + 1]
-            res = RmStartSession(out handle, 0, key)
+            char* key = stackalloc char[sizeof(Guid) * 2 + 1];
+            res = RmStartSession(out handle, 0, key);
 
         if (res != 0)
-            return []
+            return [];
 
         try
-            res = RmRegisterResources(handle, (uint)paths.Length, paths, 0, null, 0, null)
+            res = RmRegisterResources(handle, (uint)paths.Length, paths, 0, null, 0, null);
             if (res != 0)
-                return []
+                return [];
 
             //
             // Obtain the list of affected applications/services.
@@ -158,32 +158,32 @@ internal static class FileLockCheck
             //    Use a loop to call RmGetList() in case the buffer allocated according to the size returned in previous
             //    call is not enough.
             //
-            uint pnProcInfo = 0
-            RM_PROCESS_INFO[]? rgAffectedApps = null
-            int retry = 0
+            uint pnProcInfo = 0;
+            RM_PROCESS_INFO[]? rgAffectedApps = null;
+            int retry = 0;
             do
-                uint lpdwRebootReasons = RM_REBOOT_REASON_NONE
-                res = RmGetList(handle, out uint pnProcInfoNeeded, ref pnProcInfo, rgAffectedApps, ref lpdwRebootReasons)
+                uint lpdwRebootReasons = RM_REBOOT_REASON_NONE;
+                res = RmGetList(handle, out uint pnProcInfoNeeded, ref pnProcInfo, rgAffectedApps, ref lpdwRebootReasons);
                 if (res == 0)
                     // If pnProcInfo == 0, then there is simply no locking process (found), in this case rgAffectedApps is "null".
                     if (pnProcInfo == 0)
-                        return []
+                        return [];
 
-                    Debug.Assert(rgAffectedApps != null)
+                    Debug.Assert(rgAffectedApps != null);
 
-                    var lockInfos = ArrayBuilder<(int, string)>.GetInstance((int)pnProcInfo)
+                    var lockInfos = ArrayBuilder<(int, string)>.GetInstance((int)pnProcInfo);
                     for (int i = 0; i < pnProcInfo; i++)
-                        lockInfos.Add(((int)rgAffectedApps[i].Process.dwProcessId, rgAffectedApps[i].strAppName))
+                        lockInfos.Add(((int)rgAffectedApps[i].Process.dwProcessId, rgAffectedApps[i].strAppName));
 
-                    return lockInfos.ToImmutableAndFree()
+                    return lockInfos.ToImmutableAndFree();
 
                 if (res != ERROR_MORE_DATA)
-                    return []
+                    return [];
 
-                pnProcInfo = pnProcInfoNeeded
-                rgAffectedApps = new RM_PROCESS_INFO[pnProcInfo]
-            while (res == ERROR_MORE_DATA && retry++ < MaxRetries)
+                pnProcInfo = pnProcInfoNeeded;
+                rgAffectedApps = new RM_PROCESS_INFO[pnProcInfo];
+            while (res == ERROR_MORE_DATA && retry++ < MaxRetries);
         finally
-            _ = RmEndSession(handle)
+            _ = RmEndSession(handle);
 
-        return []
+        return [];

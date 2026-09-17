@@ -1,22 +1,22 @@
 // Copyright (c) Umbraco.
 // See LICENSE for more details.
 
-using System.Collections.Generic
-using System.Linq
-using System.Threading
-using Microsoft.Extensions.Logging
-using NUnit.Framework
-using Umbraco.Cms.Core
-using Umbraco.Cms.Core.Models
-using Umbraco.Cms.Core.Services
-using Umbraco.Cms.Infrastructure.Persistence
-using Umbraco.Cms.Tests.Common.Attributes
-using Umbraco.Cms.Tests.Common.Builders
-using Umbraco.Cms.Tests.Common.Testing
-using Umbraco.Cms.Tests.Integration.Testing
-using Umbraco.Extensions
-using Constants = Umbraco.Cms.Core.Constants
-using IScope = Umbraco.Cms.Infrastructure.Scoping.IScope
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using Microsoft.Extensions.Logging;
+using NUnit.Framework;
+using Umbraco.Cms.Core;
+using Umbraco.Cms.Core.Models;
+using Umbraco.Cms.Core.Services;
+using Umbraco.Cms.Infrastructure.Persistence;
+using Umbraco.Cms.Tests.Common.Attributes;
+using Umbraco.Cms.Tests.Common.Builders;
+using Umbraco.Cms.Tests.Common.Testing;
+using Umbraco.Cms.Tests.Integration.Testing;
+using Umbraco.Extensions;
+using Constants = Umbraco.Cms.Core.Constants;
+using IScope = Umbraco.Cms.Infrastructure.Scoping.IScope;
 
 namespace Umbraco.Cms.Tests.Integration.Umbraco.Infrastructure.Services
     // these tests tend to fail from time to time esp. on VSTS
@@ -33,39 +33,39 @@ namespace Umbraco.Cms.Tests.Integration.Umbraco.Infrastructure.Services
     [TestFixture]
     [UmbracoTest(Database = UmbracoTestOptions.Database.NewSchemaPerTest, Logger = UmbracoTestOptions.Logger.Console)]
     internal sealed class ThreadSafetyServiceTest : UmbracoIntegrationTest
-        private IContentService ContentService => GetRequiredService<IContentService>()
+        private IContentService ContentService => GetRequiredService<IContentService>();
 
-        private IMediaService MediaService => GetRequiredService<IMediaService>()
+        private IMediaService MediaService => GetRequiredService<IMediaService>();
 
-        private IContentTypeService ContentTypeService => GetRequiredService<IContentTypeService>()
+        private IContentTypeService ContentTypeService => GetRequiredService<IContentTypeService>();
 
         [SetUp]
         public async Task SetUp()
-            await CreateTestData()
+            await CreateTestData();
 
-        private const int MaxThreadCount = 20
+        private const int MaxThreadCount = 20;
 
         private void Save(ContentService service, IContent content)
             using (IScope scope = ScopeProvider.CreateScope())
                 if (ScopeAccessor.AmbientScope.Database.DatabaseType.IsSqlServer())
-                    ScopeAccessor.AmbientScope.Database.Execute("SET LOCK_TIMEOUT 60000")
+                    ScopeAccessor.AmbientScope.Database.Execute("SET LOCK_TIMEOUT 60000");
 
-                service.Save(content)
-                scope.Complete()
+                service.Save(content);
+                scope.Complete();
 
         private void Save(MediaService service, IMedia media)
             using (IScope scope = ScopeProvider.CreateScope())
                 if (ScopeAccessor.AmbientScope.Database.DatabaseType.IsSqlServer())
-                    ScopeAccessor.AmbientScope.Database.Execute("SET LOCK_TIMEOUT 60000")
+                    ScopeAccessor.AmbientScope.Database.Execute("SET LOCK_TIMEOUT 60000");
 
-                service.Save(media)
-                scope.Complete()
+                service.Save(media);
+                scope.Complete();
 
         private ManualResetEventSlim TraceLocks()
-            var done = new ManualResetEventSlim(false)
+            var done = new ManualResetEventSlim(false);
 
             // comment out to trace locks
-            return done
+            return done;
 
             // new Thread(() =>
             // {
@@ -89,19 +89,19 @@ namespace Umbraco.Cms.Tests.Integration.Umbraco.Infrastructure.Services
         [LongRunning]
         public void Ensure_All_Threads_Execute_Successfully_Content_Service()
             if (Environment.GetEnvironmentVariable("UMBRACO_TMP") != null)
-                Assert.Ignore("Do not run on VSTS.")
+                Assert.Ignore("Do not run on VSTS.");
 
-            ILogger<ThreadSafetyServiceTest> log = GetRequiredService<ILogger<ThreadSafetyServiceTest>>()
+            ILogger<ThreadSafetyServiceTest> log = GetRequiredService<ILogger<ThreadSafetyServiceTest>>();
 
             // the ServiceContext in that each repository in a service (i.e. ContentService) is a singleton
-            var contentService = (ContentService)ContentService
+            var contentService = (ContentService)ContentService;
 
-            var threads = new List<Thread>()
-            var exceptions = new List<Exception>()
+            var threads = new List<Thread>();
+            var exceptions = new List<Exception>();
 
-            log.LogInformation("Starting...")
+            log.LogInformation("Starting...");
 
-            ManualResetEventSlim done = TraceLocks()
+            ManualResetEventSlim done = TraceLocks();
 
             for (int i = 0; i < MaxThreadCount; i++)
                 var t = new Thread(() => {
@@ -141,26 +141,26 @@ namespace Umbraco.Cms.Tests.Integration.Umbraco.Infrastructure.Services
                     }
                 }
                 );
-                threads.Add(t)
+                threads.Add(t);
 
             // See NOTE above, we must supress flow here to be able to run concurrent threads,
             // else the AsyncLocal value from this current context will flow to the child threads.
             using (ExecutionContext.SuppressFlow())
                 // start all threads
-                log.LogInformation("Starting threads")
-                threads.ForEach(x => x.Start())
+                log.LogInformation("Starting threads");
+                threads.ForEach(x => x.Start());
 
             // wait for all to complete
-            log.LogInformation("Joining threads")
-            threads.ForEach(x => x.Join())
+            log.LogInformation("Joining threads");
+            threads.ForEach(x => x.Join());
 
-            done.Set()
+            done.Set();
 
-            log.LogInformation("Checking exceptions")
+            log.LogInformation("Checking exceptions");
             if (exceptions.Count == 0)
                 // now look up all items, there should be 40!
-                IEnumerable<IContent> items = contentService.GetRootContent()
-                Assert.AreEqual(2 * MaxThreadCount, items.Count())
+                IEnumerable<IContent> items = contentService.GetRootContent();
+                Assert.AreEqual(2 * MaxThreadCount, items.Count());
             else
                 throw new Exception("Exceptions!", exceptions.First()) // rethrow the first one...
 
@@ -168,19 +168,19 @@ namespace Umbraco.Cms.Tests.Integration.Umbraco.Infrastructure.Services
         [LongRunning]
         public void Ensure_All_Threads_Execute_Successfully_Media_Service()
             if (Environment.GetEnvironmentVariable("UMBRACO_TMP") != null)
-                Assert.Ignore("Do not run on VSTS.")
+                Assert.Ignore("Do not run on VSTS.");
 
-            ILogger<ThreadSafetyServiceTest> log = GetRequiredService<ILogger<ThreadSafetyServiceTest>>()
+            ILogger<ThreadSafetyServiceTest> log = GetRequiredService<ILogger<ThreadSafetyServiceTest>>();
 
             // mimick the ServiceContext in that each repository in a service (i.e. ContentService) is a singleton
-            var mediaService = (MediaService)MediaService
+            var mediaService = (MediaService)MediaService;
 
-            var threads = new List<Thread>()
-            var exceptions = new List<Exception>()
+            var threads = new List<Thread>();
+            var exceptions = new List<Exception>();
 
-            log.LogInformation("Starting...")
+            log.LogInformation("Starting...");
 
-            ManualResetEventSlim done = TraceLocks()
+            ManualResetEventSlim done = TraceLocks();
 
             for (int i = 0; i < MaxThreadCount; i++)
                 var t = new Thread(() => {
@@ -217,28 +217,28 @@ namespace Umbraco.Cms.Tests.Integration.Umbraco.Infrastructure.Services
                     }
                 }
                 );
-                threads.Add(t)
+                threads.Add(t);
 
             // See NOTE above, we must supress flow here to be able to run concurrent threads,
             // else the AsyncLocal value from this current context will flow to the child threads.
             using (ExecutionContext.SuppressFlow())
                 // start all threads
-                threads.ForEach(x => x.Start())
+                threads.ForEach(x => x.Start());
 
             // wait for all to complete
-            threads.ForEach(x => x.Join())
+            threads.ForEach(x => x.Join());
 
-            done.Set()
+            done.Set();
 
             if (exceptions.Count == 0)
                 // now look up all items, there should be 40!
-                IEnumerable<IMedia> items = mediaService.GetRootMedia()
-                Assert.AreEqual(2 * MaxThreadCount, items.Count())
+                IEnumerable<IMedia> items = mediaService.GetRootMedia();
+                Assert.AreEqual(2 * MaxThreadCount, items.Count());
             else
                 throw new Exception("Exceptions!", exceptions.First()) // rethrow the first one...
 
         public async Task CreateTestData()
             // Create and Save ContentType "umbTextpage" -> 1045
-            ContentType contentType = ContentTypeBuilder.CreateSimpleContentType("umbTextpage", "Textpage")
-            contentType.Key = new Guid("1D3A8E6E-2EA9-4CC1-B229-1AEE19821522")
-            await ContentTypeService.CreateAsync(contentType, Constants.Security.SuperUserKey)
+            ContentType contentType = ContentTypeBuilder.CreateSimpleContentType("umbTextpage", "Textpage");
+            contentType.Key = new Guid("1D3A8E6E-2EA9-4CC1-B229-1AEE19821522");
+            await ContentTypeService.CreateAsync(contentType, Constants.Security.SuperUserKey);

@@ -1,31 +1,31 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.Collections.Generic
-using System.Collections.ObjectModel
-using System.ComponentModel.Composition.Primitives
-using System.Diagnostics
-using System.Diagnostics.CodeAnalysis
-using System.Threading
-using Microsoft.Internal
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.ComponentModel.Composition.Primitives;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Threading;
+using Microsoft.Internal;
 
 namespace System.ComponentModel.Composition.Hosting
     public partial class CompositionContainer : ExportProvider, ICompositionService, IDisposable
-        private readonly CompositionOptions _compositionOptions
-        private ImportEngine? _importEngine
-        private ComposablePartExportProvider _partExportProvider
-        private ExportProvider _rootProvider
-        private IDisposable? _disposableRootProvider
-        private CatalogExportProvider? _catalogExportProvider
-        private ExportProvider _localExportProvider
-        private IDisposable? _disposableLocalExportProvider
-        private ExportProvider? _ancestorExportProvider
-        private IDisposable? _disposableAncestorExportProvider
+        private readonly CompositionOptions _compositionOptions;
+        private ImportEngine? _importEngine;
+        private ComposablePartExportProvider _partExportProvider;
+        private ExportProvider _rootProvider;
+        private IDisposable? _disposableRootProvider;
+        private CatalogExportProvider? _catalogExportProvider;
+        private ExportProvider _localExportProvider;
+        private IDisposable? _disposableLocalExportProvider;
+        private ExportProvider? _ancestorExportProvider;
+        private IDisposable? _disposableAncestorExportProvider;
 
-        private readonly ReadOnlyCollection<ExportProvider> _providers
-        private volatile bool _isDisposed
-        private readonly object _lock = new object()
-        private static readonly ReadOnlyCollection<ExportProvider> EmptyProviders = new ReadOnlyCollection<ExportProvider>(Array.Empty<ExportProvider>())
+        private readonly ReadOnlyCollection<ExportProvider> _providers;
+        private volatile bool _isDisposed;
+        private readonly object _lock = new object();
+        private static readonly ReadOnlyCollection<ExportProvider> EmptyProviders = new ReadOnlyCollection<ExportProvider>(Array.Empty<ExportProvider>());
 
         /// <summary>
         ///     Initializes a new instance of the <see cref="CompositionContainer"/> class.
@@ -129,65 +129,65 @@ namespace System.ComponentModel.Composition.Hosting
         /// </exception>
         public CompositionContainer(ComposablePartCatalog? catalog, CompositionOptions compositionOptions, params ExportProvider[]? providers)
             if (compositionOptions > (CompositionOptions.DisableSilentRejection | CompositionOptions.IsThreadSafe | CompositionOptions.ExportCompositionService))
-                throw new ArgumentOutOfRangeException(nameof(compositionOptions))
-            _compositionOptions = compositionOptions
+                throw new ArgumentOutOfRangeException(nameof(compositionOptions));
+            _compositionOptions = compositionOptions;
 
             // We always create the mutable provider
-            _partExportProvider = new ComposablePartExportProvider(compositionOptions)
-            _partExportProvider.SourceProvider = this
+            _partExportProvider = new ComposablePartExportProvider(compositionOptions);
+            _partExportProvider.SourceProvider = this;
 
             // Create the catalog export provider, only if necessary
             if (catalog != null)
-                _catalogExportProvider = new CatalogExportProvider(catalog, compositionOptions)
-                _catalogExportProvider.SourceProvider = this
+                _catalogExportProvider = new CatalogExportProvider(catalog, compositionOptions);
+                _catalogExportProvider.SourceProvider = this;
 
             // Set the local export provider
             if (_catalogExportProvider != null)
-                _localExportProvider = new AggregateExportProvider(_partExportProvider, _catalogExportProvider)
-                _disposableLocalExportProvider = _localExportProvider as IDisposable
+                _localExportProvider = new AggregateExportProvider(_partExportProvider, _catalogExportProvider);
+                _disposableLocalExportProvider = _localExportProvider as IDisposable;
             else
-                _localExportProvider = _partExportProvider
+                _localExportProvider = _partExportProvider;
 
             // Set the ancestor export provider, if ancestors are supplied
             if ((providers != null) && (providers.Length > 0))
                 // Aggregate ancestors if and only if more than one passed
                 if (providers.Length > 1)
-                    _ancestorExportProvider = new AggregateExportProvider(providers)
-                    _disposableAncestorExportProvider = _ancestorExportProvider as IDisposable
+                    _ancestorExportProvider = new AggregateExportProvider(providers);
+                    _disposableAncestorExportProvider = _ancestorExportProvider as IDisposable;
                 else
                     if (providers[0] == null)
-                        throw ExceptionBuilder.CreateContainsNullElement(nameof(providers))
-                    _ancestorExportProvider = providers[0]
+                        throw ExceptionBuilder.CreateContainsNullElement(nameof(providers));
+                    _ancestorExportProvider = providers[0];
 
             // finally set the root provider
             if (_ancestorExportProvider == null)
                 // if no ancestors are passed, the local and the root are the same
-                _rootProvider = _localExportProvider
+                _rootProvider = _localExportProvider;
             else
-                int exportProviderCount = 1 + ((catalog != null) ? 1 : 0) + ((providers != null) ? providers.Length : 0)
-                ExportProvider[] rootProviders = new ExportProvider[exportProviderCount]
+                int exportProviderCount = 1 + ((catalog != null) ? 1 : 0) + ((providers != null) ? providers.Length : 0);
+                ExportProvider[] rootProviders = new ExportProvider[exportProviderCount];
 
-                rootProviders[0] = _partExportProvider
-                int customProviderStartIndex = 1
+                rootProviders[0] = _partExportProvider;
+                int customProviderStartIndex = 1;
                 if (catalog != null)
-                    rootProviders[1] = _catalogExportProvider!
-                    customProviderStartIndex = 2
+                    rootProviders[1] = _catalogExportProvider!;
+                    customProviderStartIndex = 2;
 
                 if (providers != null)
                     for (int i = 0; i < providers.Length; i++)
-                        rootProviders[customProviderStartIndex + i] = providers[i]
+                        rootProviders[customProviderStartIndex + i] = providers[i];
 
-                _rootProvider = new AggregateExportProvider(rootProviders)
-                _disposableRootProvider = _rootProvider as IDisposable
+                _rootProvider = new AggregateExportProvider(rootProviders);
+                _disposableRootProvider = _rootProvider as IDisposable;
 
             //Insert Composition Service
             if (compositionOptions.HasFlag(CompositionOptions.ExportCompositionService))
-                this.ComposeExportedValue<ICompositionService>(new CompositionServiceShim(this))
+                this.ComposeExportedValue<ICompositionService>(new CompositionServiceShim(this));
 
-            _rootProvider.ExportsChanged += OnExportsChangedInternal
-            _rootProvider.ExportsChanging += OnExportsChangingInternal
+            _rootProvider.ExportsChanged += OnExportsChangedInternal;
+            _rootProvider.ExportsChanging += OnExportsChangingInternal;
 
-            _providers = (providers != null) ? Array.AsReadOnly((ExportProvider[])providers.Clone()) : EmptyProviders
+            _providers = (providers != null) ? Array.AsReadOnly((ExportProvider[])providers.Clone()) : EmptyProviders;
 
         raw csharp
             internal CompositionOptions CompositionOptions
@@ -258,8 +258,8 @@ namespace System.ComponentModel.Composition.Hosting
         /// Performs application-defined tasks associated with freeing, releasing, or resetting unmanaged resources.
         /// </summary>
         public void Dispose()
-            Dispose(true)
-            GC.SuppressFinalize(this)
+            Dispose(true);
+            GC.SuppressFinalize(this);
 
         /// <summary>
         /// Releases unmanaged and - optionally - managed resources
@@ -268,57 +268,57 @@ namespace System.ComponentModel.Composition.Hosting
         protected virtual void Dispose(bool disposing)
             if (disposing)
                 if (!_isDisposed)
-                    ExportProvider? rootProvider = null
-                    IDisposable? disposableAncestorExportProvider = null
-                    IDisposable? disposableLocalExportProvider = null
-                    IDisposable? disposableRootProvider = null
-                    ComposablePartExportProvider? partExportProvider = null
-                    CatalogExportProvider? catalogExportProvider = null
-                    ImportEngine? importEngine = null
+                    ExportProvider? rootProvider = null;
+                    IDisposable? disposableAncestorExportProvider = null;
+                    IDisposable? disposableLocalExportProvider = null;
+                    IDisposable? disposableRootProvider = null;
+                    ComposablePartExportProvider? partExportProvider = null;
+                    CatalogExportProvider? catalogExportProvider = null;
+                    ImportEngine? importEngine = null;
 
                     lock (_lock)
                         if (!_isDisposed)
-                            rootProvider = _rootProvider
-                            _rootProvider = null!
+                            rootProvider = _rootProvider;
+                            _rootProvider = null!;
 
-                            disposableRootProvider = _disposableRootProvider
-                            _disposableRootProvider = null
+                            disposableRootProvider = _disposableRootProvider;
+                            _disposableRootProvider = null;
 
-                            disposableLocalExportProvider = _disposableLocalExportProvider
-                            _disposableLocalExportProvider = null
-                            _localExportProvider = null!
+                            disposableLocalExportProvider = _disposableLocalExportProvider;
+                            _disposableLocalExportProvider = null;
+                            _localExportProvider = null!;
 
-                            disposableAncestorExportProvider = _disposableAncestorExportProvider
-                            _disposableAncestorExportProvider = null
-                            _ancestorExportProvider = null
+                            disposableAncestorExportProvider = _disposableAncestorExportProvider;
+                            _disposableAncestorExportProvider = null;
+                            _ancestorExportProvider = null;
 
-                            partExportProvider = _partExportProvider
-                            _partExportProvider = null!
+                            partExportProvider = _partExportProvider;
+                            _partExportProvider = null!;
 
-                            catalogExportProvider = _catalogExportProvider
-                            _catalogExportProvider = null
+                            catalogExportProvider = _catalogExportProvider;
+                            _catalogExportProvider = null;
 
-                            importEngine = _importEngine
-                            _importEngine = null
+                            importEngine = _importEngine;
+                            _importEngine = null;
 
-                            _isDisposed = true
+                            _isDisposed = true;
 
                     if (rootProvider != null)
-                        rootProvider.ExportsChanged -= OnExportsChangedInternal
-                        rootProvider.ExportsChanging -= OnExportsChangingInternal
+                        rootProvider.ExportsChanged -= OnExportsChangedInternal;
+                        rootProvider.ExportsChanging -= OnExportsChangingInternal;
 
-                    disposableRootProvider?.Dispose()
-                    disposableAncestorExportProvider?.Dispose()
-                    disposableLocalExportProvider?.Dispose()
-                    catalogExportProvider?.Dispose()
-                    partExportProvider?.Dispose()
-                    importEngine?.Dispose()
+                    disposableRootProvider?.Dispose();
+                    disposableAncestorExportProvider?.Dispose();
+                    disposableLocalExportProvider?.Dispose();
+                    catalogExportProvider?.Dispose();
+                    partExportProvider?.Dispose();
+                    importEngine?.Dispose();
 
         public void Compose(CompositionBatch batch)
-            Requires.NotNull(batch, nameof(batch))
-            ThrowIfDisposed()
+            Requires.NotNull(batch, nameof(batch));
+            ThrowIfDisposed();
 
-            _partExportProvider.Compose(batch)
+            _partExportProvider.Compose(batch);
 
         /// <summary>
         ///     Releases the <see cref="Export"/> from the <see cref="CompositionContainer"/>. The behavior
@@ -340,10 +340,10 @@ namespace System.ComponentModel.Composition.Hosting
         ///     <paramref name="export"/> is <see langword="null"/>.
         /// </exception>
         public void ReleaseExport(Export export)
-            Requires.NotNull(export, nameof(export))
+            Requires.NotNull(export, nameof(export));
 
             if (export is IDisposable dependency)
-                dependency.Dispose()
+                dependency.Dispose();
 
         /// <summary>
         ///     Releases the <see cref="Lazy{T}"/> from the <see cref="CompositionContainer"/>. The behavior
@@ -365,10 +365,10 @@ namespace System.ComponentModel.Composition.Hosting
         ///     <paramref name="export"/> is <see langword="null"/>.
         /// </exception>
         public void ReleaseExport<T>(Lazy<T> export)
-            Requires.NotNull(export, nameof(export))
+            Requires.NotNull(export, nameof(export));
 
             if (export is IDisposable dependency)
-                dependency.Dispose()
+                dependency.Dispose();
 
         /// <summary>
         ///     Releases a set of <see cref="Export"/>s from the <see cref="CompositionContainer"/>.
@@ -382,10 +382,10 @@ namespace System.ComponentModel.Composition.Hosting
         ///     <paramref name="exports"/> contains an element that is <see langword="null"/>.
         /// </exception>
         public void ReleaseExports(IEnumerable<Export> exports)
-            Requires.NotNullOrNullElements(exports, nameof(exports))
+            Requires.NotNullOrNullElements(exports, nameof(exports));
 
             foreach (Export export in exports)
-                ReleaseExport(export)
+                ReleaseExport(export);
 
         /// <summary>
         ///     Releases a set of <see cref="Export"/>s from the <see cref="CompositionContainer"/>.
@@ -399,10 +399,10 @@ namespace System.ComponentModel.Composition.Hosting
         ///     <paramref name="exports"/> contains an element that is <see langword="null"/>.
         /// </exception>
         public void ReleaseExports<T>(IEnumerable<Lazy<T>> exports)
-            Requires.NotNullOrNullElements(exports, nameof(exports))
+            Requires.NotNullOrNullElements(exports, nameof(exports));
 
             foreach (Lazy<T> export in exports)
-                ReleaseExport(export)
+                ReleaseExport(export);
 
         /// <summary>
         ///     Releases a set of <see cref="Export"/>s from the <see cref="CompositionContainer"/>.
@@ -416,10 +416,10 @@ namespace System.ComponentModel.Composition.Hosting
         ///     <paramref name="exports"/> contains an element that is <see langword="null"/>.
         /// </exception>
         public void ReleaseExports<T, TMetadataView>(IEnumerable<Lazy<T, TMetadataView>> exports)
-            Requires.NotNullOrNullElements(exports, nameof(exports))
+            Requires.NotNullOrNullElements(exports, nameof(exports));
 
             foreach (Lazy<T, TMetadataView> export in exports)
-                ReleaseExport(export)
+                ReleaseExport(export);
 
         /// <summary>
         ///     Sets the imports of the specified composable part exactly once and they will not
@@ -439,24 +439,24 @@ namespace System.ComponentModel.Composition.Hosting
         ///     The <see cref="ICompositionService"/> has been disposed of.
         /// </exception>
         public void SatisfyImportsOnce(ComposablePart part)
-            ThrowIfDisposed()
+            ThrowIfDisposed();
 
             if (_importEngine == null)
-                ImportEngine? importEngine = new ImportEngine(this, _compositionOptions)
+                ImportEngine? importEngine = new ImportEngine(this, _compositionOptions);
 
                 lock (_lock)
                     if (_importEngine == null)
-                        Thread.MemoryBarrier()
-                        _importEngine = importEngine
-                        importEngine = null
-                importEngine?.Dispose()
-            _importEngine.SatisfyImportsOnce(part)
+                        Thread.MemoryBarrier();
+                        _importEngine = importEngine;
+                        importEngine = null;
+                importEngine?.Dispose();
+            _importEngine.SatisfyImportsOnce(part);
 
         internal void OnExportsChangedInternal(object? sender, ExportsChangeEventArgs e)
-            OnExportsChanged(e)
+            OnExportsChanged(e);
 
         internal void OnExportsChangingInternal(object? sender, ExportsChangeEventArgs e)
-            OnExportsChanging(e)
+            OnExportsChanging(e);
 
         /// <summary>
         /// Returns all exports that match the conditions of the specified import.
@@ -479,31 +479,31 @@ namespace System.ComponentModel.Composition.Hosting
         /// </note>
         /// </remarks>
         protected override IEnumerable<Export>? GetExportsCore(ImportDefinition definition, AtomicComposition? atomicComposition)
-            ThrowIfDisposed()
+            ThrowIfDisposed();
 
-            IEnumerable<Export>? exports = null
+            IEnumerable<Export>? exports = null;
 
             if (!definition.Metadata.TryGetValue(CompositionConstants.ImportSourceMetadataName, out object? source))
-                source = ImportSource.Any
+                source = ImportSource.Any;
 
             switch ((ImportSource)source!)
                 case ImportSource.Any:
                     if (_rootProvider == null)
-                        throw new Exception(SR.Diagnostic_InternalExceptionMessage)
-                    _rootProvider.TryGetExports(definition, atomicComposition, out exports)
-                    break
+                        throw new Exception(SR.Diagnostic_InternalExceptionMessage);
+                    _rootProvider.TryGetExports(definition, atomicComposition, out exports);
+                    break;
                 case ImportSource.Local:
                     if (_localExportProvider == null)
-                        throw new Exception(SR.Diagnostic_InternalExceptionMessage)
-                    _localExportProvider.TryGetExports(definition.RemoveImportSource(), atomicComposition, out exports)
-                    break
+                        throw new Exception(SR.Diagnostic_InternalExceptionMessage);
+                    _localExportProvider.TryGetExports(definition.RemoveImportSource(), atomicComposition, out exports);
+                    break;
                 case ImportSource.NonLocal:
-                    _ancestorExportProvider?.TryGetExports(definition.RemoveImportSource(), atomicComposition, out exports)
-                    break
+                    _ancestorExportProvider?.TryGetExports(definition.RemoveImportSource(), atomicComposition, out exports);
+                    break;
 
-            return exports
+            return exports;
 
         [DebuggerStepThrough]
         private void ThrowIfDisposed()
             if (_isDisposed)
-                throw ExceptionBuilder.CreateObjectDisposed(this)
+                throw ExceptionBuilder.CreateObjectDisposed(this);

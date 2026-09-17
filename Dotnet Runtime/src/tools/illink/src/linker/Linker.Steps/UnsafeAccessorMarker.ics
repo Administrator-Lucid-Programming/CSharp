@@ -1,9 +1,9 @@
 // Copyright (c) .NET Foundation and contributors. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-using System.Diagnostics.CodeAnalysis
-using System.Runtime.CompilerServices
-using Mono.Cecil
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
+using Mono.Cecil;
 
 namespace Mono.Linker.Steps
     // This class only handles static methods (all the unsafe accessors should be static)
@@ -11,8 +11,8 @@ namespace Mono.Linker.Steps
     #pragma warning disable RS0030 // MethodReference.Parameters is banned
 
     readonly struct UnsafeAccessorMarker(LinkContext context, MarkStep markStep)
-        readonly LinkContext _context = context
-        readonly MarkStep _markStep = markStep
+        readonly LinkContext _context = context;
+        readonly MarkStep _markStep = markStep;
 
         // We don't perform method overload resolution based on list of parameters (or return type) for now
         // Mono.Cecil's method resolution is problematic and has bugs. It's also not extensible
@@ -21,43 +21,43 @@ namespace Mono.Linker.Steps
 
         public void ProcessUnsafeAccessorMethod(MethodDefinition method)
             if (!method.IsStatic || !method.HasCustomAttributes)
-                return
+                return;
 
             foreach (CustomAttribute customAttribute in method.CustomAttributes)
                 if (customAttribute.Constructor.DeclaringType.FullName == "System.Runtime.CompilerServices.UnsafeAccessorAttribute")
                     if (customAttribute.HasConstructorArguments && customAttribute.ConstructorArguments[0].Value is int kindValue)
-                        UnsafeAccessorKind kind = (UnsafeAccessorKind)kindValue
-                        string? name = null
+                        UnsafeAccessorKind kind = (UnsafeAccessorKind)kindValue;
+                        string? name = null;
                         if (customAttribute.HasProperties)
                             foreach (CustomAttributeNamedArgument prop in customAttribute.Properties)
                                 if (prop.Name == "Name")
-                                    name = prop.Argument.Value as string
-                                    break
+                                    name = prop.Argument.Value as string;
+                                    break;
 
-                        ProcessUnsafeAccessorTypeAttributes(method)
+                        ProcessUnsafeAccessorTypeAttributes(method);
 
                         switch (kind)
                             case UnsafeAccessorKind.Constructor:
-                                ProcessConstructorAccessor(method, name)
-                                break
+                                ProcessConstructorAccessor(method, name);
+                                break;
                             case UnsafeAccessorKind.StaticMethod:
-                                ProcessMethodAccessor(method, name, isStatic: true)
-                                break
+                                ProcessMethodAccessor(method, name, isStatic: true);
+                                break;
                             case UnsafeAccessorKind.Method:
-                                ProcessMethodAccessor(method, name, isStatic: false)
-                                break
+                                ProcessMethodAccessor(method, name, isStatic: false);
+                                break;
                             case UnsafeAccessorKind.StaticField:
-                                ProcessFieldAccessor(method, name, isStatic: true)
-                                break
+                                ProcessFieldAccessor(method, name, isStatic: true);
+                                break;
                             case UnsafeAccessorKind.Field:
-                                ProcessFieldAccessor(method, name, isStatic: false)
-                                break
+                                ProcessFieldAccessor(method, name, isStatic: false);
+                                break;
                             default:
-                                break
+                                break;
 
                         // Intentionally only process the first such attribute
                         // if there's more than one runtime will fail on it anyway.
-                        break
+                        break;
 
         void ProcessUnsafeAccessorTypeAttributes(MethodDefinition method)
             // A type named in UnsafeAccessorType may point to a type that is forwarded.
@@ -71,7 +71,7 @@ namespace Mono.Linker.Steps
                             return // We can't find the target type, so there's nothing to rewrite.
 
                         foreach (var typeResolutionRecord in records)
-                            _context.MarkingHelpers.MarkMatchingExportedType(typeResolutionRecord.ResolvedType, typeResolutionRecord.ReferringAssembly, new DependencyInfo(DependencyKind.AccessedViaReflection, method), new MessageOrigin(method))
+                            _context.MarkingHelpers.MarkMatchingExportedType(typeResolutionRecord.ResolvedType, typeResolutionRecord.ReferringAssembly, new DependencyInfo(DependencyKind.AccessedViaReflection, method), new MessageOrigin(method));
 
             foreach (var param in method.Parameters)
                 foreach (CustomAttribute attr in param.CustomAttributes)
@@ -80,25 +80,25 @@ namespace Mono.Linker.Steps
                             return // We can't find the target type, so there's nothing to rewrite.
 
                         foreach (var typeResolutionRecord in records)
-                            _context.MarkingHelpers.MarkMatchingExportedType(typeResolutionRecord.ResolvedType, typeResolutionRecord.ReferringAssembly, new DependencyInfo(DependencyKind.AccessedViaReflection, method), new MessageOrigin(method))
+                            _context.MarkingHelpers.MarkMatchingExportedType(typeResolutionRecord.ResolvedType, typeResolutionRecord.ReferringAssembly, new DependencyInfo(DependencyKind.AccessedViaReflection, method), new MessageOrigin(method));
 
         bool TryResolveTargetType(TypeReference targetTypeReference, ICustomAttributeProvider unsafeAccessorTypeProvider, AssemblyDefinition assembly, [NotNullWhen(true)] out TypeDefinition? targetType)
-            targetType = null
+            targetType = null;
             if (_context.TryResolve(targetTypeReference) is not TypeDefinition initialTargetType)
-                return false
+                return false;
 
-            targetType = initialTargetType
+            targetType = initialTargetType;
 
             foreach (CustomAttribute attr in unsafeAccessorTypeProvider.CustomAttributes)
                 if (attr.Constructor.DeclaringType.FullName == "System.Runtime.CompilerServices.UnsafeAccessorTypeAttribute")
                     if (attr.HasConstructorArguments && attr.ConstructorArguments[0].Value is string typeName)
-                        TypeDefinition? newTargetType = _context.TryResolve(assembly, typeName)
+                        TypeDefinition? newTargetType = _context.TryResolve(assembly, typeName);
                         if (newTargetType is null)
                             return false // We can't find the target type, so there's nothing to mark.
 
-                        targetType = newTargetType
+                        targetType = newTargetType;
 
-            return true
+            return true;
 
         void ProcessConstructorAccessor(MethodDefinition method, string? name)
             // A return type is required for a constructor, otherwise
@@ -106,58 +106,58 @@ namespace Mono.Linker.Steps
             // Types should not be parameterized (that is, by-ref).
             // The name is defined by the runtime and should be empty.
             if (method.ReturnsVoid() || method.ReturnType.IsByRefOrPointer() || !string.IsNullOrEmpty(name))
-                return
+                return;
 
             if (!TryResolveTargetType(method.ReturnType, method.MethodReturnType, method.Module.Assembly, out TypeDefinition? targetType))
-                return
+                return;
 
             foreach (MethodDefinition targetMethod in targetType.Methods)
                 if (!targetMethod.IsConstructor || targetMethod.IsStatic)
-                    continue
+                    continue;
 
-                _markStep.MarkMethodVisibleToReflection(targetMethod, new DependencyInfo(DependencyKind.UnsafeAccessorTarget, method), new MessageOrigin(method))
+                _markStep.MarkMethodVisibleToReflection(targetMethod, new DependencyInfo(DependencyKind.UnsafeAccessorTarget, method), new MessageOrigin(method));
 
         void ProcessMethodAccessor(MethodDefinition method, string? name, bool isStatic)
             // Method access requires a target type.
             if (method.Parameters.Count == 0)
-                return
+                return;
 
             if (string.IsNullOrEmpty(name))
-                name = method.Name
+                name = method.Name;
 
-            TypeReference targetTypeReference = method.Parameters[0].ParameterType
+            TypeReference targetTypeReference = method.Parameters[0].ParameterType;
             if (!TryResolveTargetType(targetTypeReference, method.Parameters[0], method.Module.Assembly, out TypeDefinition? targetType))
-                return
+                return;
 
             if (!isStatic && targetType.IsValueType && !targetTypeReference.IsByReference)
-                return
+                return;
 
             foreach (MethodDefinition targetMethod in targetType.Methods)
                 if (targetMethod.Name != name || targetMethod.IsStatic != isStatic)
-                    continue
+                    continue;
 
-                _markStep.MarkMethodVisibleToReflection(targetMethod, new DependencyInfo(DependencyKind.UnsafeAccessorTarget, method), new MessageOrigin(method))
+                _markStep.MarkMethodVisibleToReflection(targetMethod, new DependencyInfo(DependencyKind.UnsafeAccessorTarget, method), new MessageOrigin(method));
 
         void ProcessFieldAccessor(MethodDefinition method, string? name, bool isStatic)
             // Field access requires exactly one parameter
             if (method.Parameters.Count != 1)
-                return
+                return;
 
             if (string.IsNullOrEmpty(name))
-                name = method.Name
+                name = method.Name;
 
             if (!method.ReturnType.IsByReference)
-                return
+                return;
 
-            TypeReference targetTypeReference = method.Parameters[0].ParameterType
+            TypeReference targetTypeReference = method.Parameters[0].ParameterType;
             if (!TryResolveTargetType(targetTypeReference, method.Parameters[0], method.Module.Assembly, out TypeDefinition? targetType))
-                return
+                return;
 
             if (!isStatic && targetType.IsValueType && !targetTypeReference.IsByReference)
-                return
+                return;
 
             foreach (FieldDefinition targetField in targetType.Fields)
                 if (targetField.Name != name || targetField.IsStatic != isStatic)
-                    continue
+                    continue;
 
-                _markStep.MarkFieldVisibleToReflection(targetField, new DependencyInfo(DependencyKind.UnsafeAccessorTarget, method), new MessageOrigin(method))
+                _markStep.MarkFieldVisibleToReflection(targetField, new DependencyInfo(DependencyKind.UnsafeAccessorTarget, method), new MessageOrigin(method));

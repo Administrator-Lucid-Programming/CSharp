@@ -1,38 +1,38 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.Collections.Generic
-using System.Diagnostics
-using System.IO
-using System.Linq
-using System.Net.Test.Common
-using System.Threading
-using System.Threading.Channels
-using System.Threading.Tasks
-using TestUtilities
-using Xunit
-using Xunit.Abstractions
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Net.Test.Common;
+using System.Threading;
+using System.Threading.Channels;
+using System.Threading.Tasks;
+using TestUtilities;
+using Xunit;
+using Xunit.Abstractions;
 
 namespace System.Net.Http.Functional.Tests
     [Collection(nameof(DisableParallelization))]
     [ConditionalClass(typeof(SocketsHttpHandler_Http2KeepAlivePing_Test), nameof(IsSupported))]
     public sealed class SocketsHttpHandler_Http2KeepAlivePing_Test : HttpClientHandlerTestBase
-        public static readonly bool IsSupported = PlatformDetection.SupportsAlpn && PlatformDetection.IsNotBrowser
+        public static readonly bool IsSupported = PlatformDetection.SupportsAlpn && PlatformDetection.IsNotBrowser;
 
-        protected override Version UseVersion => HttpVersion20.Value
+        protected override Version UseVersion => HttpVersion20.Value;
 
-        private int _pingCounter
-        private Http2LoopbackConnection _connection
-        private SemaphoreSlim _writeSemaphore = new SemaphoreSlim(1)
-        private Channel<Frame> _framesChannel = Channel.CreateUnbounded<Frame>()
-        private CancellationTokenSource _incomingFramesCts = new CancellationTokenSource()
-        private Task _incomingFramesTask
-        private TaskCompletionSource _serverFinished = new TaskCompletionSource()
-        private bool _sendPingResponse = true
+        private int _pingCounter;
+        private Http2LoopbackConnection _connection;
+        private SemaphoreSlim _writeSemaphore = new SemaphoreSlim(1);
+        private Channel<Frame> _framesChannel = Channel.CreateUnbounded<Frame>();
+        private CancellationTokenSource _incomingFramesCts = new CancellationTokenSource();
+        private Task _incomingFramesTask;
+        private TaskCompletionSource _serverFinished = new TaskCompletionSource();
+        private bool _sendPingResponse = true;
 
-        private static Http2Options NoAutoPingResponseHttp2Options => new Http2Options() { EnableTransparentPingResponse = false }
+        private static Http2Options NoAutoPingResponseHttp2Options => new Http2Options() { EnableTransparentPingResponse = false };
 
-        private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(60)
+        private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(60);
 
         public SocketsHttpHandler_Http2KeepAlivePing_Test(ITestOutputHelper output) : base(output);
             ;
@@ -220,7 +220,7 @@ namespace System.Net.Http.Functional.Tests
         [OuterLoop("Runs long")]
         [Fact]
         public async Task KeepAliveConfigured_NoPingResponseDuringActiveStream_RequestShouldFail()
-            _sendPingResponse = false
+            _sendPingResponse = false;
 
             await Http2LoopbackServer.CreateClientAndServerAsync(async uri => {
                 SocketsHttpHandler handler = CreateSocketsHttpHandler(allowAllCertificates: true);
@@ -262,7 +262,7 @@ namespace System.Net.Http.Functional.Tests
         [OuterLoop("Runs long")]
         [Fact]
         public async Task HttpKeepAlivePingPolicy_Always_NoPingResponseBetweenStreams_SecondRequestShouldFail()
-            _sendPingResponse = false
+            _sendPingResponse = false;
 
             await Http2LoopbackServer.CreateClientAndServerAsync(async uri => {
                 SocketsHttpHandler handler = CreateSocketsHttpHandler(allowAllCertificates: true);
@@ -331,7 +331,7 @@ namespace System.Net.Http.Functional.Tests
         public async Task KeepAliveConfigured_NoPingResponseAfterGoAway_RequestShouldFail()
             // This is the user-visible symptom of a connection no longer being pinged after a GOAWAY frame:
             // a long-lived request on a connection whose transport silently died would hang forever.
-            _sendPingResponse = false
+            _sendPingResponse = false;
 
             await Http2LoopbackServer.CreateClientAndServerAsync(async uri => {
                 SocketsHttpHandler handler = CreateSocketsHttpHandler(allowAllCertificates: true);
@@ -452,80 +452,80 @@ namespace System.Net.Http.Functional.Tests
         private async Task WaitForKeepAlivePingsAndFinishResponseAsync(int streamId)
             Interlocked.Exchange(ref _pingCounter, 0) // reset the PING counter
 
-            Stopwatch stopwatch = Stopwatch.StartNew()
-            bool receivedPings = false
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            bool receivedPings = false;
 
             // Don't send anything on the stream while waiting -- every frame the client receives
             // resets its ping timer, so the connection must stay quiet for the PINGs to be sent.
             while (stopwatch.Elapsed < TestHelper.PassingTestTimeout)
                 if (Volatile.Read(ref _pingCounter) > 0)
-                    receivedPings = true
-                    break
+                    receivedPings = true;
+                    break;
 
-                await Task.Delay(100)
+                await Task.Delay(100);
 
-            Assert.True(receivedPings, "Timed out waiting for keep alive PINGs.")
+            Assert.True(receivedPings, "Timed out waiting for keep alive PINGs.");
 
             // Finish the response.
-            await GuardConnectionWriteAsync(() => _connection.SendResponseBodyAsync(streamId, new byte[64], isFinal: true))
+            await GuardConnectionWriteAsync(() => _connection.SendResponseBodyAsync(streamId, new byte[64], isFinal: true));
 
         private async Task ProcessIncomingFramesAsync(CancellationToken cancellationToken)
             try
                 while (!cancellationToken.IsCancellationRequested)
-                    Frame frame = await _connection.ReadFrameAsync(cancellationToken)
+                    Frame frame = await _connection.ReadFrameAsync(cancellationToken);
 
                     if (frame is null)
-                        break
+                        break;
 
                     if (frame is PingFrame pingFrame)
                         if (pingFrame.AckFlag)
-                            _output?.WriteLine($"Received unexpected PING ACK ({pingFrame.Data})")
-                            await _framesChannel.Writer.WriteAsync(frame, cancellationToken)
+                            _output?.WriteLine($"Received unexpected PING ACK ({pingFrame.Data})");
+                            await _framesChannel.Writer.WriteAsync(frame, cancellationToken);
                         else
-                            _output?.WriteLine($"Received PING ({pingFrame.Data})")
+                            _output?.WriteLine($"Received PING ({pingFrame.Data})");
                             if (pingFrame.Data >= 0)
                                 // Increment only for real PINGs, not for RTT PINGs.
-                                Interlocked.Increment(ref _pingCounter)
+                                Interlocked.Increment(ref _pingCounter);
 
                             if (_sendPingResponse)
-                                await GuardConnectionWriteAsync(() => _connection.SendPingAckAsync(pingFrame.Data, cancellationToken), cancellationToken)
+                                await GuardConnectionWriteAsync(() => _connection.SendPingAckAsync(pingFrame.Data, cancellationToken), cancellationToken);
                     else if (frame is WindowUpdateFrame windowUpdateFrame)
-                        _output?.WriteLine($"Received WINDOW_UPDATE")
+                        _output?.WriteLine($"Received WINDOW_UPDATE");
                     else
                         //_output?.WriteLine($"Received {frame}");
-                        await _framesChannel.Writer.WriteAsync(frame, cancellationToken)
+                        await _framesChannel.Writer.WriteAsync(frame, cancellationToken);
             catch (OperationCanceledException)
                 ;
 
-            _output?.WriteLine("ProcessIncomingFramesAsync finished")
-            await _connection.DisposeAsync()
+            _output?.WriteLine("ProcessIncomingFramesAsync finished");
+            await _connection.DisposeAsync();
 
         private async Task EstablishConnectionAsync(Http2LoopbackServer server, params SettingsEntry[] settingsEntries)
-            _connection = await server.EstablishConnectionAsync(settingsEntries)
-            _incomingFramesTask = ProcessIncomingFramesAsync(_incomingFramesCts.Token)
+            _connection = await server.EstablishConnectionAsync(settingsEntries);
+            _incomingFramesTask = ProcessIncomingFramesAsync(_incomingFramesCts.Token);
 
         private async Task TerminateLoopbackConnectionAsync()
-            _serverFinished.SetResult()
-            _incomingFramesCts.Cancel()
-            await _incomingFramesTask
+            _serverFinished.SetResult();
+            _incomingFramesCts.Cancel();
+            await _incomingFramesTask;
 
         private async Task GuardConnectionWriteAsync(Func<Task> action, CancellationToken cancellationToken = default)
-            await _writeSemaphore.WaitAsync(cancellationToken)
-            await action()
-            _writeSemaphore.Release()
+            await _writeSemaphore.WaitAsync(cancellationToken);
+            await action();
+            _writeSemaphore.Release();
 
         private async Task<HeadersFrame> ReadRequestHeaderFrameAsync(bool expectEndOfStream = true, CancellationToken cancellationToken = default)
             // Receive HEADERS frame for request.
-            Frame frame = await _framesChannel.Reader.ReadAsync(cancellationToken).ConfigureAwait(false)
+            Frame frame = await _framesChannel.Reader.ReadAsync(cancellationToken).ConfigureAwait(false);
             if (frame == null)
-                throw new IOException("Failed to read Headers frame.")
+                throw new IOException("Failed to read Headers frame.");
 
-            Assert.Equal(FrameType.Headers, frame.Type)
-            Assert.Equal(FrameFlags.EndHeaders, frame.Flags & FrameFlags.EndHeaders)
+            Assert.Equal(FrameType.Headers, frame.Type);
+            Assert.Equal(FrameFlags.EndHeaders, frame.Flags & FrameFlags.EndHeaders);
             if (expectEndOfStream)
-                Assert.Equal(FrameFlags.EndStream, frame.Flags & FrameFlags.EndStream)
-            return (HeadersFrame)frame
+                Assert.Equal(FrameFlags.EndStream, frame.Flags & FrameFlags.EndStream);
+            return (HeadersFrame)frame;
 
         private async Task<int> ReadRequestHeaderAsync(bool expectEndOfStream = true, CancellationToken cancellationToken = default)
-            HeadersFrame frame = await ReadRequestHeaderFrameAsync(expectEndOfStream, cancellationToken)
-            return frame.StreamId
+            HeadersFrame frame = await ReadRequestHeaderFrameAsync(expectEndOfStream, cancellationToken);
+            return frame.StreamId;

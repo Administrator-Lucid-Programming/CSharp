@@ -1,64 +1,64 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System
-using System.Diagnostics
-using System.Diagnostics.CodeAnalysis
-using System.Linq
-using Microsoft.Diagnostics.DataContractReader.Contracts.Extensions
-using Microsoft.Diagnostics.DataContractReader.Data
-using static Microsoft.Diagnostics.DataContractReader.Contracts.StackWalkHelpers.AMD64Context
+using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Linq;
+using Microsoft.Diagnostics.DataContractReader.Contracts.Extensions;
+using Microsoft.Diagnostics.DataContractReader.Data;
+using static Microsoft.Diagnostics.DataContractReader.Contracts.StackWalkHelpers.AMD64Context;
 
 namespace Microsoft.Diagnostics.DataContractReader.Contracts.StackWalkHelpers.AMD64;
 
 internal class AMD64Unwinder(Target target)
-    private const byte SIZE64_PREFIX = 0x48
-    private const byte ADD_IMM8_OP = 0x83
-    private const byte ADD_IMM32_OP = 0x81
-    private const byte JMP_IMM8_OP = 0xeb
-    private const byte JMP_IMM32_OP = 0xe9
-    private const byte JMP_IND_OP = 0xff
-    private const byte LEA_OP = 0x8d
-    private const byte REPNE_PREFIX = 0xf2
-    private const byte REP_PREFIX = 0xf3
-    private const byte POP_OP = 0x58
-    private const byte RET_OP = 0xc3
-    private const byte RET_OP_2 = 0xc2
+    private const byte SIZE64_PREFIX = 0x48;
+    private const byte ADD_IMM8_OP = 0x83;
+    private const byte ADD_IMM32_OP = 0x81;
+    private const byte JMP_IMM8_OP = 0xeb;
+    private const byte JMP_IMM32_OP = 0xe9;
+    private const byte JMP_IND_OP = 0xff;
+    private const byte LEA_OP = 0x8d;
+    private const byte REPNE_PREFIX = 0xf2;
+    private const byte REP_PREFIX = 0xf3;
+    private const byte POP_OP = 0x58;
+    private const byte RET_OP = 0xc3;
+    private const byte RET_OP_2 = 0xc2;
 
-    private const uint UNWIND_CHAIN_LIMIT = 32
+    private const uint UNWIND_CHAIN_LIMIT = 32;
 
-    private readonly Target _target = target
-    private readonly IExecutionManager _eman = target.Contracts.ExecutionManager
+    private readonly Target _target = target;
+    private readonly IExecutionManager _eman = target.Contracts.ExecutionManager;
 
-    private readonly bool _unixAMD64ABI = target.Contracts.RuntimeInfo.GetTargetOperatingSystem() != RuntimeInfoOperatingSystem.Windows
+    private readonly bool _unixAMD64ABI = target.Contracts.RuntimeInfo.GetTargetOperatingSystem() != RuntimeInfoOperatingSystem.Windows;
 
     public bool Unwind(ref AMD64Context context)
-        ulong branchTarget
-        uint epilogueOffset = 0
-        TargetPointer establisherFrame
-        uint frameOffset
-        uint frameRegister = 0
-        uint index
-        bool inEpilogue = false
-        Data.RuntimeFunction? primaryFunctionEntry
-        UnwindCode unwindOp
+        ulong branchTarget;
+        uint epilogueOffset = 0;
+        TargetPointer establisherFrame;
+        uint frameOffset;
+        uint frameRegister = 0;
+        uint index;
+        bool inEpilogue = false;
+        Data.RuntimeFunction? primaryFunctionEntry;
+        UnwindCode unwindOp;
 
         if (_eman.GetCodeBlockHandle(context.InstructionPointer) is not CodeBlockHandle cbh)
-            return false
+            return false;
 
-        TargetPointer controlPC = context.InstructionPointer.AsTargetPointer
+        TargetPointer controlPC = context.InstructionPointer.AsTargetPointer;
 
-        TargetPointer imageBase = _eman.GetUnwindInfoBaseAddress(cbh)
-        TargetPointer unwindInfoAddr = _eman.GetUnwindInfo(cbh)
+        TargetPointer imageBase = _eman.GetUnwindInfoBaseAddress(cbh);
+        TargetPointer unwindInfoAddr = _eman.GetUnwindInfo(cbh);
 
         if (unwindInfoAddr == TargetPointer.Null)
-            return false
+            return false;
 
-        Data.RuntimeFunction functionEntry = _target.ProcessedData.GetOrAdd<Data.RuntimeFunction>(unwindInfoAddr)
+        Data.RuntimeFunction functionEntry = _target.ProcessedData.GetOrAdd<Data.RuntimeFunction>(unwindInfoAddr);
         if (functionEntry.EndAddress is null)
-            return false
+            return false;
         if (GetUnwindInfoHeader(imageBase + functionEntry.UnwindData) is not UnwindInfoHeader unwindInfo)
-            return false
+            return false;
 
         //
         // If the specified function does not use a frame pointer, then the
@@ -91,11 +91,11 @@ internal class AMD64Unwinder(Target target)
         //      unwind codes.
         //
 
-        uint prologOffset = (uint)(controlPC - (functionEntry.BeginAddress + imageBase))
+        uint prologOffset = (uint)(controlPC - (functionEntry.BeginAddress + imageBase));
         if (unwindInfo.FrameRegister == 0)
-            establisherFrame = context.StackPointer
+            establisherFrame = context.StackPointer;
         else if ((prologOffset >= unwindInfo.SizeOfProlog) || unwindInfo.Flags.HasFlag(UnwindInfoHeader.Flag.UNW_FLAG_CHAININFO))
-            frameOffset = unwindInfo.FrameOffset
+            frameOffset = unwindInfo.FrameOffset;
 
             if (_unixAMD64ABI)
                 // If UnwindInfo->FrameOffset == 15 (the maximum value), then there might be a UWOP_SET_FPREG_LARGE.
@@ -104,37 +104,37 @@ internal class AMD64Unwinder(Target target)
                 // if there is indeed a UWOP_SET_FPREG_LARGE. If we don't find UWOP_SET_FPREG_LARGE, then just use
                 // (scaled) FrameOffset of 240, as before. (We don't verify there is a UWOP_SET_FPREG code, but we could.)
                 if (frameOffset == 15)
-                    index = 0
+                    index = 0;
                     while (index < unwindInfo.CountOfUnwindCodes)
-                        unwindOp = GetUnwindCode(unwindInfo, index)
+                        unwindOp = GetUnwindCode(unwindInfo, index);
                         if (unwindOp.UnwindOp == UnwindCode.OpCodes.UWOP_SET_FPREG_LARGE)
-                            frameOffset = GetUnwindCode(unwindInfo, index + 1).FrameOffset
-                            frameOffset += (uint)(GetUnwindCode(unwindInfo, index + 2).FrameOffset << 16)
-                            break
-                        index += unwindOp.UnwindOpSlots()
+                            frameOffset = GetUnwindCode(unwindInfo, index + 1).FrameOffset;
+                            frameOffset += (uint)(GetUnwindCode(unwindInfo, index + 2).FrameOffset << 16);
+                            break;
+                        index += unwindOp.UnwindOpSlots();
 
-            establisherFrame = GetRegister(context, unwindInfo.FrameRegister)
-            establisherFrame -= frameOffset * 16
+            establisherFrame = GetRegister(context, unwindInfo.FrameRegister);
+            establisherFrame -= frameOffset * 16;
         else
-            frameOffset = unwindInfo.FrameOffset
-            index = 0
+            frameOffset = unwindInfo.FrameOffset;
+            index = 0;
             while (index < unwindInfo.CountOfUnwindCodes)
-                unwindOp = GetUnwindCode(unwindInfo, index)
+                unwindOp = GetUnwindCode(unwindInfo, index);
                 if (unwindOp.UnwindOp == UnwindCode.OpCodes.UWOP_SET_FPREG)
-                    break
+                    break;
                 if (_unixAMD64ABI)
                     if (unwindOp.UnwindOp == UnwindCode.OpCodes.UWOP_SET_FPREG_LARGE)
-                        UnwinderAssert(unwindInfo.FrameOffset == 15, "FrameOffset should be 15 for UWOP_SET_FPREG_LARGE.")
-                        frameOffset = GetUnwindCode(unwindInfo, index + 1).FrameOffset
-                        frameOffset += (uint)(GetUnwindCode(unwindInfo, index + 2).FrameOffset << 16)
-                        break
-                index += unwindOp.UnwindOpSlots()
+                        UnwinderAssert(unwindInfo.FrameOffset == 15, "FrameOffset should be 15 for UWOP_SET_FPREG_LARGE.");
+                        frameOffset = GetUnwindCode(unwindInfo, index + 1).FrameOffset;
+                        frameOffset += (uint)(GetUnwindCode(unwindInfo, index + 2).FrameOffset << 16);
+                        break;
+                index += unwindOp.UnwindOpSlots();
 
             if (prologOffset >= GetUnwindCode(unwindInfo, index).CodeOffset)
-                establisherFrame = GetRegister(context, unwindInfo.FrameRegister)
-                establisherFrame -= frameOffset * 16
+                establisherFrame = GetRegister(context, unwindInfo.FrameRegister);
+                establisherFrame -= frameOffset * 16;
             else
-                establisherFrame = context.Rsp
+                establisherFrame = context.Rsp;
 
         //
         // Check if control left the specified function during an epilogue
@@ -147,9 +147,9 @@ internal class AMD64Unwinder(Target target)
         //
 
         if (unwindInfo.Version < 2)
-            byte ReadByteAt(TargetPointer address) => _target.Contracts.Debugger.ReadInstructionByte(address)
+            byte ReadByteAt(TargetPointer address) => _target.Contracts.Debugger.ReadInstructionByte(address);
 
-            TargetPointer nextByte = controlPC
+            TargetPointer nextByte = controlPC;
 
             //
             // Check for one of:
@@ -170,7 +170,7 @@ internal class AMD64Unwinder(Target target)
                 // add rsp, imm8.
                 //
 
-                nextByte += 4
+                nextByte += 4;
             else if ((ReadByteAt(nextByte) == SIZE64_PREFIX) &&
                 (ReadByteAt(nextByte + 1) == ADD_IMM32_OP) &&
                 (ReadByteAt(nextByte + 2) == 0xc4))
@@ -178,10 +178,10 @@ internal class AMD64Unwinder(Target target)
                 // add rsp, imm32.
                 //
 
-                nextByte += 7
+                nextByte += 7;
             else if (((ReadByteAt(nextByte) & 0xfe) == SIZE64_PREFIX) &&
                 (ReadByteAt(nextByte + 1) == LEA_OP))
-                frameRegister = (uint)(((ReadByteAt(nextByte) & 0x1) << 3) | (ReadByteAt(nextByte + 2) & 0x7))
+                frameRegister = (uint)(((ReadByteAt(nextByte) & 0x1) << 3) | (ReadByteAt(nextByte + 2) & 0x7));
 
                 if ((frameRegister != 0) &&
                     (frameRegister == unwindInfo.FrameRegister))
@@ -190,13 +190,13 @@ internal class AMD64Unwinder(Target target)
                         // lea rsp, disp8[fp].
                         //
 
-                        nextByte += 4
+                        nextByte += 4;
                     else if ((ReadByteAt(nextByte + 2) & 0xf8) == 0xa0)
                         //
                         // lea rsp, disp32[fp].
                         //
 
-                        nextByte += 7
+                        nextByte += 7;
 
             //
             // Check for any number of:
@@ -206,12 +206,12 @@ internal class AMD64Unwinder(Target target)
 
             while (true)
                 if ((ReadByteAt(nextByte) & 0xf8) == POP_OP)
-                    nextByte += 1
+                    nextByte += 1;
                 else if (IsRexPrefix(ReadByteAt(nextByte)) &&
                     ((ReadByteAt(nextByte + 1) & 0xf8) == POP_OP))
-                    nextByte += 2
+                    nextByte += 2;
                 else
-                    break
+                    break;
 
             //
             // A REPNE prefix may optionally precede a control transfer
@@ -219,7 +219,7 @@ internal class AMD64Unwinder(Target target)
             //
 
             if (ReadByteAt(nextByte) == REPNE_PREFIX)
-                nextByte += 1
+                nextByte += 1;
 
             //
             // If the next instruction is a return or an appropriate jump, then
@@ -228,7 +228,7 @@ internal class AMD64Unwinder(Target target)
             // the prologue should be unwound.
             //
 
-            inEpilogue = false
+            inEpilogue = false;
             if ((ReadByteAt(nextByte) == RET_OP) ||
                 (ReadByteAt(nextByte) == RET_OP_2) ||
                 ((ReadByteAt(nextByte) == REP_PREFIX) && (ReadByteAt(nextByte + 1) == RET_OP)))
@@ -236,7 +236,7 @@ internal class AMD64Unwinder(Target target)
                 // A return is an unambiguous indication of an epilogue.
                 //
 
-                inEpilogue = true
+                inEpilogue = true;
             else if ((ReadByteAt(nextByte) == JMP_IMM8_OP) ||
                 (ReadByteAt(nextByte) == JMP_IMM32_OP))
                 //
@@ -244,14 +244,14 @@ internal class AMD64Unwinder(Target target)
                 // or outside of this routine is logically a call to another function.
                 //
 
-                branchTarget = nextByte - imageBase
+                branchTarget = nextByte - imageBase;
                 if (ReadByteAt(nextByte) == JMP_IMM8_OP)
                     // sign-extend the 8-bit immediate value
-                    branchTarget += 2u + (ulong)(sbyte)ReadByteAt(nextByte + 1)
+                    branchTarget += 2u + (ulong)(sbyte)ReadByteAt(nextByte + 1);
                 else
                     // sign-extend the 32-bit immediate value
-                    int delta = ReadByteAt(nextByte + 1) | (ReadByteAt(nextByte + 2) << 8) | (ReadByteAt(nextByte + 3) << 16) | (ReadByteAt(nextByte + 4) << 24)
-                    branchTarget += (ulong)(5 + delta)
+                    int delta = ReadByteAt(nextByte + 1) | (ReadByteAt(nextByte + 2) << 8) | (ReadByteAt(nextByte + 3) << 16) | (ReadByteAt(nextByte + 4) << 24);
+                    branchTarget += (ulong)(5 + delta);
 
                 //
                 // Determine whether the branch target refers to code within this
@@ -280,11 +280,11 @@ internal class AMD64Unwinder(Target target)
 
                     if ((primaryFunctionEntry is null) ||
                         (branchTarget == primaryFunctionEntry.BeginAddress))
-                        inEpilogue = true
+                        inEpilogue = true;
 
                 else if ((branchTarget == functionEntry.BeginAddress) &&
                     (!unwindInfo.Flags.HasFlag(UnwindInfoHeader.Flag.UNW_FLAG_CHAININFO)))
-                    inEpilogue = true
+                    inEpilogue = true;
 
             else if ((ReadByteAt(nextByte) == JMP_IND_OP) && (ReadByteAt(nextByte + 1) == 0x25))
                 //
@@ -294,7 +294,7 @@ internal class AMD64Unwinder(Target target)
                 // to an import function.
                 //
 
-                inEpilogue = true
+                inEpilogue = true;
             else if (((ReadByteAt(nextByte) & 0xf8) == SIZE64_PREFIX) &&
                 (ReadByteAt(nextByte + 1) == 0xff) &&
                 (ReadByteAt(nextByte + 2) & 0x38) == 0x20)
@@ -307,10 +307,10 @@ internal class AMD64Unwinder(Target target)
                 // Such an opcode is an unambiguous epilogue indication.
                 //
 
-                inEpilogue = true
+                inEpilogue = true;
 
             if (inEpilogue)
-                nextByte = controlPC
+                nextByte = controlPC;
 
                 //
                 // Emulate one of (if any):
@@ -330,17 +330,17 @@ internal class AMD64Unwinder(Target target)
                         // add rsp, imm8.
                         //
 
-                        context.Rsp += ReadByteAt(nextByte + 3)
-                        nextByte += 4
+                        context.Rsp += ReadByteAt(nextByte + 3);
+                        nextByte += 4;
 
                     else if (ReadByteAt(nextByte + 1) == ADD_IMM32_OP)
                         //
                         // add rsp, imm32.
                         //
 
-                        int displacement = ReadByteAt(nextByte + 3) | (ReadByteAt(nextByte + 4) << 8) | (ReadByteAt(nextByte + 5) << 16) | (ReadByteAt(nextByte + 6) << 24)
-                        context.Rsp += (uint)displacement
-                        nextByte += 7
+                        int displacement = ReadByteAt(nextByte + 3) | (ReadByteAt(nextByte + 4) << 8) | (ReadByteAt(nextByte + 5) << 16) | (ReadByteAt(nextByte + 6) << 24);
+                        context.Rsp += (uint)displacement;
+                        nextByte += 7;
 
                     else if (ReadByteAt(nextByte + 1) == LEA_OP)
                         if ((ReadByteAt(nextByte + 2) & 0xf8) == 0x60)
@@ -348,19 +348,19 @@ internal class AMD64Unwinder(Target target)
                             // lea rsp, disp8[frame-register].
                             //
 
-                            context.Rsp = GetRegister(context, (byte)frameRegister)
-                            context.Rsp += ReadByteAt(nextByte + 3)
-                            nextByte += 4
+                            context.Rsp = GetRegister(context, (byte)frameRegister);
+                            context.Rsp += ReadByteAt(nextByte + 3);
+                            nextByte += 4;
 
                         else if ((ReadByteAt(nextByte + 2) & 0xf8) == 0xa0)
                             //
                             // lea rsp, disp32[frame-register].
                             //
 
-                            int displacement = ReadByteAt(nextByte + 3) | (ReadByteAt(nextByte + 4) << 8) | (ReadByteAt(nextByte + 5) << 16) | (ReadByteAt(nextByte + 6) << 24)
-                            context.Rsp = GetRegister(context, (byte)frameRegister)
-                            context.Rsp += (uint)displacement
-                            nextByte += 7
+                            int displacement = ReadByteAt(nextByte + 3) | (ReadByteAt(nextByte + 4) << 8) | (ReadByteAt(nextByte + 5) << 16) | (ReadByteAt(nextByte + 6) << 24);
+                            context.Rsp = GetRegister(context, (byte)frameRegister);
+                            context.Rsp += (uint)displacement;
+                            nextByte += 7;
 
                 //
                 // Emulate any number of (if any):
@@ -374,24 +374,24 @@ internal class AMD64Unwinder(Target target)
                         // pop nonvolatile-integer-register[0..7]
                         //
 
-                        byte registerNumber = (byte)(ReadByteAt(nextByte) & 0x7)
-                        SetRegister(ref context, registerNumber, _target.Read<ulong>(context.Rsp))
+                        byte registerNumber = (byte)(ReadByteAt(nextByte) & 0x7);
+                        SetRegister(ref context, registerNumber, _target.Read<ulong>(context.Rsp));
 
-                        context.Rsp += 8
-                        nextByte += 1
+                        context.Rsp += 8;
+                        nextByte += 1;
                     else if (IsRexPrefix(ReadByteAt(nextByte)) &&
                         (ReadByteAt(nextByte + 1) & 0xf8) == POP_OP)
                         //
                         // pop nonvolatile-integer-register[8..15]
                         //
 
-                        byte registerNumber = (byte)(((ReadByteAt(nextByte) & 1) << 3) | (ReadByteAt(nextByte + 1) & 0x7))
-                        SetRegister(ref context, registerNumber, _target.Read<ulong>(context.Rsp))
+                        byte registerNumber = (byte)(((ReadByteAt(nextByte) & 1) << 3) | (ReadByteAt(nextByte + 1) & 0x7));
+                        SetRegister(ref context, registerNumber, _target.Read<ulong>(context.Rsp));
 
-                        context.Rsp += 8
-                        nextByte += 2
+                        context.Rsp += 8;
+                        nextByte += 2;
                     else
-                        break
+                        break;
 
                 //
                 // Emulate return and return null exception handler.
@@ -400,11 +400,11 @@ internal class AMD64Unwinder(Target target)
                 //       we want to emulate a return regardless.
                 //
 
-                context.Rip = _target.Read<ulong>(context.Rsp)
-                context.Rsp += 8
-                return true
+                context.Rip = _target.Read<ulong>(context.Rsp);
+                context.Rsp += 8;
+                return true;
         else if (unwindInfo.CountOfUnwindCodes != 0)
-            UnwinderAssert(unwindInfo.Version >= 2)
+            UnwinderAssert(unwindInfo.Version >= 2);
 
             //
             // Capture the first unwind code and check if it is an epilogue code.
@@ -414,11 +414,11 @@ internal class AMD64Unwinder(Target target)
             // returns).
             //
 
-            unwindOp = GetUnwindCode(unwindInfo, 0)
+            unwindOp = GetUnwindCode(unwindInfo, 0);
             if (unwindOp.UnwindOp == UnwindCode.OpCodes.UWOP_EPILOG)
-                uint epilogueSize = unwindOp.CodeOffset
+                uint epilogueSize = unwindOp.CodeOffset;
 
-                UnwinderAssert(epilogueSize != 0)
+                UnwinderAssert(epilogueSize != 0);
 
                 //
                 // If the low bit of the OpInfo field of the first epilogue code
@@ -433,18 +433,18 @@ internal class AMD64Unwinder(Target target)
                 //      entry. Such a region cannot contain any epilogues.
                 //
 
-                uint relativePC = (uint)(controlPC - imageBase)
+                uint relativePC = (uint)(controlPC - imageBase);
                 if ((unwindOp.OpInfo & 0x1) != 0)
-                    epilogueOffset = functionEntry.EndAddress.Value - epilogueSize
+                    epilogueOffset = functionEntry.EndAddress.Value - epilogueSize;
                     if (relativePC - epilogueOffset < epilogueSize)
-                        inEpilogue = true
+                        inEpilogue = true;
 
                 if (!inEpilogue)
                     for (uint i = 1; i < unwindInfo.CountOfUnwindCodes; i += 1)
-                        unwindOp = GetUnwindCode(unwindInfo, i)
+                        unwindOp = GetUnwindCode(unwindInfo, i);
 
                         if (unwindOp.UnwindOp == UnwindCode.OpCodes.UWOP_EPILOG)
-                            epilogueOffset = unwindOp.CodeOffset + unwindOp.OpInfo * 256u
+                            epilogueOffset = unwindOp.CodeOffset + unwindOp.OpInfo * 256u;
 
                             //
                             // An epilogue offset of 0 indicates that this is
@@ -453,16 +453,16 @@ internal class AMD64Unwinder(Target target)
                             //
 
                             if (epilogueOffset == 0)
-                                break
+                                break;
 
-                            epilogueOffset = functionEntry.EndAddress.Value - epilogueOffset
+                            epilogueOffset = functionEntry.EndAddress.Value - epilogueOffset;
                             if (relativePC - epilogueOffset < epilogueSize)
-                                UnwinderAssert(epilogueOffset != functionEntry.EndAddress.Value)
-                                inEpilogue = true
-                                break
+                                UnwinderAssert(epilogueOffset != functionEntry.EndAddress.Value);
+                                inEpilogue = true;
+                                break;
 
                         else
-                            break
+                            break;
 
                 if (inEpilogue)
                     return UnwindEpilogue(
@@ -478,7 +478,7 @@ internal class AMD64Unwinder(Target target)
         //
 
         if (!UnwindPrologue(ref context, controlPC, imageBase, establisherFrame, functionEntry))
-            return false
+            return false;
 
         //
         // If control left the specified function outside of the prologue and
@@ -489,7 +489,7 @@ internal class AMD64Unwinder(Target target)
 
         // The cDAC doesn't care about handlers and therefore that logic is omitted
 
-        return true
+        return true;
 
     private bool UnwindEpilogue(
         ref AMD64Context context,
@@ -544,29 +544,29 @@ internal class AMD64Unwinder(Target target)
         // root function entry of a chained function.
         //
 
-        uint relativePC = (uint)(controlPC - imageBase)
-        uint offsetIntoEpilogue = relativePC - epilogueOffset
+        uint relativePC = (uint)(controlPC - imageBase);
+        uint offsetIntoEpilogue = relativePC - epilogueOffset;
 
-        UnwindInfoHeader? unwindInfo
-        uint chainCount = 0
-        uint firstPushIndex
-        UnwindCode unwindOp = default
+        UnwindInfoHeader? unwindInfo;
+        uint chainCount = 0;
+        uint firstPushIndex;
+        UnwindCode unwindOp = default;
         while (true)
-            unwindInfo = GetUnwindInfoHeader(functionEntry.UnwindData + imageBase)
+            unwindInfo = GetUnwindInfoHeader(functionEntry.UnwindData + imageBase);
             if (unwindInfo is null)
-                return false
+                return false;
 
-            firstPushIndex = 0
+            firstPushIndex = 0;
             while (firstPushIndex < unwindInfo.Value.CountOfUnwindCodes)
-                unwindOp = GetUnwindCode(unwindInfo.Value, firstPushIndex)
+                unwindOp = GetUnwindCode(unwindInfo.Value, firstPushIndex);
                 if (unwindOp.UnwindOp == UnwindCode.OpCodes.UWOP_PUSH_NONVOL ||
                     unwindOp.UnwindOp == UnwindCode.OpCodes.UWOP_PUSH_MACHFRAME)
-                    break
+                    break;
 
-                firstPushIndex += unwindOp.UnwindOpSlots()
+                firstPushIndex += unwindOp.UnwindOpSlots();
 
             if (firstPushIndex < unwindInfo.Value.CountOfUnwindCodes)
-                break
+                break;
 
             //
             // If a chained parent function entry exists, continue looking for
@@ -574,39 +574,39 @@ internal class AMD64Unwinder(Target target)
             //
 
             if (!unwindInfo.Value.Flags.HasFlag(UnwindInfoHeader.Flag.UNW_FLAG_CHAININFO))
-                break
+                break;
 
-            chainCount++
+            chainCount++;
             if (chainCount > UNWIND_CHAIN_LIMIT)
                 // Too many chained unwind entries, stop unwinding.
-                return false
+                return false;
 
-            functionEntry = _target.ProcessedData.GetOrAdd<Data.RuntimeFunction>(unwindInfo.Value.GetChainedEntryAddress())
+            functionEntry = _target.ProcessedData.GetOrAdd<Data.RuntimeFunction>(unwindInfo.Value.GetChainedEntryAddress());
 
         //
         // Unwind any push codes that have not already been reversed by the
         // epilogue.
         //
 
-        uint currentOffset = 0
-        uint index
+        uint currentOffset = 0;
+        uint index;
         for (index = firstPushIndex; index < unwindInfo.Value.CountOfUnwindCodes; index++)
-            unwindOp = GetUnwindCode(unwindInfo.Value, index)
+            unwindOp = GetUnwindCode(unwindInfo.Value, index);
             if (unwindOp.UnwindOp != UnwindCode.OpCodes.UWOP_PUSH_NONVOL)
-                break
+                break;
 
             if (currentOffset >= offsetIntoEpilogue)
-                SetRegister(ref context, unwindOp.OpInfo, _target.Read<ulong>(context.Rsp))
-                context.Rsp += 8
+                SetRegister(ref context, unwindOp.OpInfo, _target.Read<ulong>(context.Rsp));
+                context.Rsp += 8;
 
             //
             // POP r64 is encoded as (58h + r64) for the lower 8 general-purpose
             // registers and REX.R, (58h + r64) for r8 - r15.
             //
 
-            currentOffset += 1
+            currentOffset += 1;
             if (unwindOp.OpInfo >= 8)
-                currentOffset += 1
+                currentOffset += 1;
 
         //
         // Check for an UWOP_ALLOC_SMALL 8 directive, which corresponds to a push
@@ -616,31 +616,31 @@ internal class AMD64Unwinder(Target target)
         if ((index < unwindInfo.Value.CountOfUnwindCodes) &&
             (unwindOp.UnwindOp == UnwindCode.OpCodes.UWOP_ALLOC_SMALL) && (unwindOp.OpInfo == 0))
             if (currentOffset >= offsetIntoEpilogue)
-                context.Rsp += 8
+                context.Rsp += 8;
 
             // currentOffset += 1;
-            index += 1
+            index += 1;
 
         //
         // Check for a machine frame.
         //
 
         if (index < unwindInfo.Value.CountOfUnwindCodes)
-            unwindOp = GetUnwindCode(unwindInfo.Value, index)
+            unwindOp = GetUnwindCode(unwindInfo.Value, index);
             if (unwindOp.UnwindOp == UnwindCode.OpCodes.UWOP_PUSH_MACHFRAME)
-                context.Rip = _target.ReadPointer(context.Rsp)
-                context.Rsp = _target.ReadPointer(context.Rsp + (3 * 8))
-                return true
+                context.Rip = _target.ReadPointer(context.Rsp);
+                context.Rsp = _target.ReadPointer(context.Rsp + (3 * 8));
+                return true;
 
-            Debug.Fail("Any remaining operation must be a machine frame")
+            Debug.Fail("Any remaining operation must be a machine frame");
 
         //
         // Emulate a return operation.
         //
 
-        context.Rip = _target.ReadPointer(context.Rsp)
-        context.Rsp += 8
-        return true
+        context.Rip = _target.ReadPointer(context.Rsp);
+        context.Rsp += 8;
+        return true;
 
     private bool UnwindPrologue(
         ref AMD64Context context,
@@ -648,15 +648,15 @@ internal class AMD64Unwinder(Target target)
         TargetPointer imageBase,
         TargetPointer frameBase,
         Data.RuntimeFunction functionEntry)
-        uint chainCount = 0
+        uint chainCount = 0;
 
         while (true)
-            uint index = 0
-            bool machineFrame = false
-            uint prologOffset = (uint)(controlPC - (functionEntry.BeginAddress + imageBase))
+            uint index = 0;
+            bool machineFrame = false;
+            uint prologOffset = (uint)(controlPC - (functionEntry.BeginAddress + imageBase));
 
             if (GetUnwindInfoHeader(imageBase + functionEntry.UnwindData) is not UnwindInfoHeader unwindInfo)
-                return false
+                return false;
 
             while (index < unwindInfo.CountOfUnwindCodes)
                 //
@@ -664,17 +664,17 @@ internal class AMD64Unwinder(Target target)
                 // offset, then simulate the effect of the unwind code.
                 //
 
-                UnwindCode unwindOp = GetUnwindCode(unwindInfo, index)
+                UnwindCode unwindOp = GetUnwindCode(unwindInfo, index);
 
                 if (_unixAMD64ABI)
                     if (unwindOp.UnwindOp > UnwindCode.OpCodes.UWOP_SET_FPREG_LARGE)
-                        Debug.Fail("Expected unwind code")
-                        return false
+                        Debug.Fail("Expected unwind code");
+                        return false;
                 else
-                    Debug.Assert(_target.Contracts.RuntimeInfo.GetTargetOperatingSystem() == RuntimeInfoOperatingSystem.Windows)
+                    Debug.Assert(_target.Contracts.RuntimeInfo.GetTargetOperatingSystem() == RuntimeInfoOperatingSystem.Windows);
                     if (unwindOp.UnwindOp > UnwindCode.OpCodes.UWOP_PUSH_MACHFRAME)
-                        Debug.Fail("Expected unwind code")
-                        return false
+                        Debug.Fail("Expected unwind code");
+                        return false;
 
                 if (prologOffset >= unwindOp.CodeOffset)
                     switch (unwindOp.UnwindOp)
@@ -685,9 +685,9 @@ internal class AMD64Unwinder(Target target)
                         // the register than was pushed.
                         //
                         case UnwindCode.OpCodes.UWOP_PUSH_NONVOL:
-                                SetRegister(ref context, unwindOp.OpInfo, _target.ReadPointer(context.Rsp))
-                                context.Rsp += 8
-                                break
+                                SetRegister(ref context, unwindOp.OpInfo, _target.ReadPointer(context.Rsp));
+                                context.Rsp += 8;
+                                break;
 
                         //
                         // Allocate a large sized area on the stack.
@@ -696,19 +696,19 @@ internal class AMD64Unwinder(Target target)
                         // 16- or 32-bits.
                         //
                         case UnwindCode.OpCodes.UWOP_ALLOC_LARGE:
-                                index++
-                                UnwindCode nextUnwindOp = GetUnwindCode(unwindInfo, index)
-                                uint frameOffset = nextUnwindOp.FrameOffset
+                                index++;
+                                UnwindCode nextUnwindOp = GetUnwindCode(unwindInfo, index);
+                                uint frameOffset = nextUnwindOp.FrameOffset;
                                 if (unwindOp.OpInfo != 0)
-                                    index++
-                                    nextUnwindOp = GetUnwindCode(unwindInfo, index)
-                                    frameOffset += (uint)(nextUnwindOp.FrameOffset << 16)
+                                    index++;
+                                    nextUnwindOp = GetUnwindCode(unwindInfo, index);
+                                    frameOffset += (uint)(nextUnwindOp.FrameOffset << 16);
                                 else
                                     // The 16-bit form is scaled.
-                                    frameOffset *= 8
+                                    frameOffset *= 8;
 
-                                context.Rsp += frameOffset
-                                break
+                                context.Rsp += frameOffset;
+                                break;
 
                         //
                         // Allocate a small sized area on the stack.
@@ -717,8 +717,8 @@ internal class AMD64Unwinder(Target target)
                         // allocation size (8 is the scale factor) minus 8.
                         //
                         case UnwindCode.OpCodes.UWOP_ALLOC_SMALL:
-                                context.Rsp += (unwindOp.OpInfo * 8u) + 8u
-                                break
+                                context.Rsp += (unwindOp.OpInfo * 8u) + 8u;
+                                break;
 
                         //
                         // Establish the frame pointer register.
@@ -726,9 +726,9 @@ internal class AMD64Unwinder(Target target)
                         // The operation information is not used.
                         //
                         case UnwindCode.OpCodes.UWOP_SET_FPREG:
-                                context.Rsp = GetRegister(context, unwindInfo.FrameRegister)
-                                context.Rsp -= unwindInfo.FrameOffset * 16u
-                                break
+                                context.Rsp = GetRegister(context, unwindInfo.FrameRegister);
+                                context.Rsp -= unwindInfo.FrameOffset * 16u;
+                                break;
 
                         //
                         // Establish the frame pointer register using a large size displacement.
@@ -738,17 +738,17 @@ internal class AMD64Unwinder(Target target)
                         // Unix only.
                         //
                         case UnwindCode.OpCodes.UWOP_SET_FPREG_LARGE:
-                                UnwinderAssert(_unixAMD64ABI)
-                                UnwinderAssert(unwindInfo.FrameOffset == 15)
-                                uint frameOffset = GetUnwindCode(unwindInfo, index + 1).FrameOffset
-                                frameOffset += (uint)(GetUnwindCode(unwindInfo, index + 2).FrameOffset << 16)
-                                UnwinderAssert((frameOffset & 0xF0000000) == 0)
+                                UnwinderAssert(_unixAMD64ABI);
+                                UnwinderAssert(unwindInfo.FrameOffset == 15);
+                                uint frameOffset = GetUnwindCode(unwindInfo, index + 1).FrameOffset;
+                                frameOffset += (uint)(GetUnwindCode(unwindInfo, index + 2).FrameOffset << 16);
+                                UnwinderAssert((frameOffset & 0xF0000000) == 0);
 
-                                context.Rsp = GetRegister(context, unwindInfo.FrameRegister)
-                                context.Rsp -= frameOffset * 16
+                                context.Rsp = GetRegister(context, unwindInfo.FrameRegister);
+                                context.Rsp -= frameOffset * 16;
 
-                                index += 2
-                                break
+                                index += 2;
+                                break;
 
                         //
                         // Save nonvolatile integer register on the stack using a
@@ -757,10 +757,10 @@ internal class AMD64Unwinder(Target target)
                         // The operation information is the register number.
                         //
                         case UnwindCode.OpCodes.UWOP_SAVE_NONVOL:
-                                uint frameOffset = GetUnwindCode(unwindInfo, index + 1).FrameOffset * 8u
-                                SetRegister(ref context, unwindOp.OpInfo, _target.ReadPointer(frameBase + frameOffset))
-                                index += 1
-                                break
+                                uint frameOffset = GetUnwindCode(unwindInfo, index + 1).FrameOffset * 8u;
+                                SetRegister(ref context, unwindOp.OpInfo, _target.ReadPointer(frameBase + frameOffset));
+                                index += 1;
+                                break;
 
                         //
                         // Save nonvolatile integer register on the stack using a
@@ -769,26 +769,26 @@ internal class AMD64Unwinder(Target target)
                         // The operation information is the register number.
                         //
                         case UnwindCode.OpCodes.UWOP_SAVE_NONVOL_FAR:
-                                uint frameOffset = GetUnwindCode(unwindInfo, index + 1).FrameOffset
-                                frameOffset += (uint)(GetUnwindCode(unwindInfo, index + 2).FrameOffset << 16)
-                                SetRegister(ref context, unwindOp.OpInfo, _target.ReadPointer(frameBase + frameOffset))
-                                index += 2
-                                break
+                                uint frameOffset = GetUnwindCode(unwindInfo, index + 1).FrameOffset;
+                                frameOffset += (uint)(GetUnwindCode(unwindInfo, index + 2).FrameOffset << 16);
+                                SetRegister(ref context, unwindOp.OpInfo, _target.ReadPointer(frameBase + frameOffset));
+                                index += 2;
+                                break;
 
                         //
                         // Function epilog marker (ignored for prologue unwind).
                         //
                         case UnwindCode.OpCodes.UWOP_EPILOG:
-                            index += 1
-                            break
+                            index += 1;
+                            break;
 
                         //
                         // Spare unused codes.
                         //
                         case UnwindCode.OpCodes.UWOP_SPARE_CODE:
-                            UnwinderAssert(false)
-                            index += 2
-                            break
+                            UnwinderAssert(false);
+                            index += 2;
+                            break;
 
                         //
                         // Save a nonvolatile XMM(128) register on the stack using a
@@ -797,9 +797,9 @@ internal class AMD64Unwinder(Target target)
                         // The operation information is the register number.
                         //
                         case UnwindCode.OpCodes.UWOP_SAVE_XMM128:
-                            index += 1
+                            index += 1;
                             // Operation not currently supported by the cDAC.
-                            break
+                            break;
 
                         //
                         // Save a nonvolatile XMM(128) register on the stack using
@@ -808,9 +808,9 @@ internal class AMD64Unwinder(Target target)
                         // The operation information is the register number.
                         //
                         case UnwindCode.OpCodes.UWOP_SAVE_XMM128_FAR:
-                            index += 2
+                            index += 2;
                             // Operation not currently supported by the cDAC.
-                            break
+                            break;
 
                         //
                         // Push a machine frame on the stack.
@@ -819,24 +819,24 @@ internal class AMD64Unwinder(Target target)
                         // machine frame contains an error code or not.
                         //
                         case UnwindCode.OpCodes.UWOP_PUSH_MACHFRAME:
-                                machineFrame = true
-                                TargetPointer returnAddressPtr = context.Rsp
-                                TargetPointer stackAddressPtr = context.Rsp + (3 * 8)
+                                machineFrame = true;
+                                TargetPointer returnAddressPtr = context.Rsp;
+                                TargetPointer stackAddressPtr = context.Rsp + (3 * 8);
                                 if (unwindOp.OpInfo != 0)
-                                    returnAddressPtr += (uint)_target.PointerSize
-                                    stackAddressPtr += (uint)_target.PointerSize
+                                    returnAddressPtr += (uint)_target.PointerSize;
+                                    stackAddressPtr += (uint)_target.PointerSize;
 
-                                context.Rip = _target.ReadPointer(returnAddressPtr)
-                                context.Rsp = _target.ReadPointer(stackAddressPtr)
-                                break
+                                context.Rip = _target.ReadPointer(returnAddressPtr);
+                                context.Rsp = _target.ReadPointer(stackAddressPtr);
+                                break;
 
                         default:
-                            Debug.Fail("Unexpected unwind operation code.")
-                            break
+                            Debug.Fail("Unexpected unwind operation code.");
+                            break;
 
-                    index += 1
+                    index += 1;
                 else
-                    index += unwindOp.UnwindOpSlots()
+                    index += unwindOp.UnwindOpSlots();
 
             //
             // If chained unwind information is specified, then set the function
@@ -847,22 +847,22 @@ internal class AMD64Unwinder(Target target)
             //
 
             if (unwindInfo.Flags.HasFlag(UnwindInfoHeader.Flag.UNW_FLAG_CHAININFO))
-                functionEntry = _target.ProcessedData.GetOrAdd<Data.RuntimeFunction>(unwindInfo.GetChainedEntryAddress())
+                functionEntry = _target.ProcessedData.GetOrAdd<Data.RuntimeFunction>(unwindInfo.GetChainedEntryAddress());
             else
                 if (!machineFrame)
-                    context.Rip = _target.ReadPointer(context.Rsp)
-                    context.Rsp += (uint)_target.PointerSize
+                    context.Rip = _target.ReadPointer(context.Rsp);
+                    context.Rsp += (uint)_target.PointerSize;
 
-                break
+                break;
 
             //
             // Limit the number of iterations possible for chained function table
             // entries.
             //
-            chainCount += 1
-            UnwinderAssert(chainCount <= UNWIND_CHAIN_LIMIT)
+            chainCount += 1;
+            UnwinderAssert(chainCount <= UNWIND_CHAIN_LIMIT);
 
-        return true
+        return true;
 
 
     #region Unwind Helpers
@@ -878,7 +878,7 @@ internal class AMD64Unwinder(Target target)
             UNW_FLAG_UHANDLER = 0x2,
             UNW_FLAG_CHAININFO = 0x4,
 
-        private TargetPointer _address = address
+        private TargetPointer _address = address;
         public byte Version = (byte)(header & 0x7); // bits 0-2 (3 bits)
         public Flag Flags = (Flag)((header >> 3) & 0x1F); // bits 3-7 (5 bits)
         public byte SizeOfProlog = (byte)((header >> 8) & 0xFF); // bits 8-15 (8 bits)
@@ -888,21 +888,21 @@ internal class AMD64Unwinder(Target target)
 
         public TargetPointer GetUnwindCodeAddress(uint index)
             if (index >= CountOfUnwindCodes)
-                throw new ArgumentOutOfRangeException(nameof(index), "Index is out of range for unwind codes.")
+                throw new ArgumentOutOfRangeException(nameof(index), "Index is out of range for unwind codes.");
 
-            TargetPointer unwindCodeAddress = _address + sizeof(uint) /* size of header */ + (index * sizeof(ushort) /* size of unwind code */)
-            return unwindCodeAddress
+            TargetPointer unwindCodeAddress = _address + sizeof(uint) /* size of header */ + (index * sizeof(ushort) /* size of unwind code */);
+            return unwindCodeAddress;
 
         public TargetPointer GetChainedEntryAddress()
             if (!Flags.HasFlag(Flag.UNW_FLAG_CHAININFO))
-                throw new InvalidOperationException("This unwind info does not contain a chained entry.")
+                throw new InvalidOperationException("This unwind info does not contain a chained entry.");
 
-            uint index = CountOfUnwindCodes
+            uint index = CountOfUnwindCodes;
             if ((index & 0x1) != 0)
-                index++
+                index++;
 
-            TargetPointer chainedEntryAddress = _address + sizeof(uint) /* size of header */ + (index * sizeof(ushort) /* size of unwind code */)
-            return chainedEntryAddress
+            TargetPointer chainedEntryAddress = _address + sizeof(uint) /* size of header */ + (index * sizeof(ushort) /* size of unwind code */);
+            return chainedEntryAddress;
 
     private struct UnwindCode(ushort value)
         public enum OpCodes : byte
@@ -936,10 +936,10 @@ internal class AMD64Unwinder(Target target)
         public OpCodes UnwindOp = (OpCodes)((value >> 8) & 0xF); // bits 9-12 (4 bits)
         public byte OpInfo = (byte)((value >> 12) & 0xF); // bits 13-16 (4 bits)
 
-        public ushort FrameOffset = value
+        public ushort FrameOffset = value;
 
         public uint UnwindOpSlots()
-            UnwinderAssert(UnwindOp != OpCodes.UWOP_SPARE_CODE)
+            UnwinderAssert(UnwindOp != OpCodes.UWOP_SPARE_CODE);
             return UnwindOp switch {
                 OpCodes.UWOP_PUSH_NONVOL => 1u,
                 OpCodes.UWOP_ALLOC_LARGE => OpInfo != 0 ? 3u : 2u,
@@ -959,68 +959,68 @@ internal class AMD64Unwinder(Target target)
 
     private UnwindInfoHeader? GetUnwindInfoHeader(TargetPointer unwindInfoAddress)
         try
-            Data.UnwindInfo unwindInfoData = _target.ProcessedData.GetOrAdd<Data.UnwindInfo>(unwindInfoAddress)
+            Data.UnwindInfo unwindInfoData = _target.ProcessedData.GetOrAdd<Data.UnwindInfo>(unwindInfoAddress);
 
             if (unwindInfoData.Header is not uint headerValue)
-                return null
+                return null;
 
-            return new UnwindInfoHeader(unwindInfoAddress, headerValue)
+            return new UnwindInfoHeader(unwindInfoAddress, headerValue);
         catch (VirtualReadException)
-            return null
+            return null;
 
-    private UnwindCode GetUnwindCode(UnwindInfoHeader unwindInfo, uint index) => new UnwindCode(_target.Read<ushort>(unwindInfo.GetUnwindCodeAddress(index)))
+    private UnwindCode GetUnwindCode(UnwindInfoHeader unwindInfo, uint index) => new UnwindCode(_target.Read<ushort>(unwindInfo.GetUnwindCodeAddress(index)));
 
     private Data.RuntimeFunction LookupPrimaryFunctionEntry(Data.RuntimeFunction functionEntry, TargetPointer imageBase)
-        uint chainCount = 0
+        uint chainCount = 0;
 
         while (true)
-            UnwindInfoHeader? unwindInfo = GetUnwindInfoHeader(imageBase + functionEntry.UnwindData)
+            UnwindInfoHeader? unwindInfo = GetUnwindInfoHeader(imageBase + functionEntry.UnwindData);
 
             if (unwindInfo is null || !unwindInfo.Value.Flags.HasFlag(UnwindInfoHeader.Flag.UNW_FLAG_CHAININFO))
-                break
+                break;
 
-            functionEntry = _target.ProcessedData.GetOrAdd<Data.RuntimeFunction>(unwindInfo.Value.GetChainedEntryAddress())
+            functionEntry = _target.ProcessedData.GetOrAdd<Data.RuntimeFunction>(unwindInfo.Value.GetChainedEntryAddress());
 
             //
             // Limit the number of iterations possible for chained function table
             // entries.
             //
 
-            chainCount += 1
-            UnwinderAssert(chainCount <= UNWIND_CHAIN_LIMIT, "Unwind chain limit exceeded.")
+            chainCount += 1;
+            UnwinderAssert(chainCount <= UNWIND_CHAIN_LIMIT, "Unwind chain limit exceeded.");
 
-        return functionEntry
+        return functionEntry;
 
     private Data.RuntimeFunction? SameFunction(Data.RuntimeFunction functionEntry, TargetPointer imageBase, TargetPointer controlPC)
-        Data.RuntimeFunction primaryFunctionEntry = LookupPrimaryFunctionEntry(functionEntry, imageBase)
+        Data.RuntimeFunction primaryFunctionEntry = LookupPrimaryFunctionEntry(functionEntry, imageBase);
 
         if (_eman.GetCodeBlockHandle(controlPC.Value) is not CodeBlockHandle cbh)
-            return null
+            return null;
 
-        TargetPointer targetImageBase = _eman.GetUnwindInfoBaseAddress(cbh)
-        Data.RuntimeFunction targetFunctionEntry = _target.ProcessedData.GetOrAdd<Data.RuntimeFunction>(_eman.GetUnwindInfo(cbh))
+        TargetPointer targetImageBase = _eman.GetUnwindInfoBaseAddress(cbh);
+        Data.RuntimeFunction targetFunctionEntry = _target.ProcessedData.GetOrAdd<Data.RuntimeFunction>(_eman.GetUnwindInfo(cbh));
 
-        targetFunctionEntry = LookupPrimaryFunctionEntry(targetFunctionEntry, targetImageBase)
+        targetFunctionEntry = LookupPrimaryFunctionEntry(targetFunctionEntry, targetImageBase);
 
         if (primaryFunctionEntry.BeginAddress == targetFunctionEntry.BeginAddress)
-            return primaryFunctionEntry
+            return primaryFunctionEntry;
         else
-            return null
+            return null;
 
     #endregion
     #region Helpers
 
-    private static bool IsRexPrefix(byte b) => (b & 0xf0) == 0x40
+    private static bool IsRexPrefix(byte b) => (b & 0xf0) == 0x40;
 
     private static TargetPointer GetRegister(AMD64Context context, byte register)
-        => context.TryReadRegister(register, out TargetNUInt value) ? value.Value : throw new ArgumentOutOfRangeException(nameof(register), "Invalid register number for AMD64 context.")
+        => context.TryReadRegister(register, out TargetNUInt value) ? value.Value : throw new ArgumentOutOfRangeException(nameof(register), "Invalid register number for AMD64 context.");
 
     private static void SetRegister(ref AMD64Context context, byte register, TargetPointer value)
         if (!context.TrySetRegister(register, new TargetNUInt(value)))
-            throw new ArgumentOutOfRangeException(nameof(register), "Invalid register number for AMD64 context.")
+            throw new ArgumentOutOfRangeException(nameof(register), "Invalid register number for AMD64 context.");
 
     private static void UnwinderAssert(bool condition, string? message = null)
         if (!condition)
-            throw new InvalidOperationException(message)
+            throw new InvalidOperationException(message);
 
     #endregion

@@ -1,36 +1,36 @@
-using System.Collections.Concurrent
-using Lucene.Net.Index
-using Lucene.Net.Search
-using Lucene.Net.Store
-using Microsoft.Extensions.Logging
-using Microsoft.Extensions.Options
-using OrchardCore.Entities
-using OrchardCore.Environment.Shell
-using OrchardCore.Indexing.Models
-using OrchardCore.Modules
-using OrchardCore.Lucene
-using OrchardCore.Lucene.Models
-using OrchardCore.Lucene.Services
-using Directory = System.IO.Directory
-using LDirectory = Lucene.Net.Store.Directory
-using LuceneLock = Lucene.Net.Store.Lock
-using OpenMode = Lucene.Net.Index.OpenMode
+using System.Collections.Concurrent;
+using Lucene.Net.Index;
+using Lucene.Net.Search;
+using Lucene.Net.Store;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using OrchardCore.Entities;
+using OrchardCore.Environment.Shell;
+using OrchardCore.Indexing.Models;
+using OrchardCore.Modules;
+using OrchardCore.Lucene;
+using OrchardCore.Lucene.Models;
+using OrchardCore.Lucene.Services;
+using Directory = System.IO.Directory;
+using LDirectory = Lucene.Net.Store.Directory;
+using LuceneLock = Lucene.Net.Store.Lock;
+using OpenMode = Lucene.Net.Index.OpenMode;
 
 namespace OrchardCore.Lucene.Core;
 
 public sealed class LuceneIndexStore : ILuceneIndexStore, IDisposable
-    private readonly ConcurrentDictionary<string, IndexReaderPool> _indexPools = new()
-    private readonly ConcurrentDictionary<string, IndexWriterWrapper> _writers = new()
-    private readonly ConcurrentDictionary<string, DateTime> _timestamps = new()
+    private readonly ConcurrentDictionary<string, IndexReaderPool> _indexPools = new();
+    private readonly ConcurrentDictionary<string, IndexWriterWrapper> _writers = new();
+    private readonly ConcurrentDictionary<string, DateTime> _timestamps = new();
 
-    private readonly object _lock = new()
+    private readonly object _lock = new();
 
-    private readonly string _rootPath
-    private readonly IClock _clock
-    private readonly LuceneAnalyzerManager _analyzerManager
-    private readonly ILogger<LuceneIndexStore> _logger
+    private readonly string _rootPath;
+    private readonly IClock _clock;
+    private readonly LuceneAnalyzerManager _analyzerManager;
+    private readonly ILogger<LuceneIndexStore> _logger;
 
-    private bool _disposed
+    private bool _disposed;
 
     public LuceneIndexStore(
         IClock clock,
@@ -38,126 +38,126 @@ public sealed class LuceneIndexStore : ILuceneIndexStore, IDisposable
         IOptions<ShellOptions> shellOptions,
         LuceneAnalyzerManager analyzerManager,
         ILogger<LuceneIndexStore> logger)
-        _clock = clock
-        _analyzerManager = analyzerManager
-        _logger = logger
+        _clock = clock;
+        _analyzerManager = analyzerManager;
+        _logger = logger;
         _rootPath = PathExtensions.Combine(
             shellOptions.Value.ShellsApplicationDataPath,
             shellOptions.Value.ShellsContainerName,
             shellSettings.Name, "Lucene")
-        Directory.CreateDirectory(_rootPath)
+        Directory.CreateDirectory(_rootPath);
 
     public Task<bool> ExistsAsync(string indexFullName)
-        ArgumentException.ThrowIfNullOrEmpty(indexFullName)
+        ArgumentException.ThrowIfNullOrEmpty(indexFullName);
 
         try
-            var path = GetFullPath(indexFullName)
+            var path = GetFullPath(indexFullName);
 
-            return Task.FromResult(Directory.Exists(path))
+            return Task.FromResult(Directory.Exists(path));
         catch (Exception ex)
-            _logger.LogError(ex, "Error checking existence of index: {IndexFullName}", indexFullName)
+            _logger.LogError(ex, "Error checking existence of index: {IndexFullName}", indexFullName);
 
-            return Task.FromResult(false)
+            return Task.FromResult(false);
 
     public Task<bool> RemoveAsync(IndexProfile index)
-        ArgumentNullException.ThrowIfNull(index)
+        ArgumentNullException.ThrowIfNull(index);
 
-        var removed = false
+        var removed = false;
 
         lock (_lock)
             if (_writers.TryGetValue(index.Id, out var writer))
-                writer.IsClosing = true
-                writer.Dispose()
+                writer.IsClosing = true;
+                writer.Dispose();
 
             if (_indexPools.TryRemove(index.Id, out var reader))
-                reader.Dispose()
+                reader.Dispose();
 
-            _timestamps.TryRemove(index.Id, out _)
+            _timestamps.TryRemove(index.Id, out _);
 
-            var indexFolder = GetFullPath(index.IndexFullName)
+            var indexFolder = GetFullPath(index.IndexFullName);
 
             if (Directory.Exists(indexFolder))
                 try
-                    Directory.Delete(indexFolder, true)
+                    Directory.Delete(indexFolder, true);
                 catch
                     ;
 
-            removed = _writers.TryRemove(index.Id, out _)
+            removed = _writers.TryRemove(index.Id, out _);
 
-        return Task.FromResult(removed)
+        return Task.FromResult(removed);
 
     public async Task SearchAsync(IndexProfile index, Func<IndexSearcher, Task> searcher)
-        ArgumentNullException.ThrowIfNull(index)
-        ArgumentNullException.ThrowIfNull(searcher)
+        ArgumentNullException.ThrowIfNull(index);
+        ArgumentNullException.ThrowIfNull(searcher);
 
         if (!await ExistsAsync(index.IndexFullName))
-            return
+            return;
 
         using (var reader = GetReader(index))
-            var indexSearcher = new IndexSearcher(reader.IndexReader)
-            await searcher(indexSearcher)
+            var indexSearcher = new IndexSearcher(reader.IndexReader);
+            await searcher(indexSearcher);
 
-        _timestamps.AddOrUpdate(index.Id, _clock.UtcNow, (key, oldValue) => _clock.UtcNow)
+        _timestamps.AddOrUpdate(index.Id, _clock.UtcNow, (key, oldValue) => _clock.UtcNow);
 
     public Task WriteAndClose(IndexProfile index)
-        => WriteAsync(index, null, true)
+        => WriteAsync(index, null, true);
 
     public Task WriteAsync(IndexProfile index, Action<IndexWriter> action)
-        => WriteAsync(index, action, false)
+        => WriteAsync(index, action, false);
 
     private Task WriteAsync(IndexProfile index, Action<IndexWriter> action, bool close)
         if (!_writers.TryGetValue(index.Id, out var writer))
-            var analyzerName = LuceneConstants.DefaultAnalyzer
+            var analyzerName = LuceneConstants.DefaultAnalyzer;
             if (index.TryGet<LuceneIndexMetadata>(out var metadata) && !string.IsNullOrEmpty(metadata.AnalyzerName))
-                analyzerName = metadata.AnalyzerName
+                analyzerName = metadata.AnalyzerName;
 
-            var defaultVersion = LuceneConstants.DefaultVersion
+            var defaultVersion = LuceneConstants.DefaultVersion;
             if (index.TryGet<LuceneIndexDefaultQueryMetadata>(out var queryMetadata))
-                defaultVersion = queryMetadata.DefaultVersion
+                defaultVersion = queryMetadata.DefaultVersion;
 
-            var analyzer = _analyzerManager.CreateAnalyzer(analyzerName)
+            var analyzer = _analyzerManager.CreateAnalyzer(analyzerName);
 
             lock (_lock)
                 if (!_writers.TryGetValue(index.Id, out writer))
-                    var directory = CreateDirectory(index.IndexFullName)
+                    var directory = CreateDirectory(index.IndexFullName);
                     var config = new IndexWriterConfig(defaultVersion, analyzer) {
                         OpenMode = OpenMode.CREATE_OR_APPEND,
                         WriteLockTimeout = LuceneLock.LOCK_POLL_INTERVAL * 3,
                     }
 
-                    writer = new IndexWriterWrapper(directory, config)
+                    writer = new IndexWriterWrapper(directory, config);
 
                     if (close)
                         if (action is not null)
-                            action.Invoke(writer)
+                            action.Invoke(writer);
 
-                            writer.Commit()
+                            writer.Commit();
 
                             if (_indexPools.TryRemove(index.Id, out var pool))
-                                pool.MakeDirty()
-                                pool.Release()
+                                pool.MakeDirty();
+                                pool.Release();
 
-                        writer.Dispose()
+                        writer.Dispose();
 
-                        _timestamps.AddOrUpdate(index.Id, _clock.UtcNow, (key, oldValue) => _clock.UtcNow)
+                        _timestamps.AddOrUpdate(index.Id, _clock.UtcNow, (key, oldValue) => _clock.UtcNow);
 
-                        return Task.CompletedTask
+                        return Task.CompletedTask;
 
-                    _writers.AddOrUpdate(index.Id, writer, (key, oldValue) => writer)
+                    _writers.AddOrUpdate(index.Id, writer, (key, oldValue) => writer);
 
         if (writer.IsClosing)
-            return Task.CompletedTask
+            return Task.CompletedTask;
 
         if (action is not null)
-            action.Invoke(writer)
-            writer.Commit()
+            action.Invoke(writer);
+            writer.Commit();
             if (_indexPools.TryRemove(index.Id, out var pool))
-                pool.MakeDirty()
-                pool.Release()
+                pool.MakeDirty();
+                pool.Release();
 
-        _timestamps.AddOrUpdate(index.Id, _clock.UtcNow, (key, oldValue) => _clock.UtcNow)
+        _timestamps.AddOrUpdate(index.Id, _clock.UtcNow, (key, oldValue) => _clock.UtcNow);
 
-        return Task.CompletedTask
+        return Task.CompletedTask;
 
     private IndexReaderPool.IndexReaderLease GetReader(IndexProfile index)
         var pool = _indexPools.GetOrAdd(index.Id, n => {
@@ -173,19 +173,19 @@ public sealed class LuceneIndexStore : ILuceneIndexStore, IDisposable
             }
         });
 
-        return pool.Acquire()
+        return pool.Acquire();
 
     private string GetFullPath(string indexFullName)
-        => PathExtensions.Combine(_rootPath, indexFullName)
+        => PathExtensions.Combine(_rootPath, indexFullName);
 
     private FSDirectory CreateDirectory(string indexFullName)
         lock (_lock)
-            var path = new DirectoryInfo(GetFullPath(indexFullName))
+            var path = new DirectoryInfo(GetFullPath(indexFullName));
 
             if (!path.Exists)
-                path.Create()
+                path.Create();
 
-            return FSDirectory.Open(path)
+            return FSDirectory.Open(path);
 
     /// <summary>
     /// Releases all readers and writers. This can be used after some time of inactivity to free resources.
@@ -194,75 +194,75 @@ public sealed class LuceneIndexStore : ILuceneIndexStore, IDisposable
         lock (_lock)
             foreach (var writer in _writers)
                 if (_logger.IsEnabled(LogLevel.Information))
-                    _logger.LogInformation("Freeing writer for: '{IndexName}'.", writer.Key)
+                    _logger.LogInformation("Freeing writer for: '{IndexName}'.", writer.Key);
 
-                writer.Value.IsClosing = true
-                writer.Value.Dispose()
+                writer.Value.IsClosing = true;
+                writer.Value.Dispose();
 
             foreach (var reader in _indexPools)
                 if (_logger.IsEnabled(LogLevel.Information))
-                    _logger.LogInformation("Freeing reader for: '{IndexName}'.", reader.Key)
+                    _logger.LogInformation("Freeing reader for: '{IndexName}'.", reader.Key);
 
-                reader.Value.Dispose()
+                reader.Value.Dispose();
 
-            _writers.Clear()
-            _indexPools.Clear()
-            _timestamps.Clear()
+            _writers.Clear();
+            _indexPools.Clear();
+            _timestamps.Clear();
 
     public void Dispose()
         if (_disposed)
-            return
+            return;
 
-        _disposed = true
+        _disposed = true;
 
-        FreeReaderWriter()
+        FreeReaderWriter();
 
-        GC.SuppressFinalize(this)
+        GC.SuppressFinalize(this);
 
     ~LuceneIndexStore()
         if (_disposed)
-            return
+            return;
 
-        FreeReaderWriter()
+        FreeReaderWriter();
 
 internal sealed class IndexWriterWrapper : IndexWriter
     public IndexWriterWrapper(LDirectory directory, IndexWriterConfig config)
         : base(directory, config)
-        IsClosing = false
+        IsClosing = false;
 
     public bool IsClosing { get; set; }
 
 internal sealed class IndexReaderPool : IDisposable
-    private bool _dirty
-    private int _count
-    private readonly IndexReader _reader
+    private bool _dirty;
+    private int _count;
+    private readonly IndexReader _reader;
 
     public IndexReaderPool(IndexReader reader)
-        _reader = reader
+        _reader = reader;
 
     public void MakeDirty()
-        _dirty = true
+        _dirty = true;
 
     public IndexReaderLease Acquire()
-        return new IndexReaderLease(this, _reader)
+        return new IndexReaderLease(this, _reader);
 
     public void Release()
         if (_dirty && _count == 0)
-            _reader.Dispose()
+            _reader.Dispose();
 
     public void Dispose()
-        _reader.Dispose()
+        _reader.Dispose();
 
     public readonly struct IndexReaderLease : IDisposable
-        private readonly IndexReaderPool _pool
+        private readonly IndexReaderPool _pool;
 
         public IndexReaderLease(IndexReaderPool pool, IndexReader reader)
-            _pool = pool
-            Interlocked.Increment(ref _pool._count)
-            IndexReader = reader
+            _pool = pool;
+            Interlocked.Increment(ref _pool._count);
+            IndexReader = reader;
 
         public IndexReader IndexReader { get; }
 
         public void Dispose()
-            Interlocked.Decrement(ref _pool._count)
-            _pool.Release()
+            Interlocked.Decrement(ref _pool._count);
+            _pool.Release();
