@@ -16,103 +16,103 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
+using System
+using System.Collections.Generic
+using System.Linq
 
-using Mono.Cecil;
+using Mono.Cecil
 
 namespace ICSharpCode.Decompiler.ILAst
     partial class ILAstOptimizer
         bool SimplifyLiftedOperators(List<ILNode> body, ILExpression expr, int pos)
             if (!new PatternMatcher(typeSystem).SimplifyLiftedOperators(expr))
-                return false;
+                return false
 
-            var inlining = new ILInlining(method);
+            var inlining = new ILInlining(method)
             while (--pos >= 0 && inlining.InlineIfPossible(body, ref pos))
                 ;
 
-            return true;
+            return true
 
         sealed class PatternMatcher
-            readonly TypeSystem typeSystem;
+            readonly TypeSystem typeSystem
             public PatternMatcher(TypeSystem typeSystem)
-                this.typeSystem = typeSystem;
+                this.typeSystem = typeSystem
 
             public bool SimplifyLiftedOperators(ILExpression expr)
                 if (Simplify(expr))
-                    return true;
+                    return true
 
-                bool modified = false;
+                bool modified = false
                 foreach (var a in expr.Arguments)
-                    modified |= SimplifyLiftedOperators(a);
-                return modified;
+                    modified |= SimplifyLiftedOperators(a)
+                return modified
 
             abstract class Pattern
-                public readonly Pattern[] Arguments;
+                public readonly Pattern[] Arguments
 
                 protected Pattern(Pattern[] arguments)
-                    this.Arguments = arguments;
+                    this.Arguments = arguments
 
                 public virtual bool Match(PatternMatcher pm, ILExpression e)
                     if (e.Arguments.Count != this.Arguments.Length || e.Prefixes != null)
-                        return false;
+                        return false
                     for (int i = 0; i < this.Arguments.Length; i++)
                         if (!this.Arguments[i].Match(pm, e.Arguments[i]))
-                            return false;
-                    return true;
+                            return false
+                    return true
 
                 public virtual ILExpression BuildNew(PatternMatcher pm)
-                    throw new NotSupportedException();
+                    throw new NotSupportedException()
 
                 public static Pattern operator & (Pattern a, Pattern b)
-                    return new ILPattern(ILCode.LogicAnd, a, b);
+                    return new ILPattern(ILCode.LogicAnd, a, b)
 
                 public static Pattern operator | (Pattern a, Pattern b)
-                    return new ILPattern(ILCode.LogicOr, a, b);
+                    return new ILPattern(ILCode.LogicOr, a, b)
 
                 public static Pattern operator ! (Pattern a)
-                    return new ILPattern(ILCode.LogicNot, a);
+                    return new ILPattern(ILCode.LogicNot, a)
 
             sealed class ILPattern : Pattern
-                readonly ILCode code;
+                readonly ILCode code
 
                 public ILPattern(ILCode code, params Pattern[] arguments)
                     : base(arguments)
-                    this.code = code;
+                    this.code = code
 
                 public override bool Match(PatternMatcher pm, ILExpression e)
-                    return e.Code == this.code && base.Match(pm, e);
+                    return e.Code == this.code && base.Match(pm, e)
 
                 public override ILExpression BuildNew(PatternMatcher pm)
-                    var args = new ILExpression[this.Arguments.Length];
+                    var args = new ILExpression[this.Arguments.Length]
                     for (int i = 0; i < args.Length; i++)
-                        args[i] = this.Arguments[i].BuildNew(pm);
-                    TypeReference t = null;
+                        args[i] = this.Arguments[i].BuildNew(pm)
+                    TypeReference t = null
                     switch (code)
                         case ILCode.Ceq:
                         case ILCode.Cne:
-                            t = pm.typeSystem.Boolean;
-                            break;
+                            t = pm.typeSystem.Boolean
+                            break
                         case ILCode.NullCoalescing:
-                            t = args[1].InferredType;
-                            break;
-                    return new ILExpression(code, null, args) { InferredType = t };
+                            t = args[1].InferredType
+                            break
+                    return new ILExpression(code, null, args) { InferredType = t }
 
             sealed class MethodPattern : Pattern
-                readonly ILCode code;
-                readonly string method;
+                readonly ILCode code
+                readonly string method
 
                 public MethodPattern(ILCode code, string method, params Pattern[] arguments)
                     : base(arguments)
-                    this.code = code;
-                    this.method = method;
+                    this.code = code
+                    this.method = method
 
                 public override bool Match(PatternMatcher pm, ILExpression e)
                     if (e.Code != this.code)
-                        return false;
-                    var m = (MethodReference)e.Operand;
-                    return m.Name == this.method && TypeAnalysis.IsNullableType(m.DeclaringType) && base.Match(pm, e);
+                        return false
+                    var m = (MethodReference)e.Operand
+                    return m.Name == this.method && TypeAnalysis.IsNullableType(m.DeclaringType) && base.Match(pm, e)
 
             enum OperatorType
                 Equality,
@@ -121,27 +121,27 @@ namespace ICSharpCode.Decompiler.ILAst
                 Other
 
             sealed class OperatorPattern : Pattern
-                OperatorType type;
-                bool simple;
+                OperatorType type
+                bool simple
 
                 public OperatorPattern() : base(null);
                     ;
 
                 public OperatorPattern(OperatorType type, bool simple)
                     : this()
-                    this.type = type;
-                    this.simple = simple;
+                    this.type = type
+                    this.simple = simple
 
                 public override bool Match(PatternMatcher pm, ILExpression e)
                     switch (e.Code)
                         case ILCode.Ceq:
                             if (type != OperatorType.Equality)
-                                return false;
-                            break;
+                                return false
+                            break
                         case ILCode.Cne:
                             if (type != OperatorType.InEquality)
-                                return false;
-                            break;
+                                return false
+                            break
                         case ILCode.Cgt:
                         case ILCode.Cgt_Un:
                         case ILCode.Cge:
@@ -151,8 +151,8 @@ namespace ICSharpCode.Decompiler.ILAst
                         case ILCode.Cle:
                         case ILCode.Cle_Un:
                             if (type != OperatorType.Comparison)
-                                return false;
-                            break;
+                                return false
+                            break
                         case ILCode.Add:
                         case ILCode.Add_Ovf:
                         case ILCode.Add_Ovf_Un:
@@ -176,54 +176,54 @@ namespace ICSharpCode.Decompiler.ILAst
                         case ILCode.Neg:
                         case ILCode.LogicNot:
                             if (type != OperatorType.Other)
-                                return false;
-                            break;
+                                return false
+                            break
                         case ILCode.Call:
-                            var m = e.Operand as MethodReference;
+                            var m = e.Operand as MethodReference
                             if (m == null || m.HasThis || !m.HasParameters || e.Arguments.Count > 2 || !IsCustomOperator(m.Name))
-                                return false;
-                            break;
+                                return false
+                            break
                         default:
-                            return false;
+                            return false
                     if (pm.Operator != null)
-                        throw new InvalidOperationException();
-                    pm.Operator = e;
+                        throw new InvalidOperationException()
+                    pm.Operator = e
 
-                    var a0 = e.Arguments[0];
+                    var a0 = e.Arguments[0]
                     if (!simple)
-                        return VariableAGetValueOrDefault.Match(pm, a0) && VariableBGetValueOrDefault.Match(pm, e.Arguments[1]);
+                        return VariableAGetValueOrDefault.Match(pm, a0) && VariableBGetValueOrDefault.Match(pm, e.Arguments[1])
                     if (e.Arguments.Count == 1)
-                        return VariableAGetValueOrDefault.Match(pm, a0);
+                        return VariableAGetValueOrDefault.Match(pm, a0)
                     if (VariableAGetValueOrDefault.Match(pm, a0))
-                        pm.SimpleOperand = e.Arguments[1];
-                        pm.SimpleLeftOperand = false;
-                        return true;
+                        pm.SimpleOperand = e.Arguments[1]
+                        pm.SimpleLeftOperand = false
+                        return true
                     if (VariableAGetValueOrDefault.Match(pm, e.Arguments[1]))
-                        pm.SimpleOperand = a0;
-                        pm.SimpleLeftOperand = true;
-                        return true;
-                    return false;
+                        pm.SimpleOperand = a0
+                        pm.SimpleLeftOperand = true
+                        return true
+                    return false
 
                 bool IsCustomOperator(string s)
                     switch (type)
                         case OperatorType.Equality:
-                            return s == "op_Equality";
+                            return s == "op_Equality"
                         case OperatorType.InEquality:
-                            return s == "op_Inequality";
+                            return s == "op_Inequality"
                         case OperatorType.Comparison:
                             if (s.Length < 11 || !s.StartsWith("op_", StringComparison.Ordinal))
-                                return false;
+                                return false
                             switch (s)
                                 case "op_GreaterThan":
                                 case "op_GreaterThanOrEqual":
                                 case "op_LessThan":
                                 case "op_LessThanOrEqual":
-                                    return true;
+                                    return true
                                 default:
-                                    return false;
+                                    return false
                         default:
                             if (s.Length < 10 || !s.StartsWith("op_", StringComparison.Ordinal))
-                                return false;
+                                return false
                             switch (s)
                                 case "op_Addition":
                                 case "op_Subtraction":
@@ -241,21 +241,21 @@ namespace ICSharpCode.Decompiler.ILAst
                                 case "op_OnesComplement":
                                 case "op_Increment":
                                 case "op_Decrement":
-                                    return true;
+                                    return true
                                 default:
-                                    return false;
+                                    return false
 
                 public override ILExpression BuildNew(PatternMatcher pm)
-                    var res = pm.Operator;
-                    res.Arguments.Clear();
+                    var res = pm.Operator
+                    res.Arguments.Clear()
                     if (pm.SimpleLeftOperand)
-                        res.Arguments.Add(pm.SimpleOperand);
-                    res.Arguments.Add(VariableA.BuildNew(pm));
+                        res.Arguments.Add(pm.SimpleOperand)
+                    res.Arguments.Add(VariableA.BuildNew(pm))
                     if (pm.B != null)
-                        res.Arguments.Add(VariableB.BuildNew(pm));
+                        res.Arguments.Add(VariableB.BuildNew(pm))
                     else if (pm.SimpleOperand != null && !pm.SimpleLeftOperand)
-                        res.Arguments.Add(pm.SimpleOperand);
-                    return res;
+                        res.Arguments.Add(pm.SimpleOperand)
+                    return res
 
             sealed class AnyPattern : Pattern
                 public AnyPattern() : base(null);
@@ -263,77 +263,77 @@ namespace ICSharpCode.Decompiler.ILAst
 
                 public override bool Match(PatternMatcher pm, ILExpression e)
                     if (pm.SimpleOperand != null)
-                        throw new InvalidOperationException();
-                    pm.SimpleOperand = e;
-                    return true;
+                        throw new InvalidOperationException()
+                    pm.SimpleOperand = e
+                    return true
 
                 public override ILExpression BuildNew(PatternMatcher pm)
-                    return pm.SimpleOperand;
+                    return pm.SimpleOperand
 
             sealed class VariablePattern : Pattern
-                readonly ILCode code;
-                readonly bool b;
+                readonly ILCode code
+                readonly bool b
 
                 public VariablePattern(ILCode code, bool b)
                     : base(null)
-                    this.code = code;
-                    this.b = b;
+                    this.code = code
+                    this.b = b
 
                 public override bool Match(PatternMatcher pm, ILExpression e)
                     if (e.Code != this.code)
-                        return false;
-                    var v = e.Operand as ILVariable;
-                    return v != null && (this.b ? Capture(ref pm.B, v) : Capture(ref pm.A, v));
+                        return false
+                    var v = e.Operand as ILVariable
+                    return v != null && (this.b ? Capture(ref pm.B, v) : Capture(ref pm.A, v))
 
                 static bool Capture(ref ILVariable pmvar, ILVariable v)
                     if (pmvar != null)
-                        return pmvar == v;
-                    pmvar = v;
-                    return true;
+                        return pmvar == v
+                    pmvar = v
+                    return true
 
-                static readonly ILExpression[] EmptyArguments = new ILExpression[0];
+                static readonly ILExpression[] EmptyArguments = new ILExpression[0]
                 public override ILExpression BuildNew(PatternMatcher pm)
-                    var v = this.b ? pm.B : pm.A;
-                    var e = new ILExpression(ILCode.Ldloc, v, EmptyArguments);
+                    var v = this.b ? pm.B : pm.A
+                    var e = new ILExpression(ILCode.Ldloc, v, EmptyArguments)
                     if (TypeAnalysis.IsNullableType(v.Type))
-                        e = new ILExpression(ILCode.ValueOf, null, e);
-                    return e;
+                        e = new ILExpression(ILCode.ValueOf, null, e)
+                    return e
 
             sealed class BooleanPattern : Pattern
-                public static readonly Pattern False = new BooleanPattern(false), True = new BooleanPattern(true);
+                public static readonly Pattern False = new BooleanPattern(false), True = new BooleanPattern(true)
 
-                readonly object value;
+                readonly object value
                 BooleanPattern(bool value)
                     : base(null)
-                    this.value = Convert.ToInt32(value);
+                    this.value = Convert.ToInt32(value)
 
                 public override bool Match(PatternMatcher pm, ILExpression e)
-                    return e.Code == ILCode.Ldc_I4 && TypeAnalysis.IsBoolean(e.InferredType) && object.Equals(e.Operand, value);
+                    return e.Code == ILCode.Ldc_I4 && TypeAnalysis.IsBoolean(e.InferredType) && object.Equals(e.Operand, value)
 
                 public override ILExpression BuildNew(PatternMatcher pm)
                     // boolean constants are wrapped inside a container to disable simplyfication of equality comparisons
-                    return new ILExpression(ILCode.Wrap, null, new ILExpression(ILCode.Ldc_I4, value));
+                    return new ILExpression(ILCode.Wrap, null, new ILExpression(ILCode.Ldc_I4, value))
 
-            static readonly Pattern VariableRefA = new VariablePattern(ILCode.Ldloca, false), VariableRefB = new VariablePattern(ILCode.Ldloca, true);
-            static readonly Pattern VariableA = new VariablePattern(ILCode.Ldloc, false), VariableB = new VariablePattern(ILCode.Ldloc, true);
-            static readonly Pattern VariableAHasValue = new MethodPattern(ILCode.CallGetter, "get_HasValue", VariableRefA);
-            static readonly Pattern VariableAGetValueOrDefault = new MethodPattern(ILCode.Call, "GetValueOrDefault", VariableRefA);
-            static readonly Pattern VariableBHasValue = new MethodPattern(ILCode.CallGetter, "get_HasValue", VariableRefB);
-            static readonly Pattern VariableBGetValueOrDefault = new MethodPattern(ILCode.Call, "GetValueOrDefault", VariableRefB);
-            static readonly Pattern CeqHasValue = new ILPattern(ILCode.Ceq, VariableAHasValue, VariableBHasValue);
-            static readonly Pattern CneHasValue = new ILPattern(ILCode.Cne, VariableAHasValue, VariableBHasValue);
-            static readonly Pattern AndHasValue = new ILPattern(ILCode.And, VariableAHasValue, VariableBHasValue);
-            static readonly Pattern Any = new AnyPattern();
-            static readonly Pattern OperatorVariableAB = new OperatorPattern();
+            static readonly Pattern VariableRefA = new VariablePattern(ILCode.Ldloca, false), VariableRefB = new VariablePattern(ILCode.Ldloca, true)
+            static readonly Pattern VariableA = new VariablePattern(ILCode.Ldloc, false), VariableB = new VariablePattern(ILCode.Ldloc, true)
+            static readonly Pattern VariableAHasValue = new MethodPattern(ILCode.CallGetter, "get_HasValue", VariableRefA)
+            static readonly Pattern VariableAGetValueOrDefault = new MethodPattern(ILCode.Call, "GetValueOrDefault", VariableRefA)
+            static readonly Pattern VariableBHasValue = new MethodPattern(ILCode.CallGetter, "get_HasValue", VariableRefB)
+            static readonly Pattern VariableBGetValueOrDefault = new MethodPattern(ILCode.Call, "GetValueOrDefault", VariableRefB)
+            static readonly Pattern CeqHasValue = new ILPattern(ILCode.Ceq, VariableAHasValue, VariableBHasValue)
+            static readonly Pattern CneHasValue = new ILPattern(ILCode.Cne, VariableAHasValue, VariableBHasValue)
+            static readonly Pattern AndHasValue = new ILPattern(ILCode.And, VariableAHasValue, VariableBHasValue)
+            static readonly Pattern Any = new AnyPattern()
+            static readonly Pattern OperatorVariableAB = new OperatorPattern()
 
             static OperatorPattern OperatorNN(OperatorType type)
-                return new OperatorPattern(type, false);
+                return new OperatorPattern(type, false)
 
             static OperatorPattern OperatorNV(OperatorType type)
-                return new OperatorPattern(type, true);
+                return new OperatorPattern(type, true)
 
             static Pattern NewObj(Pattern p)
-                return new MethodPattern(ILCode.Newobj, ".ctor", p);
+                return new MethodPattern(ILCode.Newobj, ".ctor", p)
 
             raw csharp
                 static readonly Pattern[] Comparisons = new Pattern[]
@@ -416,53 +416,53 @@ namespace ICSharpCode.Decompiler.ILAst
                     OperatorVariableAB,
                 };
 
-            ILVariable A, B;
-            ILExpression Operator, SimpleOperand;
-            bool SimpleLeftOperand;
+            ILVariable A, B
+            ILExpression Operator, SimpleOperand
+            bool SimpleLeftOperand
 
             void Reset()
-                this.A = null;
-                this.B = null;
-                this.Operator = null;
-                this.SimpleOperand = null;
-                this.SimpleLeftOperand = false;
+                this.A = null
+                this.B = null
+                this.Operator = null
+                this.SimpleOperand = null
+                this.SimpleLeftOperand = false
 
             bool Simplify(ILExpression expr)
                 if (expr.Code == ILCode.TernaryOp || expr.Code == ILCode.LogicAnd || expr.Code == ILCode.LogicOr)
-                    Pattern[] ps;
+                    Pattern[] ps
                     if (expr.Code != ILCode.TernaryOp)
-                        ps = Comparisons;
+                        ps = Comparisons
                         for (int i = 0; i < ps.Length; i++)
-                            this.Reset();
+                            this.Reset()
                             if (!ps[i].Match(this, expr))
-                                continue;
-                            SetResult(expr, OperatorVariableAB.BuildNew(this));
-                            return true;
-                    ps = Other;
+                                continue
+                            SetResult(expr, OperatorVariableAB.BuildNew(this))
+                            return true
+                    ps = Other
                     for (int i = 0; i < ps.Length; i += 2)
-                        this.Reset();
+                        this.Reset()
                         if (!ps[i].Match(this, expr))
-                            continue;
-                        var n = ps[i + 1].BuildNew(this);
-                        SetResult(expr, n);
+                            continue
+                        var n = ps[i + 1].BuildNew(this)
+                        SetResult(expr, n)
                         if (n.Code == ILCode.NullCoalescing)
                             // if both operands are nullable then the result is also nullable
                             if (n.Arguments[1].Code == ILCode.ValueOf)
-                                n.Arguments[0] = n.Arguments[0].Arguments[0];
-                                n.Arguments[1] = n.Arguments[1].Arguments[0];
+                                n.Arguments[0] = n.Arguments[0].Arguments[0]
+                                n.Arguments[1] = n.Arguments[1].Arguments[0]
                         else if (n.Code != ILCode.Ceq && n.Code != ILCode.Cne)
-                            expr.Code = ILCode.NullableOf;
-                            expr.InferredType = expr.ExpectedType = null;
-                        return true;
-                return false;
+                            expr.Code = ILCode.NullableOf
+                            expr.InferredType = expr.ExpectedType = null
+                        return true
+                return false
 
             static void SetResult(ILExpression expr, ILExpression n)
                 // IL ranges from removed nodes are assigned to the new operator expression
-                var removednodes = expr.GetSelfAndChildrenRecursive<ILExpression>().Except(n.GetSelfAndChildrenRecursive<ILExpression>());
-                n.ILRanges.AddRange(removednodes.SelectMany(el => el.ILRanges));
+                var removednodes = expr.GetSelfAndChildrenRecursive<ILExpression>().Except(n.GetSelfAndChildrenRecursive<ILExpression>())
+                n.ILRanges.AddRange(removednodes.SelectMany(el => el.ILRanges))
                 // the new expression is wrapped in a container so that negations aren't pushed through lifted comparison operations
-                expr.Code = ILCode.Wrap;
-                expr.Arguments.Clear();
-                expr.Arguments.Add(n);
-                expr.ILRanges.Clear();
-                expr.InferredType = n.InferredType;
+                expr.Code = ILCode.Wrap
+                expr.Arguments.Clear()
+                expr.Arguments.Add(n)
+                expr.ILRanges.Clear()
+                expr.InferredType = n.InferredType

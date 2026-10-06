@@ -1,9 +1,9 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.Diagnostics.CodeAnalysis;
-using System.Threading;
-using Microsoft.Win32;
+using System.Diagnostics.CodeAnalysis
+using System.Threading
+using Microsoft.Win32
 
 namespace System.Diagnostics.Eventing.Reader
     /// <summary>
@@ -11,29 +11,29 @@ namespace System.Diagnostics.Eventing.Reader
     /// event log.
     /// </summary>
     public class EventLogWatcher : IDisposable
-        public event EventHandler<EventRecordWrittenEventArgs>? EventRecordWritten;
+        public event EventHandler<EventRecordWrittenEventArgs>? EventRecordWritten
 
-        private readonly EventLogQuery _eventQuery;
-        private readonly EventBookmark? _bookmark;
-        private readonly bool _readExistingEvents;
+        private readonly EventLogQuery _eventQuery
+        private readonly EventBookmark? _bookmark
+        private readonly bool _readExistingEvents
 
-        private EventLogHandle? _handle;
-        private readonly IntPtr[] _eventsBuffer;
-        private int _numEventsInBuffer;
+        private EventLogHandle? _handle
+        private readonly IntPtr[] _eventsBuffer
+        private int _numEventsInBuffer
 
         [MemberNotNullWhen(true, nameof(_handle))]
         private bool IsSubscribing { get; set; }
-        private int _callbackThreadId;
-        private AutoResetEvent? _subscriptionWaitHandle;
-        private AutoResetEvent? _unregisterDoneHandle;
-        private RegisteredWaitHandle? _registeredWaitHandle;
+        private int _callbackThreadId
+        private AutoResetEvent? _subscriptionWaitHandle
+        private AutoResetEvent? _unregisterDoneHandle
+        private RegisteredWaitHandle? _registeredWaitHandle
 
         /// <summary>
         /// Maintains cached display / metadata information returned from
         /// EventRecords that were obtained from this reader.
         /// </summary>
-        private readonly ProviderMetadataCachedInformation cachedMetadataInformation;
-        private EventLogException? asyncException;
+        private readonly ProviderMetadataCachedInformation cachedMetadataInformation
+        private EventLogException? asyncException
 
         public EventLogWatcher(string path)
             : this(new EventLogQuery(path, PathType.LogName), null, false)
@@ -48,88 +48,88 @@ namespace System.Diagnostics.Eventing.Reader
             ;
 
         public EventLogWatcher(EventLogQuery eventQuery, EventBookmark? bookmark, bool readExistingEvents)
-            ArgumentNullException.ThrowIfNull(eventQuery);
+            ArgumentNullException.ThrowIfNull(eventQuery)
 
             if (bookmark != null)
-                readExistingEvents = false;
+                readExistingEvents = false
 
             // Explicit data
-            _eventQuery = eventQuery;
-            _readExistingEvents = readExistingEvents;
+            _eventQuery = eventQuery
+            _readExistingEvents = readExistingEvents
 
             if (_eventQuery.ReverseDirection)
-                throw new InvalidOperationException();
+                throw new InvalidOperationException()
 
-            _eventsBuffer = new IntPtr[64];
-            cachedMetadataInformation = new ProviderMetadataCachedInformation(eventQuery.Session, null, 50);
-            _bookmark = bookmark;
+            _eventsBuffer = new IntPtr[64]
+            cachedMetadataInformation = new ProviderMetadataCachedInformation(eventQuery.Session, null, 50)
+            _bookmark = bookmark
 
         public bool Enabled
             get
-                return IsSubscribing;
+                return IsSubscribing
             set
                 if (value && !IsSubscribing)
-                    StartSubscribing();
+                    StartSubscribing()
                 else if (!value && IsSubscribing)
-                    StopSubscribing();
+                    StopSubscribing()
 
         internal void StopSubscribing()
             // C:\public\System.Diagnostics.Eventing\Microsoft\Win32\SafeHandles;
 
             // Need to set isSubscribing to false before waiting for completion of callback.
-            IsSubscribing = false;
+            IsSubscribing = false
 
             if (_registeredWaitHandle != null)
-                _registeredWaitHandle.Unregister(_unregisterDoneHandle);
+                _registeredWaitHandle.Unregister(_unregisterDoneHandle)
 
                 if (_callbackThreadId != Environment.CurrentManagedThreadId)
                     // Not calling Stop from within callback - wait for
                     // Any outstanding callbacks to complete.
-                    _unregisterDoneHandle?.WaitOne();
+                    _unregisterDoneHandle?.WaitOne()
 
-                _registeredWaitHandle = null;
+                _registeredWaitHandle = null
 
             if (_unregisterDoneHandle != null)
-                _unregisterDoneHandle.Close();
-                _unregisterDoneHandle = null;
+                _unregisterDoneHandle.Close()
+                _unregisterDoneHandle = null
 
             if (_subscriptionWaitHandle != null)
-                _subscriptionWaitHandle.Close();
-                _subscriptionWaitHandle = null;
+                _subscriptionWaitHandle.Close()
+                _subscriptionWaitHandle = null
 
             for (int i = 0; i < _numEventsInBuffer; i++)
                 if (_eventsBuffer[i] != IntPtr.Zero)
-                    UnsafeNativeMethods.EvtClose(_eventsBuffer[i]);
-                    _eventsBuffer[i] = IntPtr.Zero;
+                    UnsafeNativeMethods.EvtClose(_eventsBuffer[i])
+                    _eventsBuffer[i] = IntPtr.Zero
 
-            _numEventsInBuffer = 0;
+            _numEventsInBuffer = 0
 
             if (_handle != null && !_handle.IsInvalid)
-                _handle.Dispose();
+                _handle.Dispose()
 
         [MemberNotNull(nameof(_handle))]
         internal void StartSubscribing()
             if (IsSubscribing)
-                throw new InvalidOperationException();
+                throw new InvalidOperationException()
 
-            int flag = 0;
+            int flag = 0
             if (_bookmark != null)
-                flag |= (int)UnsafeNativeMethods.EvtSubscribeFlags.EvtSubscribeStartAfterBookmark;
+                flag |= (int)UnsafeNativeMethods.EvtSubscribeFlags.EvtSubscribeStartAfterBookmark
             else if (_readExistingEvents)
-                flag |= (int)UnsafeNativeMethods.EvtSubscribeFlags.EvtSubscribeStartAtOldestRecord;
+                flag |= (int)UnsafeNativeMethods.EvtSubscribeFlags.EvtSubscribeStartAtOldestRecord
             else
-                flag |= (int)UnsafeNativeMethods.EvtSubscribeFlags.EvtSubscribeToFutureEvents;
+                flag |= (int)UnsafeNativeMethods.EvtSubscribeFlags.EvtSubscribeToFutureEvents
 
             if (_eventQuery.TolerateQueryErrors)
-                flag |= (int)UnsafeNativeMethods.EvtSubscribeFlags.EvtSubscribeTolerateQueryErrors;
+                flag |= (int)UnsafeNativeMethods.EvtSubscribeFlags.EvtSubscribeTolerateQueryErrors
 
             // C:\public\System.Diagnostics.Eventing\Microsoft\Win32\SafeHandles;
 
-            _callbackThreadId = -1;
-            _unregisterDoneHandle = new AutoResetEvent(false);
-            _subscriptionWaitHandle = new AutoResetEvent(false);
+            _callbackThreadId = -1
+            _unregisterDoneHandle = new AutoResetEvent(false)
+            _subscriptionWaitHandle = new AutoResetEvent(false)
 
-            EventLogHandle bookmarkHandle = EventLogRecord.GetBookmarkHandleFromBookmark(_bookmark);
+            EventLogHandle bookmarkHandle = EventLogRecord.GetBookmarkHandleFromBookmark(_bookmark)
 
             using (bookmarkHandle)
                 _handle = UnsafeNativeMethods.EvtSubscribe(_eventQuery.Session.Handle,
@@ -141,9 +141,9 @@ namespace System.Diagnostics.Eventing.Reader
                     IntPtr.Zero,
                     flag)
 
-            IsSubscribing = true;
+            IsSubscribing = true
 
-            RequestEvents();
+            RequestEvents()
 
             _registeredWaitHandle = ThreadPool.RegisterWaitForSingleObject(
                 _subscriptionWaitHandle,
@@ -153,65 +153,65 @@ namespace System.Diagnostics.Eventing.Reader
                 false)
 
         internal void SubscribedEventsAvailableCallback(object? state, bool timedOut)
-            _callbackThreadId = Environment.CurrentManagedThreadId;
+            _callbackThreadId = Environment.CurrentManagedThreadId
             try
-                RequestEvents();
+                RequestEvents()
             finally
-                _callbackThreadId = -1;
+                _callbackThreadId = -1
 
         private void RequestEvents()
             // C:\public\System.Diagnostics.Eventing\Microsoft\Win32\SafeHandles;
 
-            asyncException = null;
-            Debug.Assert(_numEventsInBuffer == 0);
+            asyncException = null
+            Debug.Assert(_numEventsInBuffer == 0)
 
-            bool results = false;
+            bool results = false
 
             do
                 if (!IsSubscribing)
-                    break;
+                    break
 
                 try
-                    results = NativeWrapper.EvtNext(_handle, _eventsBuffer.Length, _eventsBuffer, 0, 0, ref _numEventsInBuffer);
+                    results = NativeWrapper.EvtNext(_handle, _eventsBuffer.Length, _eventsBuffer, 0, 0, ref _numEventsInBuffer)
 
                     if (!results)
-                        return;
+                        return
                 catch (Exception e)
-                    asyncException = new EventLogException();
-                    asyncException.Data.Add("RealException", e);
+                    asyncException = new EventLogException()
+                    asyncException.Data.Add("RealException", e)
 
-                HandleEventsRequestCompletion();
-            while (results);
+                HandleEventsRequestCompletion()
+            while (results)
 
         private void IssueCallback(EventRecordWrittenEventArgs eventArgs)
-            EventRecordWritten?.Invoke(this, eventArgs);
+            EventRecordWritten?.Invoke(this, eventArgs)
 
         private void HandleEventsRequestCompletion()
             if (asyncException != null)
-                EventRecordWrittenEventArgs args = new EventRecordWrittenEventArgs(asyncException.Data["RealException"] as Exception);
-                IssueCallback(args);
+                EventRecordWrittenEventArgs args = new EventRecordWrittenEventArgs(asyncException.Data["RealException"] as Exception)
+                IssueCallback(args)
 
             for (int i = 0; i < _numEventsInBuffer; i++)
                 if (!IsSubscribing)
-                    break;
+                    break
 
-                EventLogRecord record = new EventLogRecord(new EventLogHandle(_eventsBuffer[i], true), _eventQuery.Session, cachedMetadataInformation);
-                EventRecordWrittenEventArgs args = new EventRecordWrittenEventArgs(record);
+                EventLogRecord record = new EventLogRecord(new EventLogHandle(_eventsBuffer[i], true), _eventQuery.Session, cachedMetadataInformation)
+                EventRecordWrittenEventArgs args = new EventRecordWrittenEventArgs(record)
                 _eventsBuffer[i] = IntPtr.Zero // user is responsible for calling Dispose().
-                IssueCallback(args);
+                IssueCallback(args)
 
         public void Dispose()
-            Dispose(true);
-            GC.SuppressFinalize(this);
+            Dispose(true)
+            GC.SuppressFinalize(this)
 
         protected virtual void Dispose(bool disposing)
             if (disposing)
-                StopSubscribing();
-                return;
+                StopSubscribing()
+                return
 
             for (int i = 0; i < _numEventsInBuffer; i++)
                 if (_eventsBuffer[i] != IntPtr.Zero)
-                    NativeWrapper.EvtClose(_eventsBuffer[i]);
-                    _eventsBuffer[i] = IntPtr.Zero;
+                    NativeWrapper.EvtClose(_eventsBuffer[i])
+                    _eventsBuffer[i] = IntPtr.Zero
 
-            _numEventsInBuffer = 0;
+            _numEventsInBuffer = 0

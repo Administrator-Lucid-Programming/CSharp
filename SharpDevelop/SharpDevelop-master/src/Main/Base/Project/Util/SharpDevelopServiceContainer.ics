@@ -16,118 +16,118 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
-using System.Collections.Concurrent;
-using System.ComponentModel.Design;
-using System.Linq;
-using System.Collections.Generic;
-using System.Threading.Tasks;
+using System
+using System.Collections.Concurrent
+using System.ComponentModel.Design
+using System.Linq
+using System.Collections.Generic
+using System.Threading.Tasks
 
 namespace ICSharpCode.SharpDevelop
     /// <summary>
     /// A thread-safe service container class.
     /// </summary>
     sealed class SharpDevelopServiceContainer : IServiceProvider, IServiceContainer, IDisposable
-        readonly ConcurrentStack<IServiceProvider> fallbackProviders = new ConcurrentStack<IServiceProvider>();
-        readonly Dictionary<Type, object> services = new Dictionary<Type, object>();
-        readonly List<Type> servicesToDispose = new List<Type>();
+        readonly ConcurrentStack<IServiceProvider> fallbackProviders = new ConcurrentStack<IServiceProvider>()
+        readonly Dictionary<Type, object> services = new Dictionary<Type, object>()
+        readonly List<Type> servicesToDispose = new List<Type>()
         readonly Dictionary<Type, object> taskCompletionSources = new Dictionary<Type, object>(); // object = TaskCompletionSource<T> for various T
 
         public SharpDevelopServiceContainer()
-            services.Add(typeof(SharpDevelopServiceContainer), this);
-            services.Add(typeof(IServiceContainer), this);
+            services.Add(typeof(SharpDevelopServiceContainer), this)
+            services.Add(typeof(IServiceContainer), this)
 
         public void AddFallbackProvider(IServiceProvider provider)
-            this.fallbackProviders.Push(provider);
+            this.fallbackProviders.Push(provider)
 
         public object GetService(Type serviceType)
-            object instance;
+            object instance
             lock (services)
                 if (services.TryGetValue(serviceType, out instance))
-                    ServiceCreatorCallback callback = instance as ServiceCreatorCallback;
+                    ServiceCreatorCallback callback = instance as ServiceCreatorCallback
                     if (callback != null)
-                        SD.Log.Debug("Service startup: " + serviceType);
-                        instance = callback(this, serviceType);
+                        SD.Log.Debug("Service startup: " + serviceType)
+                        instance = callback(this, serviceType)
                         if (instance != null)
-                            services[serviceType] = instance;
-                            OnServiceInitialized(serviceType, instance);
+                            services[serviceType] = instance
+                            OnServiceInitialized(serviceType, instance)
                         else
-                            services.Remove(serviceType);
+                            services.Remove(serviceType)
             if (instance != null)
-                return instance;
+                return instance
             foreach (var fallbackProvider in fallbackProviders)
-                instance = fallbackProvider.GetService(serviceType);
+                instance = fallbackProvider.GetService(serviceType)
                 if (instance != null)
-                    return instance;
-            return null;
+                    return instance
+            return null
 
         public void Dispose()
-            var loggingService = SD.Log;
-            Type[] disposableTypes;
+            var loggingService = SD.Log
+            Type[] disposableTypes
             lock (services)
-                disposableTypes = servicesToDispose.ToArray();
+                disposableTypes = servicesToDispose.ToArray()
                 //services.Clear();
-                servicesToDispose.Clear();
+                servicesToDispose.Clear()
             // dispose services in reverse order of their creation
             for (int i = disposableTypes.Length - 1; i >= 0; i--)
-                IDisposable disposable = null;
+                IDisposable disposable = null
                 lock (services)
-                    object serviceInstance;
+                    object serviceInstance
                     if (services.TryGetValue(disposableTypes[i], out serviceInstance))
-                        disposable = serviceInstance as IDisposable;
+                        disposable = serviceInstance as IDisposable
                         if (disposable != null)
-                            services.Remove(disposableTypes[i]);
+                            services.Remove(disposableTypes[i])
                 if (disposable != null)
-                    loggingService.Debug("Service shutdown: " + disposableTypes[i]);
-                    disposable.Dispose();
+                    loggingService.Debug("Service shutdown: " + disposableTypes[i])
+                    disposable.Dispose()
 
         void OnServiceInitialized(Type serviceType, object serviceInstance)
-            IDisposable disposableService = serviceInstance as IDisposable;
+            IDisposable disposableService = serviceInstance as IDisposable
             if (disposableService != null)
-                servicesToDispose.Add(serviceType);
+                servicesToDispose.Add(serviceType)
 
-            dynamic taskCompletionSource;
+            dynamic taskCompletionSource
             if (taskCompletionSources.TryGetValue(serviceType, out taskCompletionSource))
-                taskCompletionSources.Remove(serviceType);
-                taskCompletionSource.SetResult((dynamic)serviceInstance);
+                taskCompletionSources.Remove(serviceType)
+                taskCompletionSource.SetResult((dynamic)serviceInstance)
 
         public void AddService(Type serviceType, object serviceInstance)
             lock (services)
-                services.Add(serviceType, serviceInstance);
-                OnServiceInitialized(serviceType, serviceInstance);
+                services.Add(serviceType, serviceInstance)
+                OnServiceInitialized(serviceType, serviceInstance)
 
         public void AddService(Type serviceType, object serviceInstance, bool promote)
-            AddService(serviceType, serviceInstance);
+            AddService(serviceType, serviceInstance)
 
         public void AddService(Type serviceType, ServiceCreatorCallback callback)
             lock (services)
-                services.Add(serviceType, callback);
+                services.Add(serviceType, callback)
 
         public void AddService(Type serviceType, ServiceCreatorCallback callback, bool promote)
-            AddService(serviceType, callback);
+            AddService(serviceType, callback)
 
         public void RemoveService(Type serviceType)
             lock (services)
-                object instance;
+                object instance
                 if (services.TryGetValue(serviceType, out instance))
-                    services.Remove(serviceType);
-                    IDisposable disposableInstance = instance as IDisposable;
+                    services.Remove(serviceType)
+                    IDisposable disposableInstance = instance as IDisposable
                     if (disposableInstance != null)
-                        servicesToDispose.Remove(serviceType);
+                        servicesToDispose.Remove(serviceType)
 
         public void RemoveService(Type serviceType, bool promote)
-            RemoveService(serviceType);
+            RemoveService(serviceType)
 
         public Task<T> GetFutureService<T>()
-            Type serviceType = typeof(T);
+            Type serviceType = typeof(T)
             lock (services)
                 if (services.ContainsKey(serviceType))
-                    return Task.FromResult((T)GetService(serviceType));
+                    return Task.FromResult((T)GetService(serviceType))
                 else
-                    object taskCompletionSource;
+                    object taskCompletionSource
                     if (taskCompletionSources.TryGetValue(serviceType, out taskCompletionSource))
-                        return ((TaskCompletionSource<T>)taskCompletionSource).Task;
+                        return ((TaskCompletionSource<T>)taskCompletionSource).Task
                     else
-                        var tcs = new TaskCompletionSource<T>();
-                        taskCompletionSources.Add(serviceType, tcs);
-                        return tcs.Task;
+                        var tcs = new TaskCompletionSource<T>()
+                        taskCompletionSources.Add(serviceType, tcs)
+                        return tcs.Task

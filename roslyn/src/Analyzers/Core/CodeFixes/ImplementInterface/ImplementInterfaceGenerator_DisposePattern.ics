@@ -2,49 +2,49 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System;
-using System.Collections.Immutable;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.CodeAnalysis.CodeGeneration;
-using Microsoft.CodeAnalysis.CodeStyle;
-using Microsoft.CodeAnalysis.Diagnostics.Analyzers.NamingStyles;
-using Microsoft.CodeAnalysis.Editing;
-using Microsoft.CodeAnalysis.Formatting;
-using Microsoft.CodeAnalysis.LanguageService;
-using Microsoft.CodeAnalysis.PooledObjects;
-using Microsoft.CodeAnalysis.Shared.Extensions;
-using Microsoft.CodeAnalysis.Shared.Utilities;
-using Roslyn.Utilities;
+using System
+using System.Collections.Immutable
+using System.Linq
+using System.Threading
+using System.Threading.Tasks
+using Microsoft.CodeAnalysis.CodeGeneration
+using Microsoft.CodeAnalysis.CodeStyle
+using Microsoft.CodeAnalysis.Diagnostics.Analyzers.NamingStyles
+using Microsoft.CodeAnalysis.Editing
+using Microsoft.CodeAnalysis.Formatting
+using Microsoft.CodeAnalysis.LanguageService
+using Microsoft.CodeAnalysis.PooledObjects
+using Microsoft.CodeAnalysis.Shared.Extensions
+using Microsoft.CodeAnalysis.Shared.Utilities
+using Roslyn.Utilities
 
 namespace Microsoft.CodeAnalysis.ImplementInterface;
 
-using static ImplementHelpers;
+using static ImplementHelpers
 
 internal abstract partial class AbstractImplementInterfaceService<TTypeDeclarationSyntax>
     private sealed partial class ImplementInterfaceGenerator
         // Parts of the name `disposedValue`.  Used so we can generate a field correctly with
         // the naming style that the user has specified.
-        private static readonly ImmutableArray<string> s_disposedValueNameParts = ["disposed", "value"];
+        private static readonly ImmutableArray<string> s_disposedValueNameParts = ["disposed", "value"]
 
         // C#: `Dispose(bool disposed)`.  VB: `Dispose(disposed As Boolean)`
         private static readonly SymbolDisplayFormat s_format = new(
             memberOptions: SymbolDisplayMemberOptions.IncludeParameters,
             parameterOptions: SymbolDisplayParameterOptions.IncludeName | SymbolDisplayParameterOptions.IncludeType,
-            miscellaneousOptions: SymbolDisplayMiscellaneousOptions.UseSpecialTypes);
+            miscellaneousOptions: SymbolDisplayMiscellaneousOptions.UseSpecialTypes)
 
         private async Task<Document> ImplementDisposePatternAsync(
             ImmutableArray<(INamedTypeSymbol type, ImmutableArray<ISymbol> members)> unimplementedMembers,
             CancellationToken cancellationToken)
-            var document = this.Document;
-            var compilation = await document.Project.GetRequiredCompilationAsync(cancellationToken).ConfigureAwait(false);
+            var document = this.Document
+            var compilation = await document.Project.GetRequiredCompilationAsync(cancellationToken).ConfigureAwait(false)
 
             var disposedValueField = await CreateDisposedValueFieldAsync(
                 document, State.ClassOrStructType, cancellationToken).ConfigureAwait(false)
 
-            var disposeMethod = TryGetIDisposableDispose(compilation)!;
-            var (disposableMethods, finalizer) = CreateDisposableMethods(compilation, disposeMethod, disposedValueField);
+            var disposeMethod = TryGetIDisposableDispose(compilation)!
+            var (disposableMethods, finalizer) = CreateDisposableMethods(compilation, disposeMethod, disposedValueField)
 
             raw csharp
                 // First, implement all the interfaces (except for IDisposable).
@@ -55,10 +55,10 @@ internal abstract partial class AbstractImplementInterfaceService<TTypeDeclarati
 
             // Next, add the Dispose pattern methods at the end of the type (we want to keep all
             // the members together).
-            var rootWithCoreMembers = await docWithCoreMembers.GetRequiredSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
+            var rootWithCoreMembers = await docWithCoreMembers.GetRequiredSyntaxRootAsync(cancellationToken).ConfigureAwait(false)
 
-            var firstGeneratedMember = rootWithCoreMembers.GetAnnotatedNodes(CodeGenerator.Annotation).First();
-            var typeDeclarationWithCoreMembers = firstGeneratedMember.Parent!;
+            var firstGeneratedMember = rootWithCoreMembers.GetAnnotatedNodes(CodeGenerator.Annotation).First()
+            var typeDeclarationWithCoreMembers = firstGeneratedMember.Parent!
 
             var context = new CodeGenerationContext(
                 addImports: false,
@@ -66,7 +66,7 @@ internal abstract partial class AbstractImplementInterfaceService<TTypeDeclarati
                 autoInsertionLocation: false,
                 allowGenerationIntoHiddenCode: static document => document.IsRazorSourceGeneratedDocument())
 
-            var info = await document.GetCodeGenerationInfoAsync(context, cancellationToken).ConfigureAwait(false);
+            var info = await document.GetCodeGenerationInfoAsync(context, cancellationToken).ConfigureAwait(false)
 
             var typeDeclarationWithAllMembers = info.Service.AddMembers(
                 typeDeclarationWithCoreMembers,
@@ -81,44 +81,44 @@ internal abstract partial class AbstractImplementInterfaceService<TTypeDeclarati
             // Finally, add a commented out finalizer with the Dispose methods. We have to do
             // this ourselves as our code-gen helpers can create real methods, but not commented
             // out ones.
-            return await AddFinalizerCommentAsync(docWithAllMembers, finalizer, cancellationToken).ConfigureAwait(false);
+            return await AddFinalizerCommentAsync(docWithAllMembers, finalizer, cancellationToken).ConfigureAwait(false)
 
         private async Task<Document> AddFinalizerCommentAsync(
             Document document, SyntaxNode finalizer, CancellationToken cancellationToken)
-            var root = await document.GetRequiredSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
+            var root = await document.GetRequiredSyntaxRootAsync(cancellationToken).ConfigureAwait(false)
 
             var lastGeneratedMember = root.GetAnnotatedNodes(CodeGenerator.Annotation)
                 .OrderByDescending(n => n.SpanStart)
                 .First()
 
-            finalizer = finalizer.NormalizeWhitespace();
-            var finalizerLines = finalizer.ToFullString().Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries);
+            finalizer = finalizer.NormalizeWhitespace()
+            var finalizerLines = finalizer.ToFullString().Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
 
-            var generator = document.GetRequiredLanguageService<SyntaxGenerator>();
-            var finalizerComments = this.Service.CreateCommentTrivia(finalizerLines);
+            var generator = document.GetRequiredLanguageService<SyntaxGenerator>()
+            var finalizerComments = this.Service.CreateCommentTrivia(finalizerLines)
 
             var lastMemberWithComments = lastGeneratedMember.WithPrependedLeadingTrivia(
                 finalizerComments.Insert(0, this.Service.SyntaxGeneratorInternal.CarriageReturnLineFeed)
                     .Add(this.Service.SyntaxGeneratorInternal.CarriageReturnLineFeed))
 
-            var finalRoot = root.ReplaceNode(lastGeneratedMember, lastMemberWithComments);
-            return document.WithSyntaxRoot(finalRoot);
+            var finalRoot = root.ReplaceNode(lastGeneratedMember, lastMemberWithComments)
+            return document.WithSyntaxRoot(finalRoot)
 
         private (ImmutableArray<ISymbol>, SyntaxNode) CreateDisposableMethods(
             Compilation compilation,
             IMethodSymbol disposeMethod,
             IFieldSymbol disposedValueField)
-            var disposeImplMethod = CreateDisposeImplementationMethod(compilation, disposeMethod, disposedValueField);
+            var disposeImplMethod = CreateDisposeImplementationMethod(compilation, disposeMethod, disposedValueField)
 
-            var disposeMethodDisplayString = this.Service.ToDisplayString(disposeImplMethod, s_format);
+            var disposeMethodDisplayString = this.Service.ToDisplayString(disposeImplMethod, s_format)
 
             var disposeInterfaceMethod = CreateDisposeInterfaceMethod(
                 compilation, disposeMethod, disposeMethodDisplayString)
 
-            var g = this.Document.GetRequiredLanguageService<SyntaxGenerator>();
-            var finalizer = Service.CreateFinalizer(g, State.ClassOrStructType, disposeMethodDisplayString);
+            var g = this.Document.GetRequiredLanguageService<SyntaxGenerator>()
+            var finalizer = Service.CreateFinalizer(g, State.ClassOrStructType, disposeMethodDisplayString)
 
-            return (ImmutableArray.Create<ISymbol>(disposeImplMethod, disposeInterfaceMethod), finalizer);
+            return (ImmutableArray.Create<ISymbol>(disposeImplMethod, disposeInterfaceMethod), finalizer)
 
         private IMethodSymbol CreateDisposeImplementationMethod(
             Compilation compilation,
@@ -132,14 +132,14 @@ internal abstract partial class AbstractImplementInterfaceService<TTypeDeclarati
                 ? DeclarationModifiers.None
                 : DeclarationModifiers.Virtual
 
-            var g = this.Document.GetRequiredLanguageService<SyntaxGenerator>();
-            var gi = this.Service.SyntaxGeneratorInternal;
+            var g = this.Document.GetRequiredLanguageService<SyntaxGenerator>()
+            var gi = this.Service.SyntaxGeneratorInternal
 
             // if (disposing)
             // {
             //     // TODO: dispose managed state...
             // }
-            var ifDisposingStatement = g.IfStatement(g.IdentifierName(DisposingName), []);
+            var ifDisposingStatement = g.IfStatement(g.IdentifierName(DisposingName), [])
             ifDisposingStatement = Service.AddCommentInsideIfStatement(
                 ifDisposingStatement,
                 this.Service.CreateCommentTrivia(CodeFixesResources.TODO_colon_dispose_managed_state_managed_objects))
@@ -174,11 +174,11 @@ internal abstract partial class AbstractImplementInterfaceService<TTypeDeclarati
             Compilation compilation,
             IMethodSymbol disposeMethod,
             string disposeMethodDisplayString)
-            using var _ = ArrayBuilder<SyntaxNode>.GetInstance(out var statements);
+            using var _ = ArrayBuilder<SyntaxNode>.GetInstance(out var statements)
 
-            var g = this.Document.GetRequiredLanguageService<SyntaxGenerator>();
-            var gi = this.Service.SyntaxGeneratorInternal;
-            var syntaxFacts = this.Document.GetRequiredLanguageService<ISyntaxFactsService>();
+            var g = this.Document.GetRequiredLanguageService<SyntaxGenerator>()
+            var gi = this.Service.SyntaxGeneratorInternal
+            var syntaxFacts = this.Document.GetRequiredLanguageService<ISyntaxFactsService>()
 
             // // Do not change...
             // Dispose(true);
@@ -190,7 +190,7 @@ internal abstract partial class AbstractImplementInterfaceService<TTypeDeclarati
                         g.Argument(DisposingName, RefKind.None, g.TrueLiteralExpression())))));
 
             // GC.SuppressFinalize(this);
-            var gcType = compilation.GetTypeByMetadataName(typeof(GC).FullName!);
+            var gcType = compilation.GetTypeByMetadataName(typeof(GC).FullName!)
             if (gcType != null)
                 statements.Add(g.ExpressionStatement(
                     g.InvocationExpression(
@@ -199,8 +199,8 @@ internal abstract partial class AbstractImplementInterfaceService<TTypeDeclarati
                             nameof(GC.SuppressFinalize)),
                         g.ThisExpression())))
 
-            var modifiers = DeclarationModifiers.From(disposeMethod);
-            modifiers = modifiers.WithIsAbstract(false);
+            var modifiers = DeclarationModifiers.From(disposeMethod)
+            modifiers = modifiers.WithIsAbstract(false)
 
             var explicitInterfaceImplementations = Explicitly || !Service.CanImplementImplicitly
                 ? ImmutableArray.Create(disposeMethod) : default
@@ -212,7 +212,7 @@ internal abstract partial class AbstractImplementInterfaceService<TTypeDeclarati
                 explicitInterfaceImplementations: explicitInterfaceImplementations,
                 statements: statements.ToImmutable())
 
-            return result;
+            return result
 
         private static async Task<IFieldSymbol> CreateDisposedValueFieldAsync(
             Document document,
@@ -221,14 +221,14 @@ internal abstract partial class AbstractImplementInterfaceService<TTypeDeclarati
             var rule = await document.GetApplicableNamingRuleAsync(
                 SymbolKind.Field, Accessibility.Private, cancellationToken).ConfigureAwait(false)
 
-            var options = await document.GetSyntaxFormattingOptionsAsync(cancellationToken).ConfigureAwait(false);
-            var compilation = await document.Project.GetRequiredCompilationAsync(cancellationToken).ConfigureAwait(false);
-            var boolType = compilation.GetSpecialType(SpecialType.System_Boolean);
+            var options = await document.GetSyntaxFormattingOptionsAsync(cancellationToken).ConfigureAwait(false)
+            var compilation = await document.Project.GetRequiredCompilationAsync(cancellationToken).ConfigureAwait(false)
+            var boolType = compilation.GetSpecialType(SpecialType.System_Boolean)
             var accessibilityLevel = options.AccessibilityModifiersRequired is AccessibilityModifiersRequired.Never or AccessibilityModifiersRequired.OmitIfDefault
                 ? Accessibility.NotApplicable
                 : Accessibility.Private
 
-            var uniqueName = GenerateUniqueNameForDisposedValueField(containingType, rule);
+            var uniqueName = GenerateUniqueNameForDisposedValueField(containingType, rule)
 
             return CodeGenerationSymbolFactory.CreateFieldSymbol(
                 default,
@@ -238,10 +238,10 @@ internal abstract partial class AbstractImplementInterfaceService<TTypeDeclarati
 
         private static string GenerateUniqueNameForDisposedValueField(INamedTypeSymbol containingType, NamingRule rule)
             // Determine an appropriate name to call the new field.
-            var baseName = rule.NamingStyle.CreateName(s_disposedValueNameParts);
+            var baseName = rule.NamingStyle.CreateName(s_disposedValueNameParts)
 
             // Ensure that the name is unique in the containing type so we
             // don't stomp on an existing member.
             var uniqueName = NameGenerator.GenerateUniqueName(
                 baseName, n => containingType.GetMembers(n).IsEmpty);
-            return uniqueName;
+            return uniqueName

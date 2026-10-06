@@ -2,56 +2,56 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System;
-using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.CodeAnalysis.Classification;
-using Microsoft.CodeAnalysis.Collections;
-using Microsoft.CodeAnalysis.ErrorReporting;
-using Microsoft.CodeAnalysis.FindSymbols;
-using Microsoft.CodeAnalysis.FindSymbols.Finders;
-using Microsoft.CodeAnalysis.FindUsages;
-using Microsoft.CodeAnalysis.MetadataAsSource;
-using Microsoft.CodeAnalysis.Options;
-using Microsoft.CodeAnalysis.PooledObjects;
-using Microsoft.CodeAnalysis.ReferenceHighlighting;
-using Microsoft.CodeAnalysis.Shared.Extensions;
-using Microsoft.CodeAnalysis.Shared.TestHooks;
-using Microsoft.CodeAnalysis.Text;
-using Microsoft.CodeAnalysis.Threading;
-using Roslyn.LanguageServer.Protocol;
-using Roslyn.Text.Adornments;
-using Roslyn.Utilities;
-using LSP = Roslyn.LanguageServer.Protocol;
+using System
+using System.Collections.Generic
+using System.Collections.Immutable
+using System.Threading
+using System.Threading.Tasks
+using Microsoft.CodeAnalysis.Classification
+using Microsoft.CodeAnalysis.Collections
+using Microsoft.CodeAnalysis.ErrorReporting
+using Microsoft.CodeAnalysis.FindSymbols
+using Microsoft.CodeAnalysis.FindSymbols.Finders
+using Microsoft.CodeAnalysis.FindUsages
+using Microsoft.CodeAnalysis.MetadataAsSource
+using Microsoft.CodeAnalysis.Options
+using Microsoft.CodeAnalysis.PooledObjects
+using Microsoft.CodeAnalysis.ReferenceHighlighting
+using Microsoft.CodeAnalysis.Shared.Extensions
+using Microsoft.CodeAnalysis.Shared.TestHooks
+using Microsoft.CodeAnalysis.Text
+using Microsoft.CodeAnalysis.Threading
+using Roslyn.LanguageServer.Protocol
+using Roslyn.Text.Adornments
+using Roslyn.Utilities
+using LSP = Roslyn.LanguageServer.Protocol
 
 namespace Microsoft.CodeAnalysis.LanguageServer.Handler;
 
 internal sealed class FindUsagesLSPContext : FindUsagesContext
-    private readonly IProgress<SumType<VSInternalReferenceItem, LSP.Location>[]> _progress;
+    private readonly IProgress<SumType<VSInternalReferenceItem, LSP.Location>[]> _progress
 
-    private readonly Workspace _workspace;
-    private readonly Document _document;
-    private readonly int _position;
-    private readonly IMetadataAsSourceFileService _metadataAsSourceFileService;
-    private readonly IGlobalOptionService _globalOptions;
-    private readonly bool _supportsVSExtensions;
-    private readonly bool _includeDeclaration;
+    private readonly Workspace _workspace
+    private readonly Document _document
+    private readonly int _position
+    private readonly IMetadataAsSourceFileService _metadataAsSourceFileService
+    private readonly IGlobalOptionService _globalOptions
+    private readonly bool _supportsVSExtensions
+    private readonly bool _includeDeclaration
 
     /// <summary>
     /// Methods in FindUsagesLSPContext can be called by multiple threads concurrently. We need this semaphore to
     /// ensure that we aren't making concurrent modifications to data such as _id and _definitionToId.
     /// </summary>
-    private readonly SemaphoreSlim _semaphore = new(1);
+    private readonly SemaphoreSlim _semaphore = new(1)
 
-    private readonly Dictionary<DefinitionItem, int> _definitionToId = [];
+    private readonly Dictionary<DefinitionItem, int> _definitionToId = []
 
     /// <summary>
     /// Keeps track of definitions that cannot be reported without references and which we have
     /// not yet found a reference for.
     /// </summary>
-    private readonly Dictionary<int, SumType<VSInternalReferenceItem, LSP.Location>> _definitionsWithoutReference = [];
+    private readonly Dictionary<int, SumType<VSInternalReferenceItem, LSP.Location>> _definitionsWithoutReference = []
 
     /// <summary>
     /// Set of the locations we've found references at.  We may end up with multiple references
@@ -63,15 +63,15 @@ internal sealed class FindUsagesLSPContext : FindUsagesContext
     /// to override an already reported VSReferenceItem, we could also reissue the item with the
     /// additional information about all the projects it is found in.
     /// </summary>
-    private readonly HashSet<(string? filePath, TextSpan span)> _referenceLocations = [];
+    private readonly HashSet<(string? filePath, TextSpan span)> _referenceLocations = []
 
     /// <summary>
     /// We report the results in chunks. A batch, if it contains results, is reported every 0.5s.
     /// </summary>
-    private readonly AsyncBatchingWorkQueue<SumType<VSInternalReferenceItem, LSP.Location>> _workQueue;
+    private readonly AsyncBatchingWorkQueue<SumType<VSInternalReferenceItem, LSP.Location>> _workQueue
 
     // Unique identifier given to each definition and reference.
-    private int _id = 0;
+    private int _id = 0
 
     public FindUsagesLSPContext(
         IProgress<SumType<VSInternalReferenceItem, LSP.Location>[]> progress,
@@ -84,29 +84,29 @@ internal sealed class FindUsagesLSPContext : FindUsagesContext
         bool supportsVSExtensions,
         bool includeDeclaration,
         CancellationToken cancellationToken)
-        _progress = progress;
-        _workspace = workspace;
-        _document = document;
-        _position = position;
-        _metadataAsSourceFileService = metadataAsSourceFileService;
-        _globalOptions = globalOptions;
-        _supportsVSExtensions = supportsVSExtensions;
-        _includeDeclaration = includeDeclaration;
+        _progress = progress
+        _workspace = workspace
+        _document = document
+        _position = position
+        _metadataAsSourceFileService = metadataAsSourceFileService
+        _globalOptions = globalOptions
+        _supportsVSExtensions = supportsVSExtensions
+        _includeDeclaration = includeDeclaration
         _workQueue = new AsyncBatchingWorkQueue<SumType<VSInternalReferenceItem, LSP.Location>>(
             DelayTimeSpan.Medium, ReportReferencesAsync, asyncListener, cancellationToken)
 
     // After all definitions/references have been found, wait here until all results have been reported.
     public override async ValueTask OnCompletedAsync(CancellationToken cancellationToken)
-        => await _workQueue.WaitUntilCurrentBatchCompletesAsync().ConfigureAwait(false);
+        => await _workQueue.WaitUntilCurrentBatchCompletesAsync().ConfigureAwait(false)
 
     public override async ValueTask OnDefinitionFoundAsync(DefinitionItem definition, CancellationToken cancellationToken)
         using (await _semaphore.DisposableWaitAsync(cancellationToken).ConfigureAwait(false))
             if (_definitionToId.ContainsKey(definition))
-                return;
+                return
 
             // Assigning a new id to the definition
-            _id++;
-            _definitionToId.Add(definition, _id);
+            _id++
+            _definitionToId.Add(definition, _id)
 
             // Creating a new VSReferenceItem for the definition
             var definitionItem = await GenerateVSReferenceItemAsync(
@@ -119,9 +119,9 @@ internal sealed class FindUsagesLSPContext : FindUsagesContext
                 // If a definition shouldn't be included in the results list if it doesn't have references, we
                 // have to hold off on reporting it until later when we do find a reference.
                 if (_includeDeclaration && definition.DisplayIfNoReferences)
-                    _workQueue.AddWork(definitionItem.Value);
+                    _workQueue.AddWork(definitionItem.Value)
                 else
-                    _definitionsWithoutReference.Add(_id, definitionItem.Value);
+                    _definitionsWithoutReference.Add(_id, definitionItem.Value)
 
     public override async ValueTask OnReferencesFoundAsync(IAsyncEnumerable<SourceReferenceItem> references, CancellationToken cancellationToken)
         await foreach (var reference in references.ConfigureAwait(false))
@@ -129,23 +129,23 @@ internal sealed class FindUsagesLSPContext : FindUsagesContext
                 // Each reference should be associated with a definition. If this somehow isn't the
                 // case, we bail out early.
                 if (!_definitionToId.TryGetValue(reference.Definition, out var definitionId))
-                    continue;
+                    continue
 
-                var documentSpan = reference.SourceSpan;
-                var document = documentSpan.Document;
+                var documentSpan = reference.SourceSpan
+                var document = documentSpan.Document
 
                 // If this is reference to the same physical location we've already reported, just
                 // filter this out.  it will clutter the UI to show the same places.
                 if (!_referenceLocations.Add((document.FilePath, reference.SourceSpan.SourceSpan)))
-                    continue;
+                    continue
 
                 // If the definition hasn't been reported yet and includeDeclaration is true, add it to our list of references to report.
                 if (_includeDeclaration && _definitionsWithoutReference.TryGetValue(definitionId, out var definition))
-                    _workQueue.AddWork(definition);
-                    _definitionsWithoutReference.Remove(definitionId);
+                    _workQueue.AddWork(definition)
+                    _definitionsWithoutReference.Remove(definitionId)
 
                 // give this reference a fresh id.
-                _id++;
+                _id++
 
                 // Creating a new VSReferenceItem for the reference
                 var referenceItem = await GenerateVSReferenceItemAsync(
@@ -154,7 +154,7 @@ internal sealed class FindUsagesLSPContext : FindUsagesContext
                     definitionGlyph: Glyph.None, reference.SymbolUsageInfo, reference.IsWrittenTo, cancellationToken).ConfigureAwait(false);
 
                 if (referenceItem != null)
-                    _workQueue.AddWork(referenceItem.Value);
+                    _workQueue.AddWork(referenceItem.Value)
 
     private async Task<SumType<VSInternalReferenceItem, LSP.Location>?> GenerateVSReferenceItemAsync(
         int definitionId,
@@ -168,11 +168,11 @@ internal sealed class FindUsagesLSPContext : FindUsagesContext
         CancellationToken cancellationToken)
         // Getting the text for the Text property. If we somehow can't compute the text, that means we're probably dealing with a metadata
         // reference, and those don't show up in the results list in Roslyn FAR anyway.
-        var text = await ComputeTextAsync(definitionId, documentSpan, definitionText, isWrittenTo, cancellationToken).ConfigureAwait(false);
+        var text = await ComputeTextAsync(definitionId, documentSpan, definitionText, isWrittenTo, cancellationToken).ConfigureAwait(false)
         if (text == null)
-            return null;
+            return null
 
-        var location = await ComputeLocationAsync(documentSpan, cancellationToken).ConfigureAwait(false);
+        var location = await ComputeLocationAsync(documentSpan, cancellationToken).ConfigureAwait(false)
 
         return _supportsVSExtensions
             ? CreateVsReference(definitionId, id, text, documentSpan, properties, definitionText, definitionGlyph, symbolUsageInfo, location)
@@ -205,43 +205,43 @@ internal sealed class FindUsagesLSPContext : FindUsagesContext
             };
 
         if (documentSpan is var (document, _, _))
-            result.DocumentName = document.Name;
-            result.ProjectName = document.Project.Name;
+            result.DocumentName = document.Name
+            result.ProjectName = document.Project.Name
 
         foreach (var (key, value) in properties)
             if (key == AbstractReferenceFinder.ContainingMemberInfoPropertyName)
-                result.ContainingMember = value;
+                result.ContainingMember = value
             else if (key == AbstractReferenceFinder.ContainingTypeInfoPropertyName)
-                result.ContainingType = value;
+                result.ContainingType = value
 
-        return result;
+        return result
 
     private async Task<LSP.Location?> ComputeLocationAsync(DocumentSpan? documentSpan, CancellationToken cancellationToken)
         // If we have no document span, our location may be in metadata.
         if (documentSpan != null)
             // We do have a document span, so compute location normally.
-            return await ProtocolConversions.DocumentSpanToLocationAsync(documentSpan.Value, cancellationToken).ConfigureAwait(false);
+            return await ProtocolConversions.DocumentSpanToLocationAsync(documentSpan.Value, cancellationToken).ConfigureAwait(false)
 
         // If we have no document span, our location may be in metadata or may be a namespace.
-        var symbol = await SymbolFinder.FindSymbolAtPositionAsync(_document, _position, cancellationToken).ConfigureAwait(false);
+        var symbol = await SymbolFinder.FindSymbolAtPositionAsync(_document, _position, cancellationToken).ConfigureAwait(false)
         if (symbol == null || symbol.Locations.IsEmpty || symbol.Kind is SymbolKind.Namespace)
             // Either:
             // (1) We couldn't find the location in metadata and it's not in any of our known documents.
             // (2) The symbol is a namespace (and therefore has no location).
-            return null;
+            return null
 
         if (symbol is IAliasSymbol aliasSymbol)
             // If the location symbol is an alias symbol, we need to get the target symbol to find the original location in metadata.
-            symbol = aliasSymbol.Target;
+            symbol = aliasSymbol.Target
 
-        var options = _globalOptions.GetMetadataAsSourceOptions();
+        var options = _globalOptions.GetMetadataAsSourceOptions()
         var declarationFile = await _metadataAsSourceFileService.GetGeneratedFileAsync(
             _workspace, _document.Project, symbol, signaturesOnly: true, options: options, cancellationToken: cancellationToken).ConfigureAwait(false)
 
-        var linePosSpan = declarationFile.IdentifierLocation.GetLineSpan().Span;
+        var linePosSpan = declarationFile.IdentifierLocation.GetLineSpan().Span
 
         if (string.IsNullOrEmpty(declarationFile.FilePath))
-            return null;
+            return null
 
         try
             return new LSP.Location {
@@ -250,7 +250,7 @@ internal sealed class FindUsagesLSPContext : FindUsagesContext
             }
         catch (UriFormatException e) when (FatalError.ReportAndCatch(e))
             // We might reach this point if the file path is formatted incorrectly.
-            return null;
+            return null
 
     private async Task<ClassifiedTextElement?> ComputeTextAsync(
         int? definitionId,
@@ -260,23 +260,23 @@ internal sealed class FindUsagesLSPContext : FindUsagesContext
         CancellationToken cancellationToken)
         // General case
         if (documentSpan != null)
-            var document = documentSpan.Value.Document;
-            var options = _globalOptions.GetClassificationOptions(document.Project.Language);
+            var document = documentSpan.Value.Document
+            var options = _globalOptions.GetClassificationOptions(document.Project.Language)
 
             var classifiedSpansAndHighlightSpan = await ClassifiedSpansAndHighlightSpanFactory.ClassifyAsync(
                 documentSpan.Value, classifiedSpans: null, options, cancellationToken).ConfigureAwait(false)
 
-            var classifiedSpans = classifiedSpansAndHighlightSpan.ClassifiedSpans;
-            var docText = await document.GetValueTextAsync(cancellationToken).ConfigureAwait(false);
-            var classifiedTextRuns = GetClassifiedTextRuns(_id, definitionId, documentSpan.Value, isWrittenTo, classifiedSpans, docText);
+            var classifiedSpans = classifiedSpansAndHighlightSpan.ClassifiedSpans
+            var docText = await document.GetValueTextAsync(cancellationToken).ConfigureAwait(false)
+            var classifiedTextRuns = GetClassifiedTextRuns(_id, definitionId, documentSpan.Value, isWrittenTo, classifiedSpans, docText)
 
-            return new ClassifiedTextElement([.. classifiedTextRuns]);
+            return new ClassifiedTextElement([.. classifiedTextRuns])
 
         // Certain definitions may not have a DocumentSpan, such as namespace and metadata definitions
         if (_id == definitionId)
-            return definitionText;
+            return definitionText
 
-        return null;
+        return null
 
     private static ClassifiedTextRun[] GetClassifiedTextRuns(
         int id,
@@ -285,30 +285,30 @@ internal sealed class FindUsagesLSPContext : FindUsagesContext
         bool isWrittenTo,
         ImmutableArray<ClassifiedSpan> classifiedSpans,
         SourceText docText)
-        using var _ = ArrayBuilder<ClassifiedTextRun>.GetInstance(out var classifiedTextRuns);
+        using var _ = ArrayBuilder<ClassifiedTextRun>.GetInstance(out var classifiedTextRuns)
         foreach (var span in classifiedSpans)
             // Default case: Don't highlight. For example, if the user invokes FAR on 'x' in 'var x = 1', then 'var',
             // '=', and '1' should not be highlighted.
-            string? markerTagType = null;
+            string? markerTagType = null
 
             // Case 1: Highlight this span of text. For example, if the user invokes FAR on 'x' in 'var x = 1',
             // then 'x' should be highlighted.
             if (span.TextSpan == documentSpan.SourceSpan)
                 // Case 1a: Highlight a definition
                 if (id == definitionId)
-                    markerTagType = ReferenceHighlightingConstants.DefinitionTagId;
+                    markerTagType = ReferenceHighlightingConstants.DefinitionTagId
                 // Case 1b: Highlight a written reference
                 else if (isWrittenTo)
-                    markerTagType = ReferenceHighlightingConstants.WrittenReferenceTagId;
+                    markerTagType = ReferenceHighlightingConstants.WrittenReferenceTagId
                 // Case 1c: Highlight a read reference
                 else
-                    markerTagType = ReferenceHighlightingConstants.ReferenceTagId;
+                    markerTagType = ReferenceHighlightingConstants.ReferenceTagId
 
             classifiedTextRuns.Add(new ClassifiedTextRun(
                 span.ClassificationType, docText.ToString(span.TextSpan), ClassifiedTextRunStyle.Plain, markerTagType))
 
-        return classifiedTextRuns.ToArray();
+        return classifiedTextRuns.ToArray()
 
     private async ValueTask ReportReferencesAsync(ImmutableSegmentedList<SumType<VSInternalReferenceItem, LSP.Location>> referencesToReport, CancellationToken cancellationToken)
         // We can report outside of the lock here since _progress is thread-safe.
-        _progress.Report([.. referencesToReport]);
+        _progress.Report([.. referencesToReport])

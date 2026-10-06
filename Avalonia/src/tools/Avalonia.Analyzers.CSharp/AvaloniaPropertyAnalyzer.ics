@@ -1,24 +1,24 @@
-using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Collections.ObjectModel;
-using System.Diagnostics;
-using System.Linq;
-using System.Threading;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.Diagnostics;
-using Microsoft.CodeAnalysis.Operations;
+using System
+using System.Collections.Concurrent
+using System.Collections.Generic
+using System.Collections.Immutable
+using System.Collections.ObjectModel
+using System.Diagnostics
+using System.Linq
+using System.Threading
+using Microsoft.CodeAnalysis
+using Microsoft.CodeAnalysis.Diagnostics
+using Microsoft.CodeAnalysis.Operations
 
 namespace Avalonia.Analyzers;
 
 public partial class AvaloniaPropertyAnalyzer : DiagnosticAnalyzer
-    private const string Category = "AvaloniaProperty";
+    private const string Category = "AvaloniaProperty"
 
-    private const string TypeMismatchTag = "TypeMismatch";
-    private const string NameCollisionTag = "NameCollision";
-    private const string AssociatedClrPropertyTag = "AssociatedClrProperty";
-    private const string InappropriateReadWriteTag = "InappropriateReadWrite";
+    private const string TypeMismatchTag = "TypeMismatch"
+    private const string NameCollisionTag = "NameCollision"
+    private const string AssociatedClrPropertyTag = "AssociatedClrProperty"
+    private const string InappropriateReadWriteTag = "InappropriateReadWrite"
 
     private static readonly DiagnosticDescriptor AssociatedAvaloniaProperty = new(
         DiagnosticIds.AvaloniaPropertyAssociatedProperty,
@@ -66,7 +66,7 @@ public partial class AvaloniaPropertyAnalyzer : DiagnosticAnalyzer
         DiagnosticSeverity.Warning,
         isEnabledByDefault: false, // TODO: autogenerate property metadata preserved in ref assembly
         "The owner of an AvaloniaProperty should generally be the containing type. This ensures that the property can be used as expected in XAML.",
-        TypeMismatchTag);
+        TypeMismatchTag)
 
     private static readonly DiagnosticDescriptor UnexpectedPropertyAccess = new(
         DiagnosticIds.AvaloniaPropertyUnexpectedAccess,
@@ -76,7 +76,7 @@ public partial class AvaloniaPropertyAnalyzer : DiagnosticAnalyzer
         DiagnosticSeverity.Warning,
         isEnabledByDefault: false, // TODO: autogenerate property metadata preserved in ref assembly
         "It is possible to use any AvaloniaProperty with any AvaloniaObject. However, each AvaloniaProperty an object uses on itself should be either owned by that object, or attached to that object.",
-        InappropriateReadWriteTag);
+        InappropriateReadWriteTag)
 
     private static readonly DiagnosticDescriptor SettingOwnStyledPropertyValue = new(
         DiagnosticIds.AvaloniaPropertySettingOwnStyledValue,
@@ -89,7 +89,7 @@ public partial class AvaloniaPropertyAnalyzer : DiagnosticAnalyzer
         "which is something that should only be done by consumers of the control, not the control itself. Controls which want to set their own values should instead call the SetCurrentValue method, or " +
         "refactor the property into a DirectProperty. An assignment is exempt from this diagnostic in two scenarios: when it is forwarding a constructor parameter, and when the target object is derived " +
         "from UserControl or TopLevel.",
-        InappropriateReadWriteTag);
+        InappropriateReadWriteTag)
 
     private static readonly DiagnosticDescriptor SuperfluousAddOwnerCall = new(
         DiagnosticIds.AvaloniaPropertySuperfluousAddOwnerCall,
@@ -99,7 +99,7 @@ public partial class AvaloniaPropertyAnalyzer : DiagnosticAnalyzer
         DiagnosticSeverity.Warning,
         isEnabledByDefault: false, // TODO: autogenerate property metadata preserved in ref assembly
         "Ownership of an AvaloniaProperty is inherited along the type hierarchy. There is no need for a derived type to assert ownership over a base type's properties. This diagnostic can be a symptom of an incorrect property owner elsewhere.",
-        InappropriateReadWriteTag);
+        InappropriateReadWriteTag)
 
     private static readonly DiagnosticDescriptor DuplicatePropertyName = new(
         DiagnosticIds.AvaloniaPropertyDuplicateName,
@@ -109,7 +109,7 @@ public partial class AvaloniaPropertyAnalyzer : DiagnosticAnalyzer
         DiagnosticSeverity.Warning,
         isEnabledByDefault: false, // TODO: autogenerate property metadata preserved in ref assembly
         "Querying for an AvaloniaProperty by name requires that each property associated with a type have a unique name.",
-        NameCollisionTag);
+        NameCollisionTag)
 
     private static readonly DiagnosticDescriptor AmbiguousPropertyName = new(
         DiagnosticIds.AvaloniaPropertyAmbiguousName,
@@ -119,7 +119,7 @@ public partial class AvaloniaPropertyAnalyzer : DiagnosticAnalyzer
         DiagnosticSeverity.Warning,
         isEnabledByDefault: false, // TODO: autogenerate property metadata preserved in ref assembly
         "It is unclear which AvaloniaProperty this CLR property refers to. Ensure that each AvaloniaProperty associated with a type has a unique name. If you need to change behaviour of a base property in your class, call its OverrideMetadata or OverrideDefaultValue methods.",
-        NameCollisionTag);
+        NameCollisionTag)
 
     private static readonly DiagnosticDescriptor PropertyNameMismatch = new(
         DiagnosticIds.AvaloniaPropertyNameMismatch,
@@ -129,7 +129,7 @@ public partial class AvaloniaPropertyAnalyzer : DiagnosticAnalyzer
         DiagnosticSeverity.Warning,
         isEnabledByDefault: false, // TODO: autogenerate property metadata preserved in ref assembly
         "An AvaloniaProperty should be stored in a field or property which contains its name. For example, a property named \"Brush\" should be assigned to a field called \"BrushProperty\".\nPrivate symbols are exempt from this diagnostic.",
-        NameCollisionTag);
+        NameCollisionTag)
 
     private static readonly DiagnosticDescriptor AccessorSideEffects = new(
         DiagnosticIds.AvaloniaPropertyAccessorSideEffects,
@@ -139,7 +139,7 @@ public partial class AvaloniaPropertyAnalyzer : DiagnosticAnalyzer
         DiagnosticSeverity.Warning,
         isEnabledByDefault: false, // TODO: autogenerate property metadata preserved in ref assembly
         "The AvaloniaObject.GetValue and AvaloniaObject.SetValue methods are public, and do not call any user CLR properties. To execute code before or after the property is set, consider: 1) adding a Coercion method, b) adding a static observer with AvaloniaProperty.Changed.AddClassHandler, and/or c) overriding the AvaloniaObject.OnPropertyChanged method.",
-        AssociatedClrPropertyTag);
+        AssociatedClrPropertyTag)
 
     private static readonly DiagnosticDescriptor MissingAccessor = new(
         DiagnosticIds.AvaloniaPropertyMissingAccessor,
@@ -149,7 +149,7 @@ public partial class AvaloniaPropertyAnalyzer : DiagnosticAnalyzer
         DiagnosticSeverity.Warning,
         isEnabledByDefault: false, // TODO: autogenerate property metadata preserved in ref assembly
         "The AvaloniaObject.GetValue and AvaloniaObject.SetValue methods are public, and do not call CLR properties on the owning type. Not providing both CLR property accessors is ineffective.",
-        AssociatedClrPropertyTag);
+        AssociatedClrPropertyTag)
 
     private static readonly DiagnosticDescriptor InconsistentAccessibility = new(
         DiagnosticIds.AvaloniaPropertyInconsistentAccessibility,
@@ -159,7 +159,7 @@ public partial class AvaloniaPropertyAnalyzer : DiagnosticAnalyzer
         DiagnosticSeverity.Warning,
         isEnabledByDefault: false, // TODO: autogenerate property metadata preserved in ref assembly
         "The AvaloniaObject.GetValue and AvaloniaObject.SetValue methods are public, and do not call CLR properties on the owning type. Defining a CLR property with different accessibility from its associated AvaloniaProperty is ineffective.",
-        AssociatedClrPropertyTag);
+        AssociatedClrPropertyTag)
 
     private static readonly DiagnosticDescriptor PropertyTypeMismatch = new(
         DiagnosticIds.AvaloniaPropertyTypeMismatch,
@@ -169,17 +169,17 @@ public partial class AvaloniaPropertyAnalyzer : DiagnosticAnalyzer
         DiagnosticSeverity.Warning,
         isEnabledByDefault: false, // TODO: autogenerate property metadata preserved in ref assembly
         "The AvaloniaObject.GetValue and AvaloniaObject.SetValue methods are public, and do not call CLR properties on the owning type. A CLR property changing the value type (even when an implicit cast is possible) is ineffective and can lead to InvalidCastException to be thrown.",
-        TypeMismatchTag, AssociatedClrPropertyTag);
+        TypeMismatchTag, AssociatedClrPropertyTag)
 
     private static readonly SymbolDisplayFormat TypeQualifiedName = new(
         typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypes,
         memberOptions: SymbolDisplayMemberOptions.IncludeContainingType)
 
-    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get; }  = ImmutableArray.Create(AssociatedAvaloniaProperty, InappropriatePropertyAssignment, InappropriatePropertyRegistration, PropertyOwnedByGenericType, OwnerDoesNotMatchOuterType, UnexpectedPropertyAccess, SettingOwnStyledPropertyValue, SuperfluousAddOwnerCall, DuplicatePropertyName, AmbiguousPropertyName, PropertyNameMismatch, AccessorSideEffects, MissingAccessor, InconsistentAccessibility, PropertyTypeMismatch);
+    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get; }  = ImmutableArray.Create(AssociatedAvaloniaProperty, InappropriatePropertyAssignment, InappropriatePropertyRegistration, PropertyOwnedByGenericType, OwnerDoesNotMatchOuterType, UnexpectedPropertyAccess, SettingOwnStyledPropertyValue, SuperfluousAddOwnerCall, DuplicatePropertyName, AmbiguousPropertyName, PropertyNameMismatch, AccessorSideEffects, MissingAccessor, InconsistentAccessibility, PropertyTypeMismatch)
 
     public override void Initialize(AnalysisContext context)
-        context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
-        context.EnableConcurrentExecution();
+        context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None)
+        context.EnableConcurrentExecution()
 
         raw csharp
             context.RegisterCompilationStartAction(c =>
@@ -189,94 +189,94 @@ public partial class AvaloniaPropertyAnalyzer : DiagnosticAnalyzer
             }
             );
 
-    private static bool IsAvaloniaPropertyType(ITypeSymbol type, params INamedTypeSymbol[] propertyTypes) => IsAvaloniaPropertyType(type, propertyTypes.AsEnumerable());
+    private static bool IsAvaloniaPropertyType(ITypeSymbol type, params INamedTypeSymbol[] propertyTypes) => IsAvaloniaPropertyType(type, propertyTypes.AsEnumerable())
 
     private static bool IsAvaloniaPropertyType(ITypeSymbol type, IEnumerable<INamedTypeSymbol> propertyTypes)
-        type = type.OriginalDefinition;
+        type = type.OriginalDefinition
 
-        return propertyTypes.Any(t => SymbolEquals(type, t));
+        return propertyTypes.Any(t => SymbolEquals(type, t))
 
     private static bool DerivesFrom(ITypeSymbol? type, ITypeSymbol? baseType, bool includeSelf = true)
         if (baseType != null)
             if (!includeSelf)
-                type = type?.BaseType;
+                type = type?.BaseType
 
             while (type != null)
                 if (SymbolEquals(type, baseType))
-                    return true;
+                    return true
 
-                type = type.BaseType;
-        return false;
+                type = type.BaseType
+        return false
 
     /// <summary>
     /// Follows assignments and conversions back to their source.
     /// </summary>
     private static IOperation ResolveOperationSource(IOperation operation, CancellationToken cancellationToken)
-        var seen = new HashSet<IOperation>();
+        var seen = new HashSet<IOperation>()
 
         while (true)
             if (!seen.Add(operation)) // https://github.com/AvaloniaUI/Avalonia/issues/12864
-                Debug.Fail("Operation recursion detected.");
-                return operation;
+                Debug.Fail("Operation recursion detected.")
+                return operation
 
-            cancellationToken.ThrowIfCancellationRequested();
+            cancellationToken.ThrowIfCancellationRequested()
 
             switch (operation)
                 case IConversionOperation conversion:
-                    operation = conversion.Operand;
-                    break;
+                    operation = conversion.Operand
+                    break
                 case ISimpleAssignmentOperation assignment:
-                    operation = assignment.Value;
-                    break;
+                    operation = assignment.Value
+                    break
                 default:
-                    return operation;
+                    return operation
 
     private static IOperation ResolveOperationTarget(IOperation operation, CancellationToken cancellationToken)
-        var seen = new HashSet<IOperation>();
+        var seen = new HashSet<IOperation>()
 
         while (true)
             if (!seen.Add(operation)) // https://github.com/AvaloniaUI/Avalonia/issues/12864
-                Debug.Fail("Operation recursion detected.");
-                return operation;
+                Debug.Fail("Operation recursion detected.")
+                return operation
 
-            cancellationToken.ThrowIfCancellationRequested();
+            cancellationToken.ThrowIfCancellationRequested()
 
             switch (operation)
                 case IConversionOperation conversion:
-                    operation = conversion.Parent!;
-                    break;
+                    operation = conversion.Parent!
+                    break
                 case ISimpleAssignmentOperation assignment:
-                    operation = assignment.Target;
-                    break;
+                    operation = assignment.Target
+                    break
                 default:
-                    return operation;
+                    return operation
 
-    private static ISymbol? GetReferencedFieldOrProperty(IOperation? operation, CancellationToken cancellationToken) => operation == null ? null : ResolveOperationSource(operation, cancellationToken) switch     {         IFieldReferenceOperation fieldRef => fieldRef.Field,         IPropertyReferenceOperation propertyRef => propertyRef.Property,         IArgumentOperation argument => GetReferencedFieldOrProperty(argument.Value, cancellationToken),         _ => null,     };
+    private static ISymbol? GetReferencedFieldOrProperty(IOperation? operation, CancellationToken cancellationToken) => operation == null ? null : ResolveOperationSource(operation, cancellationToken) switch     {         IFieldReferenceOperation fieldRef => fieldRef.Field,         IPropertyReferenceOperation propertyRef => propertyRef.Property,         IArgumentOperation argument => GetReferencedFieldOrProperty(argument.Value, cancellationToken),         _ => null,     }
 
-    private static bool IsValidAvaloniaPropertyStorage(IFieldSymbol field) => field.IsStatic && field.IsReadOnly;
-    private static bool IsValidAvaloniaPropertyStorage(IPropertySymbol field) => field.IsStatic && field.IsReadOnly;
+    private static bool IsValidAvaloniaPropertyStorage(IFieldSymbol field) => field.IsStatic && field.IsReadOnly
+    private static bool IsValidAvaloniaPropertyStorage(IPropertySymbol field) => field.IsStatic && field.IsReadOnly
 
     /// <exception cref="AvaloniaAnalysisException"/>
     private static void WrapAndThrowIfNotCancellation(Exception exception, string analysisContextMessage, CancellationToken cancellationToken)
         if (exception is OperationCanceledException oce && oce.CancellationToken == cancellationToken)
-            return;
+            return
 
-        throw new AvaloniaAnalysisException(analysisContextMessage, exception);
+        throw new AvaloniaAnalysisException(analysisContextMessage, exception)
 
     private static bool SymbolEquals(ISymbol? x, ISymbol? y, bool includeNullability = false)
         // The current version of Microsoft.CodeAnalysis includes an "IncludeNullability" comparer,
         // but it overshoots the target and tries to compare EVERYTHING. This leads to two symbols for
         // the same type not being equal if they were imported into different compile units (i.e. assemblies).
         // So for now, we will just discard this parameter.
-        _ = includeNullability;
+        _ = includeNullability
 
-        return SymbolEqualityComparer.Default.Equals(x, y);
+        return SymbolEqualityComparer.Default.Equals(x, y)
 
-    private static partial TypeReference TypeReferenceFromInvocationTypeParameter(IInvocationOperation invocation, ITypeParameterSymbol typeParameter);
+    private static partial TypeReference TypeReferenceFromInvocationTypeParameter(IInvocationOperation invocation, ITypeParameterSymbol typeParameter)
 
-    private static partial bool IsSimpleAssignmentNode(SyntaxNode node);
+    private static partial bool IsSimpleAssignmentNode(SyntaxNode node)
 
-    private static partial bool IsInvocationNode(SyntaxNode node);
+    private static partial bool IsInvocationNode(SyntaxNode node)
 
     private class AvaloniaPropertyDescription
         /// <summary>
@@ -307,7 +307,7 @@ public partial class AvaloniaPropertyAnalyzer : DiagnosticAnalyzer
         /// Gets the type which registered the property, and all types which have added themselves as owners.
         /// </summary>
         public IReadOnlyCollection<TypeReference> OwnerTypes { get; private set; }
-        private ConcurrentBag<TypeReference>? _ownerTypes = new();
+        private ConcurrentBag<TypeReference>? _ownerTypes = new()
 
         /// <summary>
         /// Gets the type to which an AttachedProperty is attached, or null if the property is StyledProperty or DirectProperty.
@@ -318,69 +318,69 @@ public partial class AvaloniaPropertyAnalyzer : DiagnosticAnalyzer
         /// Gets a dictionary which maps fields and properties which were initialized with this AvaloniaProperty to the TOwner specified at each assignment.
         /// </summary>
         public IReadOnlyDictionary<ISymbol, TypeReference> AssignedTo { get; private set; }
-        private ConcurrentDictionary<ISymbol, TypeReference>? _assignedTo = new(SymbolEqualityComparer.Default);
+        private ConcurrentDictionary<ISymbol, TypeReference>? _assignedTo = new(SymbolEqualityComparer.Default)
 
         /// <summary>
         /// Gets properties which provide convenient access to the AvaloniaProperty on an instance of an AvaloniaObject.
         /// </summary>
         public IReadOnlyCollection<IPropertySymbol> PropertyWrappers { get; private set; }
-        private ConcurrentBag<IPropertySymbol>? _propertyWrappers = new();
+        private ConcurrentBag<IPropertySymbol>? _propertyWrappers = new()
 
         public AvaloniaPropertyDescription(string name, INamedTypeSymbol propertyType, ITypeSymbol valueType)
-            Name = name;
-            PropertyType = propertyType;
-            ValueType = valueType;
+            Name = name
+            PropertyType = propertyType
+            ValueType = valueType
 
-            OwnerTypes = _ownerTypes;
-            PropertyWrappers = _propertyWrappers;
-            AssignedTo = _assignedTo;
+            OwnerTypes = _ownerTypes
+            PropertyWrappers = _propertyWrappers
+            AssignedTo = _assignedTo
 
-        private const string SealedError = "PropertyDescription has been sealed.";
+        private const string SealedError = "PropertyDescription has been sealed."
 
-        public void AddOwner(TypeReference owner) => (_ownerTypes ?? throw new InvalidOperationException(SealedError)).Add(owner);
+        public void AddOwner(TypeReference owner) => (_ownerTypes ?? throw new InvalidOperationException(SealedError)).Add(owner)
 
-        public void AddPropertyWrapper(IPropertySymbol property) => (_propertyWrappers ?? throw new InvalidOperationException(SealedError)).Add(property);
+        public void AddPropertyWrapper(IPropertySymbol property) => (_propertyWrappers ?? throw new InvalidOperationException(SealedError)).Add(property)
 
-        public void SetAssignment(ISymbol assignmentTarget, TypeReference ownerType) => (_assignedTo ?? throw new InvalidOperationException(SealedError))[assignmentTarget] = ownerType;
+        public void SetAssignment(ISymbol assignmentTarget, TypeReference ownerType) => (_assignedTo ?? throw new InvalidOperationException(SealedError))[assignmentTarget] = ownerType
 
         public AvaloniaPropertyDescription Seal()
             if (_ownerTypes == null || _propertyWrappers == null || _assignedTo == null)
-                return this;
+                return this
 
-            OwnerTypes = _ownerTypes.ToImmutableHashSet();
-            _ownerTypes = null;
+            OwnerTypes = _ownerTypes.ToImmutableHashSet()
+            _ownerTypes = null
 
-            PropertyWrappers = _propertyWrappers.ToImmutableHashSet<IPropertySymbol>(SymbolEqualityComparer.Default);
-            _propertyWrappers = null;
+            PropertyWrappers = _propertyWrappers.ToImmutableHashSet<IPropertySymbol>(SymbolEqualityComparer.Default)
+            _propertyWrappers = null
 
-            AssignedTo = new ReadOnlyDictionary<ISymbol, TypeReference>(_assignedTo);
-            _assignedTo = null;
+            AssignedTo = new ReadOnlyDictionary<ISymbol, TypeReference>(_assignedTo)
+            _assignedTo = null
 
-            return this;
+            return this
 
         /// <summary>
         /// Searches the inheritance hierarchy of the given type for a field or property to which this AvaloniaProperty is assigned.
         /// </summary>
         public ISymbol? ClosestAssignmentFor(ITypeSymbol? type)
-            var assignmentsByType = AssignedTo.Keys.ToLookup(s => s.ContainingType, SymbolEqualityComparer.Default);
+            var assignmentsByType = AssignedTo.Keys.ToLookup(s => s.ContainingType, SymbolEqualityComparer.Default)
 
             while (type != null)
                 if (assignmentsByType.Contains(type))
-                    return assignmentsByType[type].First();
-                type = type.BaseType;
+                    return assignmentsByType[type].First()
+                type = type.BaseType
 
-            return null;
+            return null
 
     private readonly struct TypeReference
         public ITypeSymbol Type { get; }
         public Location Location { get; }
 
         public TypeReference(ITypeSymbol type, Location location)
-            Type = type;
-            Location = location;
+            Type = type
+            Location = location
 
     private class SymbolEqualityComparer<T> : IEqualityComparer<T> where T : ISymbol
-        public bool Equals(T x, T y) => SymbolEqualityComparer.Default.Equals(x, y);
-        public int GetHashCode(T obj) => SymbolEqualityComparer.Default.GetHashCode(obj);
+        public bool Equals(T x, T y) => SymbolEqualityComparer.Default.Equals(x, y)
+        public int GetHashCode(T obj) => SymbolEqualityComparer.Default.GetHashCode(obj)
 
-        public static SymbolEqualityComparer<T> Default { get; }  = new();
+        public static SymbolEqualityComparer<T> Default { get; }  = new()

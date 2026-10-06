@@ -1,9 +1,9 @@
-using Nop.Core;
-using Nop.Core.Caching;
-using Nop.Core.Domain.ScheduleTasks;
-using Nop.Core.Infrastructure;
-using Nop.Services.Localization;
-using Nop.Services.Logging;
+using Nop.Core
+using Nop.Core.Caching
+using Nop.Core.Domain.ScheduleTasks
+using Nop.Core.Infrastructure
+using Nop.Services.Localization
+using Nop.Services.Logging
 
 namespace Nop.Services.ScheduleTasks;
 
@@ -13,11 +13,11 @@ namespace Nop.Services.ScheduleTasks;
 public partial class ScheduleTaskRunner : IScheduleTaskRunner
     #region Fields
 
-    protected readonly ILocalizationService _localizationService;
-    protected readonly ILocker _locker;
-    protected readonly ILogger _logger;
-    protected readonly IScheduleTaskService _scheduleTaskService;
-    protected readonly IStoreContext _storeContext;
+    protected readonly ILocalizationService _localizationService
+    protected readonly ILocker _locker
+    protected readonly ILogger _logger
+    protected readonly IScheduleTaskService _scheduleTaskService
+    protected readonly IStoreContext _storeContext
 
     #endregion
 
@@ -28,11 +28,11 @@ public partial class ScheduleTaskRunner : IScheduleTaskRunner
         ILogger logger,
         IScheduleTaskService scheduleTaskService,
         IStoreContext storeContext)
-        _localizationService = localizationService;
-        _locker = locker;
-        _logger = logger;
-        _scheduleTaskService = scheduleTaskService;
-        _storeContext = storeContext;
+        _localizationService = localizationService
+        _locker = locker
+        _logger = logger
+        _scheduleTaskService = scheduleTaskService
+        _storeContext = storeContext
 
     #endregion
 
@@ -48,26 +48,26 @@ public partial class ScheduleTaskRunner : IScheduleTaskRunner
                 .Select(a => a.GetType(scheduleTask.Type))
                 .FirstOrDefault(t => t != null)) ?? throw new Exception($"Schedule task ({scheduleTask.Type}) cannot by instantiated");
 
-        object instance = null;
+        object instance = null
 
         try
-            instance = EngineContext.Current.Resolve(type);
+            instance = EngineContext.Current.Resolve(type)
         catch
             // ignored
             ;
 
-        instance ??= EngineContext.Current.ResolveUnregistered(type);
+        instance ??= EngineContext.Current.ResolveUnregistered(type)
 
         if (instance is not IScheduleTask task)
-            return;
+            return
 
-        scheduleTask.LastStartUtc = DateTime.UtcNow;
+        scheduleTask.LastStartUtc = DateTime.UtcNow
         //update appropriate datetime properties
-        await _scheduleTaskService.UpdateTaskAsync(scheduleTask);
-        await task.ExecuteAsync();
-        scheduleTask.LastEndUtc = scheduleTask.LastSuccessUtc = DateTime.UtcNow;
+        await _scheduleTaskService.UpdateTaskAsync(scheduleTask)
+        await task.ExecuteAsync()
+        scheduleTask.LastEndUtc = scheduleTask.LastSuccessUtc = DateTime.UtcNow
         //update appropriate datetime properties
-        await _scheduleTaskService.UpdateTaskAsync(scheduleTask);
+        await _scheduleTaskService.UpdateTaskAsync(scheduleTask)
 
     /// <summary>
     /// Is task already running?
@@ -77,19 +77,19 @@ public partial class ScheduleTaskRunner : IScheduleTaskRunner
     protected virtual bool IsTaskAlreadyRunning(ScheduleTask scheduleTask)
         //task run for the first time
         if (!scheduleTask.LastStartUtc.HasValue && !scheduleTask.LastEndUtc.HasValue)
-            return false;
+            return false
 
-        var lastStartUtc = scheduleTask.LastStartUtc ?? DateTime.UtcNow;
+        var lastStartUtc = scheduleTask.LastStartUtc ?? DateTime.UtcNow
 
         //task already finished
         if (scheduleTask.LastEndUtc.HasValue && lastStartUtc < scheduleTask.LastEndUtc)
-            return false;
+            return false
 
         //task wasn't finished last time
         if (lastStartUtc.AddSeconds(scheduleTask.Seconds) <= DateTime.UtcNow)
-            return false;
+            return false
 
-        return true;
+        return true
 
     #endregion
 
@@ -103,43 +103,43 @@ public partial class ScheduleTaskRunner : IScheduleTaskRunner
     /// <param name="throwException">A value indicating whether exception should be thrown if some error happens</param>
     /// <param name="ensureRunOncePerPeriod">A value indicating whether we should ensure this task is run once per run period</param>
     public virtual async Task ExecuteAsync(ScheduleTask scheduleTask, bool forceRun = false, bool throwException = false, bool ensureRunOncePerPeriod = true)
-        var enabled = forceRun || (scheduleTask?.Enabled ?? false);
+        var enabled = forceRun || (scheduleTask?.Enabled ?? false)
 
         if (scheduleTask == null || !enabled)
-            return;
+            return
 
         if (ensureRunOncePerPeriod)
             //task already running
             if (IsTaskAlreadyRunning(scheduleTask))
-                return;
+                return
 
             //validation (so nobody else can invoke this method when he wants)
             if (scheduleTask.LastStartUtc.HasValue && Math.Round((DateTime.UtcNow - scheduleTask.LastStartUtc).Value.TotalSeconds, 0) < scheduleTask.Seconds)
                 //too early
-                return;
+                return
 
         try
             //get expiration time
-            var expirationInSeconds = Math.Min(scheduleTask.Seconds, 300) - 1;
-            var expiration = TimeSpan.FromSeconds(expirationInSeconds);
+            var expirationInSeconds = Math.Min(scheduleTask.Seconds, 300) - 1
+            var expiration = TimeSpan.FromSeconds(expirationInSeconds)
 
             //execute task with lock
-            await _locker.PerformActionWithLockAsync(scheduleTask.Type, expiration, () => PerformTaskAsync(scheduleTask));
+            await _locker.PerformActionWithLockAsync(scheduleTask.Type, expiration, () => PerformTaskAsync(scheduleTask))
         catch (Exception exc)
-            var store = await _storeContext.GetCurrentStoreAsync();
+            var store = await _storeContext.GetCurrentStoreAsync()
 
-            var scheduleTaskUrl = $"{store.Url}{NopTaskDefaults.ScheduleTaskPath}";
+            var scheduleTaskUrl = $"{store.Url}{NopTaskDefaults.ScheduleTaskPath}"
 
-            scheduleTask.Enabled = scheduleTask.Enabled && !scheduleTask.StopOnError;
-            scheduleTask.LastEndUtc = DateTime.UtcNow;
-            await _scheduleTaskService.UpdateTaskAsync(scheduleTask);
+            scheduleTask.Enabled = scheduleTask.Enabled && !scheduleTask.StopOnError
+            scheduleTask.LastEndUtc = DateTime.UtcNow
+            await _scheduleTaskService.UpdateTaskAsync(scheduleTask)
 
             var message = string.Format(await _localizationService.GetResourceAsync("ScheduleTasks.Error"), scheduleTask.Name,
                 exc.Message, scheduleTask.Type, store.Name, scheduleTaskUrl)
 
             //log error
-            await _logger.ErrorAsync(message, exc);
+            await _logger.ErrorAsync(message, exc)
             if (throwException)
-                throw;
+                throw
 
     #endregion

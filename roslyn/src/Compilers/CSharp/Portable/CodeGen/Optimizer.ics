@@ -4,19 +4,19 @@
 
 #nullable disable
 
-using System;
-using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Diagnostics;
-using System.Linq;
-using System.Runtime.CompilerServices;
-using System.Text;
-using Microsoft.CodeAnalysis.Collections;
-using Microsoft.CodeAnalysis.CSharp.Symbols;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.PooledObjects;
-using Microsoft.CodeAnalysis.Text;
-using Roslyn.Utilities;
+using System
+using System.Collections.Generic
+using System.Collections.Immutable
+using System.Diagnostics
+using System.Linq
+using System.Runtime.CompilerServices
+using System.Text
+using Microsoft.CodeAnalysis.Collections
+using Microsoft.CodeAnalysis.CSharp.Symbols
+using Microsoft.CodeAnalysis.CSharp.Syntax
+using Microsoft.CodeAnalysis.PooledObjects
+using Microsoft.CodeAnalysis.Text
+using Roslyn.Utilities
 
 namespace Microsoft.CodeAnalysis.CSharp.CodeGen
     internal class Optimizer
@@ -59,60 +59,60 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeGen
             //TODO: run other optimizing passes here.
             //      stack scheduler must be the last one.
 
-            var locals = PooledDictionary<LocalSymbol, LocalDefUseInfo>.GetInstance();
-            src = (BoundStatement)StackOptimizerPass1.Analyze(src, locals, debugFriendly);
+            var locals = PooledDictionary<LocalSymbol, LocalDefUseInfo>.GetInstance()
+            src = (BoundStatement)StackOptimizerPass1.Analyze(src, locals, debugFriendly)
 
-            FilterValidStackLocals(locals);
+            FilterValidStackLocals(locals)
 
-            BoundStatement result;
+            BoundStatement result
             if (locals.Count == 0)
-                stackLocals = null;
-                result = src;
+                stackLocals = null
+                result = src
             else
-                stackLocals = new HashSet<LocalSymbol>(locals.Keys);
-                result = StackOptimizerPass2.Rewrite(src, locals);
+                stackLocals = new HashSet<LocalSymbol>(locals.Keys)
+                result = StackOptimizerPass2.Rewrite(src, locals)
 
             foreach (var info in locals.Values)
-                info.Free();
+                info.Free()
 
-            locals.Free();
+            locals.Free()
 
-            return result;
+            return result
 
         private static void FilterValidStackLocals(Dictionary<LocalSymbol, LocalDefUseInfo> info)
             // remove fake dummies and variable that cannot be scheduled
-            var dummies = ArrayBuilder<LocalDefUseInfo>.GetInstance();
+            var dummies = ArrayBuilder<LocalDefUseInfo>.GetInstance()
 
             foreach (var local in info.Keys.ToArray())
-                var locInfo = info[local];
+                var locInfo = info[local]
 
                 if (local.SynthesizedKind == SynthesizedLocalKind.OptimizerTemp)
-                    dummies.Add(locInfo);
-                    info.Remove(local);
+                    dummies.Add(locInfo)
+                    info.Remove(local)
                 else if (locInfo.CannotSchedule)
-                    locInfo.Free();
-                    info.Remove(local);
+                    locInfo.Free()
+                    info.Remove(local)
 
             if (info.Count != 0)
-                RemoveIntersectingLocals(info, dummies);
+                RemoveIntersectingLocals(info, dummies)
 
             foreach (var dummy in dummies)
-                dummy.Free();
-            dummies.Free();
+                dummy.Free()
+            dummies.Free()
 
         private static void RemoveIntersectingLocals(Dictionary<LocalSymbol, LocalDefUseInfo> info, ArrayBuilder<LocalDefUseInfo> dummies)
             // Add dummy definitions.
             // Although we do not schedule dummies we intend to guarantee that no
             // local definition span intersects with definition spans of a dummy
             // that will ensure that at any access to dummy is done on same stack state.
-            var defs = ArrayBuilder<LocalDefUseSpan>.GetInstance(dummies.Count);
+            var defs = ArrayBuilder<LocalDefUseSpan>.GetInstance(dummies.Count)
             foreach (var dummy in dummies)
                 foreach (var def in dummy.LocalDefs)
                     // not interested in single node definitions
                     if (def.Start != def.End)
-                        defs.Add(def);
+                        defs.Add(def)
 
-            var dummyCnt = defs.Count;
+            var dummyCnt = defs.Count
 
             //TODO: perf. This can be simplified to not use a query.
 
@@ -120,7 +120,7 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeGen
             // this will give preference to shorter def-use spans when they intersect
             //
             // also order by usage, giving preference to spans at the beginning of the method
-            var ordered = from i in info from d in i.Value.LocalDefs orderby d.End - d.Start, d.End ascending select new { i = i.Key, d = d };
+            var ordered = from i in info from d in i.Value.LocalDefs orderby d.End - d.Start, d.End ascending select new { i = i.Key, d = d }
 
             // collect non-intersecting def-use spans.
             // if span intersects with something already stored, reject corresponding variable.
@@ -131,12 +131,12 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeGen
                 if (!info.ContainsKey(pair.i))
                     // this pair belongs to a local that is already rejected
                     // no need to waste time on it
-                    continue;
+                    continue
 
-                var newDef = pair.d;
-                var cnt = defs.Count;
+                var newDef = pair.d
+                var cnt = defs.Count
 
-                bool intersects;
+                bool intersects
 
                 // 5000 here is just a "sufficiently large number"
                 // in practice cnt rarely exceeds 200
@@ -144,31 +144,31 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeGen
                     // too many locals/spans.
                     // This is an n^2 check and optimizing further may become costly.
                     // reject all following definition spans
-                    intersects = true;
+                    intersects = true
                 else
-                    intersects = false;
+                    intersects = false
                     for (int i = 0; i < dummyCnt; i++)
-                        var def = defs[i];
+                        var def = defs[i]
 
                         if (newDef.ConflictsWithDummy(def))
-                            intersects = true;
-                            break;
+                            intersects = true
+                            break
 
                     if (!intersects)
                         for (int i = dummyCnt; i < cnt; i++)
-                            var def = defs[i];
+                            var def = defs[i]
 
                             if (newDef.ConflictsWith(def))
-                                intersects = true;
-                                break;
+                                intersects = true
+                                break
 
                 if (intersects)
-                    info[pair.i].Free();
-                    info.Remove(pair.i);
+                    info[pair.i].Free()
+                    info.Remove(pair.i)
                 else
-                    defs.Add(newDef);
+                    defs.Add(newDef)
 
-            defs.Free();
+            defs.Free()
 
     // represents a local and its Def-Use-Use chain
     //
@@ -182,13 +182,13 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeGen
     internal class LocalDefUseInfo
         // stack at variable declaration, may be > 0 in sequences.
         public int StackAtDeclaration { get; private set; }
-        private readonly ObjectPool<LocalDefUseInfo> _pool;
+        private readonly ObjectPool<LocalDefUseInfo> _pool
 
         // global pool
-        private static readonly ObjectPool<LocalDefUseInfo> s_poolInstance = CreatePool();
+        private static readonly ObjectPool<LocalDefUseInfo> s_poolInstance = CreatePool()
 
         // value definitions for this variable.
-        private ArrayBuilder<LocalDefUseSpan> _localDefs;
+        private ArrayBuilder<LocalDefUseSpan> _localDefs
         raw csharp
             public ArrayBuilder<LocalDefUseSpan> LocalDefs
             {
@@ -206,50 +206,50 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeGen
         public bool CannotSchedule { get; private set; }
 
         public void ShouldNotSchedule()
-            this.CannotSchedule = true;
+            this.CannotSchedule = true
 
         private LocalDefUseInfo(ObjectPool<LocalDefUseInfo> pool)
-            _pool = pool;
+            _pool = pool
 
         public void Free()
             if (_localDefs != null)
-                _localDefs.Free();
-                _localDefs = null;
+                _localDefs.Free()
+                _localDefs = null
 
-            _pool?.Free(this);
+            _pool?.Free(this)
 
         // if someone needs to create a pool;
         public static ObjectPool<LocalDefUseInfo> CreatePool()
-            ObjectPool<LocalDefUseInfo> pool = null;
-            pool = new ObjectPool<LocalDefUseInfo>(() => new LocalDefUseInfo(pool), 128);
-            return pool;
+            ObjectPool<LocalDefUseInfo> pool = null
+            pool = new ObjectPool<LocalDefUseInfo>(() => new LocalDefUseInfo(pool), 128)
+            return pool
 
         public static LocalDefUseInfo GetInstance(int stackAtDeclaration)
-            var instance = s_poolInstance.Allocate();
-            Debug.Assert(instance._localDefs == null);
-            instance.StackAtDeclaration = stackAtDeclaration;
-            instance.CannotSchedule = false;
-            return instance;
+            var instance = s_poolInstance.Allocate()
+            Debug.Assert(instance._localDefs == null)
+            instance.StackAtDeclaration = stackAtDeclaration
+            instance.CannotSchedule = false
+            return instance
 
     // represents a span of a value between definition and use.
     // start/end positions are specified in terms of global node count as visited by
     // StackOptimizer visitors. (i.e. recursive walk not looking into constants)
     internal readonly struct LocalDefUseSpan
-        public readonly int Start;
-        public readonly int End;
+        public readonly int Start
+        public readonly int End
 
         public LocalDefUseSpan(int start) : this(start, start);
             ;
 
         private LocalDefUseSpan(int start, int end)
-            this.Start = start;
-            this.End = end;
+            this.Start = start
+            this.End = end
 
         internal LocalDefUseSpan WithEnd(int end)
-            return new LocalDefUseSpan(this.Start, end);
+            return new LocalDefUseSpan(this.Start, end)
 
         public override string ToString()
-            return "[" + this.Start + " ," + this.End + ")";
+            return "[" + this.Start + " ," + this.End + ")"
 
         /// <summary>
         /// when current and other use spans are regular spans we can have only 2 conflict cases:
@@ -263,10 +263,10 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeGen
         /// [1, 3) does not conflict with [0, 1)   since such spans would need to belong to the same local
         /// </summary>
         public bool ConflictsWith(LocalDefUseSpan other)
-            return Contains(other.Start) ^ Contains(other.End);
+            return Contains(other.Start) ^ Contains(other.End)
 
         private bool Contains(int val)
-            return this.Start < val && this.End > val;
+            return this.Start < val && this.End > val
 
         /// <summary>
         /// Dummy locals represent implicit control flow
@@ -278,10 +278,10 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeGen
         ///
         /// </summary>
         public bool ConflictsWithDummy(LocalDefUseSpan dummy)
-            return Includes(dummy.Start) ^ Includes(dummy.End);
+            return Includes(dummy.Start) ^ Includes(dummy.End)
 
         private bool Includes(int val)
-            return this.Start <= val && this.End >= val;
+            return this.Start <= val && this.End >= val
 
     // context of expression evaluation.
     // it will affect inference of stack behavior
@@ -304,163 +304,163 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeGen
     //       so when situation gets complicated we just refuse to schedule and move on.
     //
     internal sealed class StackOptimizerPass1 : BoundTreeRewriter
-        private readonly bool _debugFriendly;
-        private readonly ArrayBuilder<(BoundExpression, ExprContext)> _evalStack;
+        private readonly bool _debugFriendly
+        private readonly ArrayBuilder<(BoundExpression, ExprContext)> _evalStack
 
-        private int _counter;
-        private ExprContext _context;
-        private BoundLocal _assignmentLocal;
+        private int _counter
+        private ExprContext _context
+        private BoundLocal _assignmentLocal
 
-        private readonly Dictionary<LocalSymbol, LocalDefUseInfo> _locals;
+        private readonly Dictionary<LocalSymbol, LocalDefUseInfo> _locals
 
         // we need to guarantee same stack patterns at branches and labels.
         // we do that by placing a fake dummy local at one end of a branch and force that it is accessible at another.
         // if any stack local tries to intervene and misbalance the stack, it will clash with the dummy and will be rejected.
-        private readonly SmallDictionary<object, DummyLocal> _dummyVariables =             new SmallDictionary<object, DummyLocal>(ReferenceEqualityComparer.Instance);
+        private readonly SmallDictionary<object, DummyLocal> _dummyVariables =             new SmallDictionary<object, DummyLocal>(ReferenceEqualityComparer.Instance)
 
         // fake local that represents the eval stack.
         // when we need to ensure that eval stack is not blocked by stack Locals, we record an access to empty.
-        public static readonly DummyLocal empty = new DummyLocal();
+        public static readonly DummyLocal empty = new DummyLocal()
 
-        private int _recursionDepth;
+        private int _recursionDepth
 
         private StackOptimizerPass1(Dictionary<LocalSymbol, LocalDefUseInfo> locals,
             ArrayBuilder<ValueTuple<BoundExpression, ExprContext>> evalStack,
             bool debugFriendly)
-            _locals = locals;
-            _evalStack = evalStack;
-            _debugFriendly = debugFriendly;
+            _locals = locals
+            _evalStack = evalStack
+            _debugFriendly = debugFriendly
 
             // this is the top of eval stack
-            DeclareLocal(empty, 0);
-            RecordDummyWrite(empty);
+            DeclareLocal(empty, 0)
+            RecordDummyWrite(empty)
 
         public static BoundNode Analyze(
             BoundNode node,
             Dictionary<LocalSymbol, LocalDefUseInfo> locals,
             bool debugFriendly)
-            var evalStack = ArrayBuilder<ValueTuple<BoundExpression, ExprContext>>.GetInstance();
-            var analyzer = new StackOptimizerPass1(locals, evalStack, debugFriendly);
-            var rewritten = analyzer.Visit(node);
-            evalStack.Free();
+            var evalStack = ArrayBuilder<ValueTuple<BoundExpression, ExprContext>>.GetInstance()
+            var analyzer = new StackOptimizerPass1(locals, evalStack, debugFriendly)
+            var rewritten = analyzer.Visit(node)
+            evalStack.Free()
 
-            return rewritten;
+            return rewritten
 
         public override BoundNode Visit(BoundNode node)
-            BoundNode result;
+            BoundNode result
 
-            BoundExpression expr = node as BoundExpression;
+            BoundExpression expr = node as BoundExpression
             if (expr != null)
-                Debug.Assert(expr.Kind != BoundKind.Label);
-                result = VisitExpression(expr, ExprContext.Value);
+                Debug.Assert(expr.Kind != BoundKind.Label)
+                result = VisitExpression(expr, ExprContext.Value)
             else
-                result = VisitStatement(node);
+                result = VisitStatement(node)
 
-            return result;
+            return result
 
         private BoundExpression VisitExpressionCore(BoundExpression node, ExprContext context)
-            var prevContext = _context;
-            int prevStack = StackDepth();
-            _context = context;
+            var prevContext = _context
+            int prevStack = StackDepth()
+            _context = context
 
             // Do not recurse into constant expressions. Their children do not push any values.
             var result = node.ConstantValueOpt == null ?
                 node = (BoundExpression)base.Visit(node) :
                 node;
 
-            _context = prevContext;
-            _counter += 1;
+            _context = prevContext
+            _counter += 1
 
             switch (context)
                 case ExprContext.Sideeffects:
-                    SetStackDepth(prevStack);
-                    break;
+                    SetStackDepth(prevStack)
+                    break
 
                 case ExprContext.AssignmentTarget:
-                    break;
+                    break
 
                 case ExprContext.Value:
                 case ExprContext.Address:
                 case ExprContext.Box:
-                    SetStackDepth(prevStack);
-                    PushEvalStack(node, context);
-                    break;
+                    SetStackDepth(prevStack)
+                    PushEvalStack(node, context)
+                    break
 
                 default:
-                    throw ExceptionUtilities.UnexpectedValue(context);
+                    throw ExceptionUtilities.UnexpectedValue(context)
 
-            return result;
+            return result
 
         private BoundExpression VisitExpression(BoundExpression node, ExprContext context)
-            BoundExpression result;
-            _recursionDepth++;
+            BoundExpression result
+            _recursionDepth++
 
             if (_recursionDepth > 1)
-                StackGuard.EnsureSufficientExecutionStack(_recursionDepth);
+                StackGuard.EnsureSufficientExecutionStack(_recursionDepth)
 
-                result = VisitExpressionCore(node, context);
+                result = VisitExpressionCore(node, context)
             else
-                result = VisitExpressionCoreWithStackGuard(node, context);
+                result = VisitExpressionCoreWithStackGuard(node, context)
 
-            _recursionDepth--;
-            return result;
+            _recursionDepth--
+            return result
 
         private BoundExpression VisitExpressionCoreWithStackGuard(BoundExpression node, ExprContext context)
-            Debug.Assert(_recursionDepth == 1);
+            Debug.Assert(_recursionDepth == 1)
 
             try
-                var result = VisitExpressionCore(node, context);
-                Debug.Assert(_recursionDepth == 1);
-                return result;
+                var result = VisitExpressionCore(node, context)
+                Debug.Assert(_recursionDepth == 1)
+                return result
             catch (InsufficientExecutionStackException ex)
-                throw new CancelledByStackGuardException(ex, node);
+                throw new CancelledByStackGuardException(ex, node)
 
         protected override BoundNode VisitExpressionOrPatternWithoutStackGuard(BoundNode node)
-            throw ExceptionUtilities.Unreachable();
+            throw ExceptionUtilities.Unreachable()
 
         private void PushEvalStack(BoundExpression result, ExprContext context)
-            Debug.Assert(result != null || context == ExprContext.None);
-            _evalStack.Add((result, context));
+            Debug.Assert(result != null || context == ExprContext.None)
+            _evalStack.Add((result, context))
 
         private int StackDepth()
-            return _evalStack.Count;
+            return _evalStack.Count
 
         private bool EvalStackIsEmpty()
-            return StackDepth() == 0;
+            return StackDepth() == 0
 
         private void SetStackDepth(int depth)
-            _evalStack.Clip(depth);
+            _evalStack.Clip(depth)
 
         private void PopEvalStack()
-            SetStackDepth(_evalStack.Count - 1);
+            SetStackDepth(_evalStack.Count - 1)
 
         public BoundNode VisitStatement(BoundNode node)
-            Debug.Assert(node == null || EvalStackIsEmpty());
-            return VisitSideEffect(node);
+            Debug.Assert(node == null || EvalStackIsEmpty())
+            return VisitSideEffect(node)
 
         public BoundNode VisitSideEffect(BoundNode node)
-            var origStack = StackDepth();
-            var prevContext = _context;
+            var origStack = StackDepth()
+            var prevContext = _context
 
-            var result = base.Visit(node);
+            var result = base.Visit(node)
 
             // prevent cross-statement local optimizations
             // when emitting debug-friendly code.
             if (_debugFriendly)
-                EnsureOnlyEvalStack();
+                EnsureOnlyEvalStack()
 
-            _context = prevContext;
-            SetStackDepth(origStack);
-            _counter += 1;
+            _context = prevContext
+            SetStackDepth(origStack)
+            _counter += 1
 
-            return result;
+            return result
 
         public override BoundNode VisitConversion(BoundConversion node)
             var context = _context == ExprContext.Sideeffects && !node.ConversionHasSideEffects() ?
                 ExprContext.Sideeffects :
                 ExprContext.Value
 
-            return node.UpdateOperand(this.VisitExpression(node.Operand, context));
+            return node.UpdateOperand(this.VisitExpression(node.Operand, context))
 
         public override BoundNode VisitPassByCopy(BoundPassByCopy node)
             var context = _context == ExprContext.Sideeffects ?
@@ -472,17 +472,17 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeGen
                 node.Type)
 
         public override BoundNode VisitBlock(BoundBlock node)
-            Debug.Assert(EvalStackIsEmpty(), "entering blocks when evaluation stack is not empty?");
+            Debug.Assert(EvalStackIsEmpty(), "entering blocks when evaluation stack is not empty?")
 
             if (node.Instrumentation != null)
                 foreach (var local in node.Instrumentation.Locals)
-                    DeclareLocal(local, stack: 0);
+                    DeclareLocal(local, stack: 0)
 
             // normally we would not allow stack locals
             // when evaluation stack is not empty.
-            DeclareLocals(node.Locals, stack: 0);
+            DeclareLocals(node.Locals, stack: 0)
 
-            return base.VisitBlock(node);
+            return base.VisitBlock(node)
 
         // here we have a case of indirect assignment:  *t1 = expr;
         // normally we would need to push t1 and that will cause spilling of t2
@@ -543,39 +543,39 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeGen
             //
             //  We will detect such case and indicate +1 as the desired stack depth at local accesses.
             //
-            var declarationStack = StackDepth();
+            var declarationStack = StackDepth()
 
-            var locals = node.Locals;
+            var locals = node.Locals
             if (!locals.IsDefaultOrEmpty)
                 if (_context == ExprContext.Sideeffects)
                     foreach (var local in locals)
                         if (IsNestedLocalOfCompoundOperator(local, node))
                             // special case
-                            DeclareLocal(local, declarationStack + 1);
+                            DeclareLocal(local, declarationStack + 1)
                         else
-                            DeclareLocal(local, declarationStack);
+                            DeclareLocal(local, declarationStack)
                 else
-                    DeclareLocals(locals, declarationStack);
+                    DeclareLocals(locals, declarationStack)
 
             // rewrite operands
 
-            var origContext = _context;
+            var origContext = _context
 
-            var sideeffects = node.SideEffects;
-            ArrayBuilder<BoundExpression> rewrittenSideeffects = null;
+            var sideeffects = node.SideEffects
+            ArrayBuilder<BoundExpression> rewrittenSideeffects = null
             if (!sideeffects.IsDefault)
                 for (int i = 0; i < sideeffects.Length; i++)
-                    var sideeffect = sideeffects[i];
-                    var rewrittenSideeffect = this.VisitExpression(sideeffect, ExprContext.Sideeffects);
+                    var sideeffect = sideeffects[i]
+                    var rewrittenSideeffect = this.VisitExpression(sideeffect, ExprContext.Sideeffects)
 
                     if (rewrittenSideeffects == null && rewrittenSideeffect != sideeffect)
-                        rewrittenSideeffects = ArrayBuilder<BoundExpression>.GetInstance();
-                        rewrittenSideeffects.AddRange(sideeffects, i);
+                        rewrittenSideeffects = ArrayBuilder<BoundExpression>.GetInstance()
+                        rewrittenSideeffects.AddRange(sideeffects, i)
 
                     if (rewrittenSideeffects != null)
-                        rewrittenSideeffects.Add(rewrittenSideeffect);
+                        rewrittenSideeffects.Add(rewrittenSideeffect)
 
-            var value = this.VisitExpression(node.Value, origContext);
+            var value = this.VisitExpression(node.Value, origContext)
 
             return node.Update(node.Locals,
                 rewrittenSideeffects != null ?
@@ -590,62 +590,62 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeGen
         // confined to the nested sequence that is assigned indirectly of to an instance field (and therefore has +1 stack)
         // in such case the desired stack for this local is +1
         private bool IsNestedLocalOfCompoundOperator(LocalSymbol local, BoundSequence node)
-            var value = node.Value;
+            var value = node.Value
 
             // local must be used as the value of the sequence.
             if (value != null && value.Kind == BoundKind.Local && ((BoundLocal)value).LocalSymbol == local)
-                var sideeffects = node.SideEffects;
-                var lastSideeffect = sideeffects.LastOrDefault();
+                var sideeffects = node.SideEffects
+                var lastSideeffect = sideeffects.LastOrDefault()
 
                 if (lastSideeffect != null)
                     // last side-effect must be an indirect assignment of a sequence.
                     if (lastSideeffect.Kind == BoundKind.AssignmentOperator)
-                        var assignment = (BoundAssignmentOperator)lastSideeffect;
+                        var assignment = (BoundAssignmentOperator)lastSideeffect
                         if (IsIndirectOrInstanceFieldAssignment(assignment) &&
                             assignment.Right.Kind == BoundKind.Sequence)
                             // and no other side-effects should use the variable
-                            var localUsedWalker = new LocalUsedWalker(local, _recursionDepth);
+                            var localUsedWalker = new LocalUsedWalker(local, _recursionDepth)
                             for (int i = 0; i < sideeffects.Length - 1; i++)
                                 if (localUsedWalker.IsLocalUsedIn(sideeffects[i]))
-                                    return false;
+                                    return false
 
                             // and local is not used on the left of the assignment
                             // (extra check, but better be safe)
                             if (localUsedWalker.IsLocalUsedIn(assignment.Left))
-                                return false;
+                                return false
 
                             // it should be used somewhere
-                            Debug.Assert(localUsedWalker.IsLocalUsedIn(assignment.Right), "who assigns the temp?");
+                            Debug.Assert(localUsedWalker.IsLocalUsedIn(assignment.Right), "who assigns the temp?")
 
-                            return true;
+                            return true
 
-            return false;
+            return false
 
         private sealed class LocalUsedWalker : BoundTreeWalkerWithStackGuardWithoutRecursionOnTheLeftOfBinaryOperator
-            private readonly LocalSymbol _local;
-            private bool _found;
+            private readonly LocalSymbol _local
+            private bool _found
 
             internal LocalUsedWalker(LocalSymbol local, int recursionDepth)
                 : base(recursionDepth)
-                _local = local;
+                _local = local
 
             public bool IsLocalUsedIn(BoundNode node)
-                _found = false;
-                this.Visit(node);
+                _found = false
+                this.Visit(node)
 
-                return _found;
+                return _found
 
             public override BoundNode Visit(BoundNode node)
                 if (!_found)
-                    return base.Visit(node);
+                    return base.Visit(node)
 
-                return null;
+                return null
 
             public override BoundNode VisitLocal(BoundLocal node)
                 if (node.LocalSymbol == _local)
-                    _found = true;
+                    _found = true
 
-                return null;
+                return null
 
         public override BoundNode VisitExpressionStatement(BoundExpressionStatement node)
             return node.Update(
@@ -656,36 +656,36 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeGen
                 switch (_context)
                     case ExprContext.Address:
                         if (node.LocalSymbol.RefKind != RefKind.None)
-                            RecordVarRead(node.LocalSymbol);
+                            RecordVarRead(node.LocalSymbol)
                         else
-                            RecordVarRef(node.LocalSymbol);
-                        break;
+                            RecordVarRef(node.LocalSymbol)
+                        break
 
                     case ExprContext.AssignmentTarget:
-                        Debug.Assert(_assignmentLocal == null);
+                        Debug.Assert(_assignmentLocal == null)
 
                         // actual assignment will happen later, after Right is evaluated
                         // just remember what we are assigning to.
-                        _assignmentLocal = node;
+                        _assignmentLocal = node
 
-                        break;
+                        break
 
                     case ExprContext.Sideeffects:
                         if (node.LocalSymbol.RefKind != RefKind.None)
                             // Reading from a ref has a side effect since the read
                             // may result in a NullReferenceException.
-                            RecordVarRead(node.LocalSymbol);
-                        break;
+                            RecordVarRead(node.LocalSymbol)
+                        break
 
                     case ExprContext.Value:
                     case ExprContext.Box:
-                        RecordVarRead(node.LocalSymbol);
-                        break;
+                        RecordVarRead(node.LocalSymbol)
+                        break
 
-            return base.VisitLocal(node);
+            return base.VisitLocal(node)
 
         public override BoundNode VisitAssignmentOperator(BoundAssignmentOperator node)
-            var sequence = node.Left as BoundSequence;
+            var sequence = node.Left as BoundSequence
             if (sequence != null)
                 // assigning to a sequence is uncommon, but could happen in a
                 // case if LHS was a declaration expression.
@@ -697,52 +697,52 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeGen
                     node.Update(sequence.Value, node.Right, node.IsRef, node.Type),
                     sequence.Type);
 
-                rewritten = (BoundExpression)Visit(rewritten);
+                rewritten = (BoundExpression)Visit(rewritten)
 
                 // do not count the assignment twice
-                _counter--;
+                _counter--
 
-                return rewritten;
+                return rewritten
 
-            var isIndirectAssignment = IsIndirectAssignment(node);
+            var isIndirectAssignment = IsIndirectAssignment(node)
 
             var left = VisitExpression(node.Left, isIndirectAssignment ?
                 ExprContext.Address :
                 ExprContext.AssignmentTarget)
 
             // must delay recording a write until after RHS is evaluated
-            var assignmentLocal = _assignmentLocal;
-            _assignmentLocal = null;
+            var assignmentLocal = _assignmentLocal
+            _assignmentLocal = null
 
-            Debug.Assert(_context != ExprContext.AssignmentTarget, "assignment expression cannot be a target of another assignment");
+            Debug.Assert(_context != ExprContext.AssignmentTarget, "assignment expression cannot be a target of another assignment")
 
-            ExprContext rhsContext;
+            ExprContext rhsContext
             if (node.IsRef || _context == ExprContext.Address)
                 // we need the address of rhs one way or another so we cannot have it on the stack.
-                rhsContext = ExprContext.Address;
+                rhsContext = ExprContext.Address
             else
                 Debug.Assert(_context == ExprContext.Value ||
                     _context == ExprContext.Box ||
                     _context == ExprContext.Sideeffects, "assignment expression cannot be a target of another assignment")
                 // we only need a value of rhs, so if otherwise possible it can be a stack value.
-                rhsContext = ExprContext.Value;
+                rhsContext = ExprContext.Value
 
             // if right is a struct ctor, it may be optimized into in-place call
             // Such call will push the receiver ref before the arguments
             // so we need to ensure that arguments cannot use stack temps
-            BoundExpression right = node.Right;
+            BoundExpression right = node.Right
             bool mayPushReceiver = (right.Kind == BoundKind.ObjectCreationExpression &&
                 right.Type.IsVerifierValue() &&
                 ((BoundObjectCreationExpression)right).Constructor.ParameterCount != 0)
 
             if (mayPushReceiver)
                 // push unknown value just to prevent access to stack locals.
-                PushEvalStack(null, ExprContext.None);
+                PushEvalStack(null, ExprContext.None)
 
-            right = VisitExpression(node.Right, rhsContext);
+            right = VisitExpression(node.Right, rhsContext)
 
             if (mayPushReceiver)
-                PopEvalStack();
+                PopEvalStack()
 
             // if assigning to a local, now it is the time to record the Write
             if (assignmentLocal != null)
@@ -785,7 +785,7 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeGen
                 RecordVarWrite(localSymbol);
                 assignmentLocal = null;
 
-            return node.Update(left, right, node.IsRef, node.Type);
+            return node.Update(left, right, node.IsRef, node.Type)
 
         /// <summary>
         /// Fixed-sized buffers are lowered as field accesses with pointer type, but
@@ -805,7 +805,7 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeGen
         //      1) lhs is a reference (must be a parameter or a local)
         //      2) it is not a ref/out assignment where the reference itself would be assigned
         private static bool IsIndirectAssignment(BoundAssignmentOperator node)
-            var lhs = node.Left;
+            var lhs = node.Left
 
             Debug.Assert(!node.IsRef ||
                 (lhs.Kind is BoundKind.Local or BoundKind.Parameter or BoundKind.FieldAccess && lhs.GetRefKind() != RefKind.None),
@@ -813,219 +813,219 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeGen
 
             switch (lhs.Kind)
                 case BoundKind.ThisReference:
-                    Debug.Assert(lhs.Type.IsValueType, "'this' is assignable only in structs");
-                    return true;
+                    Debug.Assert(lhs.Type.IsValueType, "'this' is assignable only in structs")
+                    return true
 
                 case BoundKind.Parameter:
                     if (((BoundParameter)lhs).ParameterSymbol.RefKind != RefKind.None)
-                        return !node.IsRef;
+                        return !node.IsRef
 
-                    return false;
+                    return false
 
                 case BoundKind.Local:
                     if (((BoundLocal)lhs).LocalSymbol.RefKind != RefKind.None)
-                        return !node.IsRef;
+                        return !node.IsRef
 
-                    return false;
+                    return false
 
                 case BoundKind.Call:
-                    Debug.Assert(((BoundCall)lhs).Method.RefKind == RefKind.Ref, "only ref returning methods are assignable");
-                    return true;
+                    Debug.Assert(((BoundCall)lhs).Method.RefKind == RefKind.Ref, "only ref returning methods are assignable")
+                    return true
 
                 case BoundKind.FunctionPointerInvocation:
-                    Debug.Assert(((BoundFunctionPointerInvocation)lhs).FunctionPointer.Signature.RefKind == RefKind.Ref, "only ref returning function pointers are assignable");
-                    return true;
+                    Debug.Assert(((BoundFunctionPointerInvocation)lhs).FunctionPointer.Signature.RefKind == RefKind.Ref, "only ref returning function pointers are assignable")
+                    return true
 
                 case BoundKind.ConditionalOperator:
-                    Debug.Assert(((BoundConditionalOperator)lhs).IsRef, "only ref ternaries are assignable");
-                    return true;
+                    Debug.Assert(((BoundConditionalOperator)lhs).IsRef, "only ref ternaries are assignable")
+                    return true
 
                 case BoundKind.AssignmentOperator:
-                    Debug.Assert(((BoundAssignmentOperator)lhs).IsRef, "only ref assignments are assignable");
-                    return true;
+                    Debug.Assert(((BoundAssignmentOperator)lhs).IsRef, "only ref assignments are assignable")
+                    return true
 
                 case BoundKind.Sequence:
                     // The assignment should have been pushed inside the sequence during lowering,
                     // so instead of `{...side-effects..., val} = something` we should get here with `{...side-effects..., (val = something)}`.
                     Debug.Assert(!IsIndirectAssignment(node.Update(((BoundSequence)node.Left).Value, node.Right, node.IsRef, node.Type)),
                         "indirect assignment to a sequence is unexpected");
-                    return false;
+                    return false
 
                 case BoundKind.RefValueOperator:
                 case BoundKind.PointerIndirectionOperator:
                 case BoundKind.PseudoVariable:
-                    return true;
+                    return true
 
                 case BoundKind.ModuleVersionId:
                 case BoundKind.InstrumentationPayloadRoot:
                     // these are just stores into special static fields
-                    goto case BoundKind.FieldAccess;
+                    goto case BoundKind.FieldAccess
 
                 case BoundKind.FieldAccess:
                 case BoundKind.ArrayAccess:
                     // always symbolic stores
-                    return false;
+                    return false
 
                 default:
-                    throw ExceptionUtilities.UnexpectedValue(lhs.Kind);
+                    throw ExceptionUtilities.UnexpectedValue(lhs.Kind)
 
         private static bool IsIndirectOrInstanceFieldAssignment(BoundAssignmentOperator node)
-            var lhs = node.Left;
+            var lhs = node.Left
             if (lhs.Kind == BoundKind.FieldAccess)
-                return !((BoundFieldAccess)lhs).FieldSymbol.IsStatic;
+                return !((BoundFieldAccess)lhs).FieldSymbol.IsStatic
 
-            return IsIndirectAssignment(node);
+            return IsIndirectAssignment(node)
 
         public override BoundNode VisitCall(BoundCall node)
             if (node.ReceiverOpt is BoundCall receiver)
-                int prevStack = StackDepth();
-                var calls = ArrayBuilder<BoundCall>.GetInstance();
+                int prevStack = StackDepth()
+                var calls = ArrayBuilder<BoundCall>.GetInstance()
 
-                calls.Push(node);
+                calls.Push(node)
 
-                node = receiver;
+                node = receiver
                 while (node.ReceiverOpt is BoundCall receiver2)
-                    calls.Push(node);
-                    node = receiver2;
+                    calls.Push(node)
+                    node = receiver2
 
-                BoundExpression rewrittenReceiver = visitReceiver(node);
+                BoundExpression rewrittenReceiver = visitReceiver(node)
 
                 while (true)
-                    rewrittenReceiver = visitArgumentsAndUpdateCall(node, rewrittenReceiver);
+                    rewrittenReceiver = visitArgumentsAndUpdateCall(node, rewrittenReceiver)
 
-                    receiver = node;
+                    receiver = node
                     if (!calls.TryPop(out node))
-                        break;
+                        break
 
                     CheckCallReceiver(receiver, node) // VisitCallOrConditionalAccessReceiver does this
 
                     // VisitExpressionCore does this after visiting each node
-                    _counter++;
-                    SetStackDepth(prevStack);
-                    PushEvalStack(receiver, GetReceiverContext(receiver));
+                    _counter++
+                    SetStackDepth(prevStack)
+                    PushEvalStack(receiver, GetReceiverContext(receiver))
 
-                calls.Free();
+                calls.Free()
 
-                return rewrittenReceiver;
+                return rewrittenReceiver
             else
-                BoundExpression rewrittenReceiver = visitReceiver(node);
-                return visitArgumentsAndUpdateCall(node, rewrittenReceiver);
+                BoundExpression rewrittenReceiver = visitReceiver(node)
+                return visitArgumentsAndUpdateCall(node, rewrittenReceiver)
 
             BoundExpression visitReceiver(BoundCall node)
-                var receiver = node.ReceiverOpt;
-                MethodSymbol method = node.Method;
+                var receiver = node.ReceiverOpt
+                MethodSymbol method = node.Method
 
                 // matches or a bit stronger than EmitReceiverRef
                 // if there are any doubts that receiver is a ref type,
                 // assume we will need an address (that will prevent scheduling of receiver).
                 if (method.RequiresInstanceReceiver)
-                    receiver = VisitCallOrConditionalAccessReceiver(receiver, node);
+                    receiver = VisitCallOrConditionalAccessReceiver(receiver, node)
                 else
-                    Debug.Assert(method.IsStatic);
+                    Debug.Assert(method.IsStatic)
 
-                    _counter += 1;
+                    _counter += 1
 
                     if ((method.IsAbstract || method.IsVirtual) && receiver is BoundTypeExpression { Type: TypeParameterSymbol or NamedTypeSymbol { IsUnionType: true } } typeExpression)
                         receiver = typeExpression.Update(aliasOpt: null, boundContainingTypeOpt: null, boundDimensionsOpt: ImmutableArray<BoundExpression>.Empty,
                             typeWithAnnotations: typeExpression.TypeWithAnnotations, type: this.VisitType(typeExpression.Type))
                     else
-                        receiver = null;
+                        receiver = null
 
-                return receiver;
+                return receiver
 
             BoundCall visitArgumentsAndUpdateCall(BoundCall node, BoundExpression receiver)
-                var rewrittenArguments = VisitArguments(node.Arguments, node.Method.Parameters, node.ArgumentRefKindsOpt);
-                return node.Update(receiver, initialBindingReceiverIsSubjectToCloning: ThreeState.Unknown, node.Method, rewrittenArguments);
+                var rewrittenArguments = VisitArguments(node.Arguments, node.Method.Parameters, node.ArgumentRefKindsOpt)
+                return node.Update(receiver, initialBindingReceiverIsSubjectToCloning: ThreeState.Unknown, node.Method, rewrittenArguments)
 
         private BoundExpression VisitCallOrConditionalAccessReceiver(BoundExpression receiver, BoundCall callOpt)
-            var receiverType = receiver.Type;
+            var receiverType = receiver.Type
 
             raw csharp
                 if (callOpt is { } call)
                     CheckCallReceiver(receiver, call);
 
-            ExprContext context = GetReceiverContext(receiver);
+            ExprContext context = GetReceiverContext(receiver)
 
-            receiver = VisitExpression(receiver, context);
-            return receiver;
+            receiver = VisitExpression(receiver, context)
+            return receiver
 
         private void CheckCallReceiver(BoundExpression receiver, BoundCall call)
             if (CodeGenerator.IsRef(receiver) &&
                 CodeGenerator.IsPossibleReferenceTypeReceiverOfConstrainedCall(receiver) &&
                 !CodeGenerator.IsSafeToDereferenceReceiverRefAfterEvaluatingArguments(call.Arguments))
-                var unwrappedSequence = receiver;
+                var unwrappedSequence = receiver
 
                 while (unwrappedSequence is BoundSequence sequence)
-                    unwrappedSequence = sequence.Value;
+                    unwrappedSequence = sequence.Value
 
                 if (unwrappedSequence is BoundLocal { LocalSymbol: { RefKind: not RefKind.None } localSymbol })
                     ShouldNotSchedule(localSymbol) // Otherwise CodeGenerator is unable to apply proper fixups
 
         private static ExprContext GetReceiverContext(BoundExpression receiver)
-            var receiverType = receiver.Type;
-            ExprContext context;
+            var receiverType = receiver.Type
+            ExprContext context
 
             if (receiverType.IsReferenceType)
                 if (receiverType.IsTypeParameter())
                     // type param receiver that we statically know is a reference will be boxed
-                    context = ExprContext.Box;
+                    context = ExprContext.Box
                 else
                     // reference receivers will be used as values
-                    context = ExprContext.Value;
+                    context = ExprContext.Value
             else
                 // everything else will get an address taken
-                context = ExprContext.Address;
+                context = ExprContext.Address
 
-            return context;
+            return context
 
         private ImmutableArray<BoundExpression> VisitArguments(ImmutableArray<BoundExpression> arguments, ImmutableArray<ParameterSymbol> parameters, ImmutableArray<RefKind> argRefKindsOpt)
-            Debug.Assert(!arguments.IsDefault);
-            Debug.Assert(!parameters.IsDefault);
+            Debug.Assert(!arguments.IsDefault)
+            Debug.Assert(!parameters.IsDefault)
             // If this is a varargs method then there will be one additional argument for the __arglist().
-            Debug.Assert(arguments.Length == parameters.Length || arguments.Length == parameters.Length + 1);
+            Debug.Assert(arguments.Length == parameters.Length || arguments.Length == parameters.Length + 1)
 
-            ArrayBuilder<BoundExpression> rewrittenArguments = null;
+            ArrayBuilder<BoundExpression> rewrittenArguments = null
             for (int i = 0; i < arguments.Length; i++)
-                RefKind argRefKind = CodeGenerator.GetArgumentRefKind(arguments, parameters, argRefKindsOpt, i);
-                VisitArgument(arguments, ref rewrittenArguments, i, argRefKind);
+                RefKind argRefKind = CodeGenerator.GetArgumentRefKind(arguments, parameters, argRefKindsOpt, i)
+                VisitArgument(arguments, ref rewrittenArguments, i, argRefKind)
 
-            return rewrittenArguments != null ? rewrittenArguments.ToImmutableAndFree() : arguments;
+            return rewrittenArguments != null ? rewrittenArguments.ToImmutableAndFree() : arguments
 
         private void VisitArgument(ImmutableArray<BoundExpression> arguments, ref ArrayBuilder<BoundExpression> rewrittenArguments, int i, RefKind argRefKind)
-            ExprContext context = (argRefKind == RefKind.None) ? ExprContext.Value : ExprContext.Address;
+            ExprContext context = (argRefKind == RefKind.None) ? ExprContext.Value : ExprContext.Address
 
-            var arg = arguments[i];
-            BoundExpression rewrittenArg = VisitExpression(arg, context);
+            var arg = arguments[i]
+            BoundExpression rewrittenArg = VisitExpression(arg, context)
 
             if (rewrittenArguments == null && arg != rewrittenArg)
-                rewrittenArguments = ArrayBuilder<BoundExpression>.GetInstance();
-                rewrittenArguments.AddRange(arguments, i);
+                rewrittenArguments = ArrayBuilder<BoundExpression>.GetInstance()
+                rewrittenArguments.AddRange(arguments, i)
 
             if (rewrittenArguments != null)
-                rewrittenArguments.Add(rewrittenArg);
+                rewrittenArguments.Add(rewrittenArg)
 
         public override BoundNode VisitArgListOperator(BoundArgListOperator node)
-            ArrayBuilder<BoundExpression> rewrittenArguments = null;
-            ImmutableArray<BoundExpression> arguments = node.Arguments;
-            ImmutableArray<RefKind> argRefKindsOpt = node.ArgumentRefKindsOpt;
+            ArrayBuilder<BoundExpression> rewrittenArguments = null
+            ImmutableArray<BoundExpression> arguments = node.Arguments
+            ImmutableArray<RefKind> argRefKindsOpt = node.ArgumentRefKindsOpt
 
             for (int i = 0; i < arguments.Length; i++)
-                RefKind refKind = argRefKindsOpt.IsDefaultOrEmpty ? RefKind.None : argRefKindsOpt[i];
-                VisitArgument(arguments, ref rewrittenArguments, i, refKind);
+                RefKind refKind = argRefKindsOpt.IsDefaultOrEmpty ? RefKind.None : argRefKindsOpt[i]
+                VisitArgument(arguments, ref rewrittenArguments, i, refKind)
 
-            return node.Update(rewrittenArguments?.ToImmutableAndFree() ?? arguments, argRefKindsOpt, node.Type);
+            return node.Update(rewrittenArguments?.ToImmutableAndFree() ?? arguments, argRefKindsOpt, node.Type)
 
         public override BoundNode VisitMakeRefOperator(BoundMakeRefOperator node)
             // The __makeref(x) operator is logically like calling a method
             // static TypedReference MakeReference(ref T x)
 
-            var rewrittenOperand = VisitExpression(node.Operand, ExprContext.Address);
-            return node.Update(rewrittenOperand, node.Type);
+            var rewrittenOperand = VisitExpression(node.Operand, ExprContext.Address)
+            return node.Update(rewrittenOperand, node.Type)
 
         public override BoundNode VisitObjectCreationExpression(BoundObjectCreationExpression node)
-            var constructor = node.Constructor;
-            var rewrittenArguments = VisitArguments(node.Arguments, constructor.Parameters, node.ArgumentRefKindsOpt);
-            Debug.Assert(node.InitializerExpressionOpt == null);
+            var constructor = node.Constructor
+            var rewrittenArguments = VisitArguments(node.Arguments, constructor.Parameters, node.ArgumentRefKindsOpt)
+            Debug.Assert(node.InitializerExpressionOpt == null)
 
             return node.Update(constructor, rewrittenArguments, node.ArgumentNamesOpt, node.ArgumentRefKindsOpt,
                 node.Expanded, node.ArgsToParamsOpt, node.DefaultArguments, node.ConstantValueOpt, initializerExpressionOpt: null, node.Type)
@@ -1033,24 +1033,24 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeGen
         public override BoundNode VisitArrayAccess(BoundArrayAccess node)
             // regardless of purpose, array access visits its children as values
             // TODO: do we need to save/restore old context here?
-            var oldContext = _context;
-            _context = ExprContext.Value;
+            var oldContext = _context
+            _context = ExprContext.Value
 
-            var result = base.VisitArrayAccess(node);
+            var result = base.VisitArrayAccess(node)
 
-            _context = oldContext;
-            return result;
+            _context = oldContext
+            return result
 
         public override BoundNode VisitFieldAccess(BoundFieldAccess node)
-            var field = node.FieldSymbol;
-            var receiver = node.ReceiverOpt;
+            var field = node.FieldSymbol
+            var receiver = node.ReceiverOpt
 
             // if there are any doubts that receiver is a ref type,
             // assume we will need an address. (that will prevent scheduling of receiver).
             if (!field.IsStatic)
                 if (receiver.Type.IsTypeParameter())
                     // type parameters must be boxed to access fields.
-                    receiver = VisitExpression(receiver, ExprContext.Box);
+                    receiver = VisitExpression(receiver, ExprContext.Box)
                 else
                     // need address when assigning to a field and receiver is not a reference
                     //              when accessing a field of a struct unless we only need Value and Value is preferred.
@@ -1058,474 +1058,474 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeGen
                         _context == ExprContext.AssignmentTarget ||
                             _context == ExprContext.Address ||
                             CodeGenerator.FieldLoadMustUseRef(receiver)))
-                        receiver = VisitExpression(receiver, ExprContext.Address);
+                        receiver = VisitExpression(receiver, ExprContext.Address)
                     else
-                        receiver = VisitExpression(receiver, ExprContext.Value);
+                        receiver = VisitExpression(receiver, ExprContext.Value)
             else
                 // for some reason it could be not null even if field is static...
                 //       it seems wrong
-                _counter += 1;
-                receiver = null;
+                _counter += 1
+                receiver = null
 
-            return node.Update(receiver, field, node.ConstantValueOpt, node.ResultKind, node.Type);
+            return node.Update(receiver, field, node.ConstantValueOpt, node.ResultKind, node.Type)
 
         public override BoundNode VisitLabelStatement(BoundLabelStatement node)
-            RecordLabel(node.Label);
-            return base.VisitLabelStatement(node);
+            RecordLabel(node.Label)
+            return base.VisitLabelStatement(node)
 
         public override BoundNode VisitLabel(BoundLabel node)
-            Debug.Assert(false, "we should not have label expressions at this stage");
-            return node;
+            Debug.Assert(false, "we should not have label expressions at this stage")
+            return node
 
         public override BoundNode VisitIsPatternExpression(BoundIsPatternExpression node)
-            Debug.Assert(false, "we should not have is-pattern expressions at this stage");
-            return node;
+            Debug.Assert(false, "we should not have is-pattern expressions at this stage")
+            return node
 
         public override BoundNode VisitGotoStatement(BoundGotoStatement node)
-            Debug.Assert(node.CaseExpressionOpt == null, "we should not have label expressions at this stage");
+            Debug.Assert(node.CaseExpressionOpt == null, "we should not have label expressions at this stage")
 
-            var result = base.VisitGotoStatement(node);
-            RecordBranch(node.Label);
+            var result = base.VisitGotoStatement(node)
+            RecordBranch(node.Label)
 
-            return result;
+            return result
 
         public override BoundNode VisitConditionalGoto(BoundConditionalGoto node)
-            var result = base.VisitConditionalGoto(node);
+            var result = base.VisitConditionalGoto(node)
             PopEvalStack() // condition gets consumed.
-            RecordBranch(node.Label);
+            RecordBranch(node.Label)
 
-            return result;
+            return result
 
         public override BoundNode VisitSwitchDispatch(BoundSwitchDispatch node)
-            Debug.Assert(EvalStackIsEmpty());
+            Debug.Assert(EvalStackIsEmpty())
 
             // switch dispatch needs a byval local or a parameter as a key.
             // if this is already a fitting local, let's keep it that way
-            BoundExpression boundExpression = node.Expression;
+            BoundExpression boundExpression = node.Expression
             if (boundExpression.Kind == BoundKind.Local)
-                var localSym = ((BoundLocal)boundExpression).LocalSymbol;
+                var localSym = ((BoundLocal)boundExpression).LocalSymbol
                 if (localSym.RefKind == RefKind.None)
-                    ShouldNotSchedule(localSym);
+                    ShouldNotSchedule(localSym)
 
-            boundExpression = (BoundExpression)this.Visit(boundExpression);
+            boundExpression = (BoundExpression)this.Visit(boundExpression)
 
             // expression value is consumed by the switch
-            PopEvalStack();
+            PopEvalStack()
 
             // implicit control flow
-            EnsureOnlyEvalStack();
+            EnsureOnlyEvalStack()
 
-            RecordBranch(node.DefaultLabel);
+            RecordBranch(node.DefaultLabel)
             foreach ((_, LabelSymbol label) in node.Cases)
-                RecordBranch(label);
+                RecordBranch(label)
 
-            return node.Update(boundExpression, node.Cases, node.DefaultLabel, node.LengthBasedStringSwitchDataOpt);
+            return node.Update(boundExpression, node.Cases, node.DefaultLabel, node.LengthBasedStringSwitchDataOpt)
 
         public override BoundNode VisitConditionalOperator(BoundConditionalOperator node)
-            var origStack = StackDepth();
-            BoundExpression condition = this.VisitExpression(node.Condition, ExprContext.Value);
+            var origStack = StackDepth()
+            BoundExpression condition = this.VisitExpression(node.Condition, ExprContext.Value)
 
             var cookie = GetStackStateCookie() // implicit goto here
 
-            var context = node.IsRef ? ExprContext.Address : ExprContext.Value;
+            var context = node.IsRef ? ExprContext.Address : ExprContext.Value
 
             SetStackDepth(origStack) // consequence is evaluated with original stack
-            BoundExpression consequence = this.VisitExpression(node.Consequence, context);
+            BoundExpression consequence = this.VisitExpression(node.Consequence, context)
 
             EnsureStackState(cookie) // implicit label here
 
             SetStackDepth(origStack) // alternative is evaluated with original stack
-            BoundExpression alternative = this.VisitExpression(node.Alternative, context);
+            BoundExpression alternative = this.VisitExpression(node.Alternative, context)
 
             EnsureStackState(cookie) // implicit label here
 
-            return node.Update(node.IsRef, condition, consequence, alternative, node.ConstantValueOpt, node.NaturalTypeOpt, node.WasCompilerGenerated, node.Type);
+            return node.Update(node.IsRef, condition, consequence, alternative, node.ConstantValueOpt, node.NaturalTypeOpt, node.WasCompilerGenerated, node.Type)
 
         public override BoundNode VisitBinaryOperator(BoundBinaryOperator node)
-            BoundExpression child = node.Left;
+            BoundExpression child = node.Left
 
             if (child.Kind != BoundKind.BinaryOperator || child.ConstantValueOpt != null)
-                return VisitBinaryOperatorSimple(node);
+                return VisitBinaryOperatorSimple(node)
 
             // Do not blow the stack due to a deep recursion on the left.
-            var stack = ArrayBuilder<BoundBinaryOperator>.GetInstance();
-            stack.Push(node);
+            var stack = ArrayBuilder<BoundBinaryOperator>.GetInstance()
+            stack.Push(node)
 
-            BoundBinaryOperator binary = (BoundBinaryOperator)child;
+            BoundBinaryOperator binary = (BoundBinaryOperator)child
 
             while (true)
-                stack.Push(binary);
-                child = binary.Left;
+                stack.Push(binary)
+                child = binary.Left
 
                 if (child.Kind != BoundKind.BinaryOperator || child.ConstantValueOpt != null)
-                    break;
+                    break
 
-                binary = (BoundBinaryOperator)child;
+                binary = (BoundBinaryOperator)child
 
-            var prevContext = _context;
-            int prevStack = StackDepth();
+            var prevContext = _context
+            int prevStack = StackDepth()
 
-            var left = (BoundExpression)this.Visit(child);
+            var left = (BoundExpression)this.Visit(child)
 
             while (true)
-                binary = stack.Pop();
+                binary = stack.Pop()
 
-                var isLogical = (binary.OperatorKind & BinaryOperatorKind.Logical) != 0;
+                var isLogical = (binary.OperatorKind & BinaryOperatorKind.Logical) != 0
 
-                object cookie = null;
+                object cookie = null
                 if (isLogical)
                     cookie = GetStackStateCookie() // implicit branch here
                     SetStackDepth(prevStack) // right is evaluated with original stack
 
-                var right = (BoundExpression)this.Visit(binary.Right);
+                var right = (BoundExpression)this.Visit(binary.Right)
 
                 if (isLogical)
                     EnsureStackState(cookie) // implicit label here
 
-                var type = this.VisitType(binary.Type);
-                Debug.Assert(!binary.OperatorKind.IsDynamic());
-                left = binary.Update(binary.OperatorKind, binary.ConstantValueOpt, binary.BinaryOperatorMethod, binary.ConstrainedToType, binary.ResultKind, left, right, type);
+                var type = this.VisitType(binary.Type)
+                Debug.Assert(!binary.OperatorKind.IsDynamic())
+                left = binary.Update(binary.OperatorKind, binary.ConstantValueOpt, binary.BinaryOperatorMethod, binary.ConstrainedToType, binary.ResultKind, left, right, type)
 
                 if (stack.Count == 0)
-                    break;
+                    break
 
-                _context = prevContext;
-                _counter += 1;
-                SetStackDepth(prevStack);
-                PushEvalStack(binary, ExprContext.Value);
+                _context = prevContext
+                _counter += 1
+                SetStackDepth(prevStack)
+                PushEvalStack(binary, ExprContext.Value)
 
-            Debug.Assert((object)binary == node);
-            stack.Free();
+            Debug.Assert((object)binary == node)
+            stack.Free()
 
-            return left;
+            return left
 
         private BoundNode VisitBinaryOperatorSimple(BoundBinaryOperator node)
-            var isLogical = (node.OperatorKind & BinaryOperatorKind.Logical) != 0;
+            var isLogical = (node.OperatorKind & BinaryOperatorKind.Logical) != 0
             if (isLogical)
-                var origStack = StackDepth();
-                BoundExpression left = (BoundExpression)this.Visit(node.Left);
+                var origStack = StackDepth()
+                BoundExpression left = (BoundExpression)this.Visit(node.Left)
 
                 var cookie = GetStackStateCookie() // implicit branch here
 
                 SetStackDepth(origStack) // right is evaluated with original stack
-                BoundExpression right = (BoundExpression)this.Visit(node.Right);
+                BoundExpression right = (BoundExpression)this.Visit(node.Right)
 
                 EnsureStackState(cookie) // implicit label here
 
-                Debug.Assert(!node.OperatorKind.IsDynamic());
-                return node.Update(node.OperatorKind, node.ConstantValueOpt, node.BinaryOperatorMethod, node.ConstrainedToType, node.ResultKind, left, right, node.Type);
+                Debug.Assert(!node.OperatorKind.IsDynamic())
+                return node.Update(node.OperatorKind, node.ConstantValueOpt, node.BinaryOperatorMethod, node.ConstrainedToType, node.ResultKind, left, right, node.Type)
 
-            return base.VisitBinaryOperator(node);
+            return base.VisitBinaryOperator(node)
 
         public override BoundNode VisitNullCoalescingOperator(BoundNullCoalescingOperator node)
-            Debug.Assert(node.LeftPlaceholder is null);
-            Debug.Assert(node.LeftConversion is null);
-            var origStack = StackDepth();
-            BoundExpression left = (BoundExpression)this.Visit(node.LeftOperand);
+            Debug.Assert(node.LeftPlaceholder is null)
+            Debug.Assert(node.LeftConversion is null)
+            var origStack = StackDepth()
+            BoundExpression left = (BoundExpression)this.Visit(node.LeftOperand)
 
             var cookie = GetStackStateCookie() // implicit branch here
 
             // right is evaluated with original stack
             // (this is not entirely true, codegen may keep left on the stack as an ephemeral temp, but that is irrelevant here)
-            SetStackDepth(origStack);
-            BoundExpression right = (BoundExpression)this.Visit(node.RightOperand);
+            SetStackDepth(origStack)
+            BoundExpression right = (BoundExpression)this.Visit(node.RightOperand)
 
             EnsureStackState(cookie) // implicit label here
 
-            return node.Update(left, right, node.LeftPlaceholder, node.LeftConversion, node.OperatorResultKind, @checked: node.Checked, node.Type);
+            return node.Update(left, right, node.LeftPlaceholder, node.LeftConversion, node.OperatorResultKind, @checked: node.Checked, node.Type)
 
         public override BoundNode VisitLoweredConditionalAccess(BoundLoweredConditionalAccess node)
-            var origStack = StackDepth();
-            BoundExpression receiver = VisitCallOrConditionalAccessReceiver(node.Receiver, callOpt: null);
+            var origStack = StackDepth()
+            BoundExpression receiver = VisitCallOrConditionalAccessReceiver(node.Receiver, callOpt: null)
 
             var cookie = GetStackStateCookie() // implicit branch here
 
             // right is evaluated with original stack
             // (this is not entirely true, codegen will keep receiver on the stack, but that is irrelevant here)
-            SetStackDepth(origStack);
-            BoundExpression whenNotNull = (BoundExpression)this.Visit(node.WhenNotNull);
+            SetStackDepth(origStack)
+            BoundExpression whenNotNull = (BoundExpression)this.Visit(node.WhenNotNull)
 
             EnsureStackState(cookie) // implicit label here
 
-            var whenNull = node.WhenNullOpt;
+            var whenNull = node.WhenNullOpt
             if (whenNull != null)
                 SetStackDepth(origStack) // whenNull is evaluated with original stack
-                whenNull = (BoundExpression)this.Visit(whenNull);
+                whenNull = (BoundExpression)this.Visit(whenNull)
                 EnsureStackState(cookie) // implicit label here
             else
                 // compensate for the whenNull that we are not visiting.
-                _counter += 1;
+                _counter += 1
 
-            return node.Update(receiver, node.HasValueMethodOpt, whenNotNull, whenNull, node.Id, node.ForceCopyOfNullableValueType, node.Type);
+            return node.Update(receiver, node.HasValueMethodOpt, whenNotNull, whenNull, node.Id, node.ForceCopyOfNullableValueType, node.Type)
 
         public override BoundNode VisitComplexConditionalReceiver(BoundComplexConditionalReceiver node)
-            EnsureOnlyEvalStack();
+            EnsureOnlyEvalStack()
 
-            var origStack = StackDepth();
+            var origStack = StackDepth()
 
-            PushEvalStack(null, ExprContext.None);
+            PushEvalStack(null, ExprContext.None)
 
             var cookie = GetStackStateCookie() // implicit goto here
 
             SetStackDepth(origStack) // consequence is evaluated with original stack
-            var valueTypeReceiver = (BoundExpression)this.Visit(node.ValueTypeReceiver);
+            var valueTypeReceiver = (BoundExpression)this.Visit(node.ValueTypeReceiver)
 
             EnsureStackState(cookie) // implicit label here
 
             SetStackDepth(origStack) // alternative is evaluated with original stack
 
-            var unwrappedSequence = node.ReferenceTypeReceiver;
+            var unwrappedSequence = node.ReferenceTypeReceiver
 
             while (unwrappedSequence is BoundSequence sequence)
-                unwrappedSequence = sequence.Value;
+                unwrappedSequence = sequence.Value
 
             if (unwrappedSequence is BoundLocal { LocalSymbol: { } localSymbol })
-                ShouldNotSchedule(localSymbol);
+                ShouldNotSchedule(localSymbol)
 
-            var referenceTypeReceiver = (BoundExpression)this.Visit(node.ReferenceTypeReceiver);
+            var referenceTypeReceiver = (BoundExpression)this.Visit(node.ReferenceTypeReceiver)
 
             EnsureStackState(cookie) // implicit label here
 
-            return node.Update(valueTypeReceiver, referenceTypeReceiver, node.Type);
+            return node.Update(valueTypeReceiver, referenceTypeReceiver, node.Type)
 
         public override BoundNode VisitUnaryOperator(BoundUnaryOperator node)
             // checked(-x) is emitted as "0 - x"
             if (node.OperatorKind.IsChecked() && node.OperatorKind.Operator() == UnaryOperatorKind.UnaryMinus)
-                var origStack = StackDepth();
-                PushEvalStack(new BoundDefaultExpression(node.Syntax, node.Operand.Type), ExprContext.Value);
-                BoundExpression operand = (BoundExpression)this.Visit(node.Operand);
-                return node.Update(node.OperatorKind, operand, node.ConstantValueOpt, node.MethodOpt, node.ConstrainedToTypeOpt, node.ResultKind, node.Type);
+                var origStack = StackDepth()
+                PushEvalStack(new BoundDefaultExpression(node.Syntax, node.Operand.Type), ExprContext.Value)
+                BoundExpression operand = (BoundExpression)this.Visit(node.Operand)
+                return node.Update(node.OperatorKind, operand, node.ConstantValueOpt, node.MethodOpt, node.ConstrainedToTypeOpt, node.ResultKind, node.Type)
             else
-                return base.VisitUnaryOperator(node);
+                return base.VisitUnaryOperator(node)
 
         public override BoundNode VisitTryStatement(BoundTryStatement node)
-            EnsureOnlyEvalStack();
-            var tryBlock = (BoundBlock)this.Visit(node.TryBlock);
+            EnsureOnlyEvalStack()
+            var tryBlock = (BoundBlock)this.Visit(node.TryBlock)
 
-            var catchBlocks = this.VisitList(node.CatchBlocks);
+            var catchBlocks = this.VisitList(node.CatchBlocks)
 
-            EnsureOnlyEvalStack();
-            var finallyBlock = (BoundBlock)this.Visit(node.FinallyBlockOpt);
+            EnsureOnlyEvalStack()
+            var finallyBlock = (BoundBlock)this.Visit(node.FinallyBlockOpt)
 
-            EnsureOnlyEvalStack();
+            EnsureOnlyEvalStack()
 
-            return node.Update(tryBlock, catchBlocks, finallyBlock, finallyLabelOpt: node.FinallyLabelOpt, node.PreferFaultHandler);
+            return node.Update(tryBlock, catchBlocks, finallyBlock, finallyLabelOpt: node.FinallyLabelOpt, node.PreferFaultHandler)
 
         public override BoundNode VisitCatchBlock(BoundCatchBlock node)
-            EnsureOnlyEvalStack();
+            EnsureOnlyEvalStack()
 
-            var exceptionSourceOpt = node.ExceptionSourceOpt;
-            DeclareLocals(node.Locals, stack: 0);
+            var exceptionSourceOpt = node.ExceptionSourceOpt
+            DeclareLocals(node.Locals, stack: 0)
 
             if (exceptionSourceOpt != null)
                 // runtime pushes the exception object
-                PushEvalStack(null, ExprContext.None);
-                _counter++;
+                PushEvalStack(null, ExprContext.None)
+                _counter++
 
                 // We consume it by writing into the exception source.
                 if (exceptionSourceOpt.Kind == BoundKind.Local)
-                    RecordVarWrite(((BoundLocal)exceptionSourceOpt).LocalSymbol);
+                    RecordVarWrite(((BoundLocal)exceptionSourceOpt).LocalSymbol)
                 else
-                    int prevStack = StackDepth();
-                    exceptionSourceOpt = VisitExpression(exceptionSourceOpt, ExprContext.AssignmentTarget);
+                    int prevStack = StackDepth()
+                    exceptionSourceOpt = VisitExpression(exceptionSourceOpt, ExprContext.AssignmentTarget)
                     _assignmentLocal = null // not using this for exceptionSource
-                    SetStackDepth(prevStack);
+                    SetStackDepth(prevStack)
 
-                PopEvalStack();
-                _counter++;
+                PopEvalStack()
+                _counter++
 
-            BoundStatementList filterPrologue;
+            BoundStatementList filterPrologue
             if (node.ExceptionFilterPrologueOpt != null)
-                EnsureOnlyEvalStack();
-                filterPrologue = (BoundStatementList)this.Visit(node.ExceptionFilterPrologueOpt);
+                EnsureOnlyEvalStack()
+                filterPrologue = (BoundStatementList)this.Visit(node.ExceptionFilterPrologueOpt)
             else
-                filterPrologue = null;
+                filterPrologue = null
 
-            BoundExpression boundFilter;
+            BoundExpression boundFilter
             if (node.ExceptionFilterOpt != null)
-                boundFilter = (BoundExpression)this.Visit(node.ExceptionFilterOpt);
+                boundFilter = (BoundExpression)this.Visit(node.ExceptionFilterOpt)
 
                 // the value of filter expression is consumed by the VM
-                PopEvalStack();
-                _counter++;
+                PopEvalStack()
+                _counter++
 
                 // variables allocated on stack in a filter can't be used in the catch handler
-                EnsureOnlyEvalStack();
+                EnsureOnlyEvalStack()
             else
-                boundFilter = null;
+                boundFilter = null
 
-            var boundBlock = (BoundBlock)this.Visit(node.Body);
-            var exceptionTypeOpt = this.VisitType(node.ExceptionTypeOpt);
+            var boundBlock = (BoundBlock)this.Visit(node.Body)
+            var exceptionTypeOpt = this.VisitType(node.ExceptionTypeOpt)
 
-            return node.Update(node.Locals, exceptionSourceOpt, exceptionTypeOpt, filterPrologue, boundFilter, boundBlock, node.IsSynthesizedAsyncCatchAll);
+            return node.Update(node.Locals, exceptionSourceOpt, exceptionTypeOpt, filterPrologue, boundFilter, boundBlock, node.IsSynthesizedAsyncCatchAll)
 
         public override BoundNode VisitConvertedStackAllocExpression(BoundConvertedStackAllocExpression node)
             // CLI spec section 3.47 requires that the stack be empty when localloc occurs.
-            EnsureOnlyEvalStack();
-            return base.VisitConvertedStackAllocExpression(node);
+            EnsureOnlyEvalStack()
+            return base.VisitConvertedStackAllocExpression(node)
 
         public override BoundNode VisitArrayInitialization(BoundArrayInitialization node)
             // nontrivial construct - may use dups, metadata blob helpers etc..
-            EnsureOnlyEvalStack();
+            EnsureOnlyEvalStack()
 
-            var initializers = node.Initializers;
-            ArrayBuilder<BoundExpression> rewrittenInitializers = null;
+            var initializers = node.Initializers
+            ArrayBuilder<BoundExpression> rewrittenInitializers = null
             if (!initializers.IsDefault)
                 for (int i = 0; i < initializers.Length; i++)
                     // array itself will be pushed on the stack here.
-                    EnsureOnlyEvalStack();
+                    EnsureOnlyEvalStack()
 
-                    var initializer = initializers[i];
-                    var rewrittenInitializer = this.VisitExpression(initializer, ExprContext.Value);
+                    var initializer = initializers[i]
+                    var rewrittenInitializer = this.VisitExpression(initializer, ExprContext.Value)
 
                     if (rewrittenInitializers == null && rewrittenInitializer != initializer)
-                        rewrittenInitializers = ArrayBuilder<BoundExpression>.GetInstance();
-                        rewrittenInitializers.AddRange(initializers, i);
+                        rewrittenInitializers = ArrayBuilder<BoundExpression>.GetInstance()
+                        rewrittenInitializers.AddRange(initializers, i)
 
                     if (rewrittenInitializers != null)
-                        rewrittenInitializers.Add(rewrittenInitializer);
+                        rewrittenInitializers.Add(rewrittenInitializer)
 
             return node.Update(rewrittenInitializers != null ?
                 rewrittenInitializers.ToImmutableAndFree() :
                 initializers)
 
         public override BoundNode VisitAddressOfOperator(BoundAddressOfOperator node)
-            BoundExpression visitedOperand = this.VisitExpression(node.Operand, ExprContext.Address);
-            return node.Update(visitedOperand, node.IsManaged, node.Type);
+            BoundExpression visitedOperand = this.VisitExpression(node.Operand, ExprContext.Address)
+            return node.Update(visitedOperand, node.IsManaged, node.Type)
 
         public override BoundNode VisitReturnStatement(BoundReturnStatement node)
-            BoundExpression expressionOpt = (BoundExpression)this.Visit(node.ExpressionOpt);
+            BoundExpression expressionOpt = (BoundExpression)this.Visit(node.ExpressionOpt)
 
             // must not have locals on stack when returning
-            EnsureOnlyEvalStack();
+            EnsureOnlyEvalStack()
 
-            return node.Update(node.RefKind, expressionOpt, @checked: node.Checked);
+            return node.Update(node.RefKind, expressionOpt, @checked: node.Checked)
 
         // Ensures that there are no stack locals.
         // It is done by accessing virtual "empty" local that is at the bottom of all stack locals.
         private void EnsureOnlyEvalStack()
-            RecordVarRead(empty);
+            RecordVarRead(empty)
 
         private object GetStackStateCookie()
             // create a dummy and start tracing it
-            var dummy = new DummyLocal();
-            _dummyVariables.Add(dummy, dummy);
-            _locals.Add(dummy, LocalDefUseInfo.GetInstance(StackDepth()));
-            RecordDummyWrite(dummy);
+            var dummy = new DummyLocal()
+            _dummyVariables.Add(dummy, dummy)
+            _locals.Add(dummy, LocalDefUseInfo.GetInstance(StackDepth()))
+            RecordDummyWrite(dummy)
 
-            return dummy;
+            return dummy
 
         private void EnsureStackState(object cookie)
-            RecordVarRead(_dummyVariables[cookie]);
+            RecordVarRead(_dummyVariables[cookie])
 
         // called on branches and labels
         private void RecordBranch(LabelSymbol label)
-            DummyLocal dummy;
+            DummyLocal dummy
             if (_dummyVariables.TryGetValue(label, out dummy))
-                RecordVarRead(dummy);
+                RecordVarRead(dummy)
             else
                 // create a dummy and start tracing it
-                dummy = new DummyLocal();
-                _dummyVariables.Add(label, dummy);
-                _locals.Add(dummy, LocalDefUseInfo.GetInstance(StackDepth()));
-                RecordDummyWrite(dummy);
+                dummy = new DummyLocal()
+                _dummyVariables.Add(label, dummy)
+                _locals.Add(dummy, LocalDefUseInfo.GetInstance(StackDepth()))
+                RecordDummyWrite(dummy)
 
         private void RecordLabel(LabelSymbol label)
-            DummyLocal dummy;
+            DummyLocal dummy
             if (_dummyVariables.TryGetValue(label, out dummy))
-                RecordVarRead(dummy);
+                RecordVarRead(dummy)
             else
                 // this is a backwards jump with nontrivial stack requirements.
                 // just use empty.
-                dummy = empty;
-                _dummyVariables.Add(label, dummy);
-                RecordVarRead(dummy);
+                dummy = empty
+                _dummyVariables.Add(label, dummy)
+                RecordVarRead(dummy)
 
         private void ShouldNotSchedule(LocalSymbol localSymbol)
-            LocalDefUseInfo localDefInfo;
+            LocalDefUseInfo localDefInfo
             if (_locals.TryGetValue(localSymbol, out localDefInfo))
-                localDefInfo.ShouldNotSchedule();
+                localDefInfo.ShouldNotSchedule()
 
         private void RecordVarRef(LocalSymbol local)
-            Debug.Assert(local.RefKind == RefKind.None, "cannot take a ref of a ref");
+            Debug.Assert(local.RefKind == RefKind.None, "cannot take a ref of a ref")
 
             if (!CanScheduleToStack(local))
-                return;
+                return
 
             // if we ever take a reference of a local, it must be a real local.
-            ShouldNotSchedule(local);
+            ShouldNotSchedule(local)
 
         private void RecordVarRead(LocalSymbol local)
             if (!CanScheduleToStack(local))
-                return;
+                return
 
-            var locInfo = _locals[local];
+            var locInfo = _locals[local]
 
             if (locInfo.CannotSchedule)
-                return;
+                return
 
-            var defs = locInfo.LocalDefs;
+            var defs = locInfo.LocalDefs
             if (defs.Count == 0)
                 //reading before writing.
-                locInfo.ShouldNotSchedule();
-                return;
+                locInfo.ShouldNotSchedule()
+                return
 
             // if accessing real val, check stack
             if (local.SynthesizedKind != SynthesizedLocalKind.OptimizerTemp)
                 if (locInfo.StackAtDeclaration != StackDepth() &&
                     !EvalStackHasLocal(local))
                     //reading at different eval stack.
-                    locInfo.ShouldNotSchedule();
-                    return;
+                    locInfo.ShouldNotSchedule()
+                    return
             else
                 // dummy must be accessed on same stack.
-                Debug.Assert(local == empty || locInfo.StackAtDeclaration == StackDepth());
+                Debug.Assert(local == empty || locInfo.StackAtDeclaration == StackDepth())
 
-            var last = defs.Count - 1;
-            defs[last] = defs[last].WithEnd(_counter);
+            var last = defs.Count - 1
+            defs[last] = defs[last].WithEnd(_counter)
 
-            var nextDef = new LocalDefUseSpan(_counter);
-            defs.Add(nextDef);
+            var nextDef = new LocalDefUseSpan(_counter)
+            defs.Add(nextDef)
 
         private bool EvalStackHasLocal(LocalSymbol local)
-            var top = _evalStack.Last();
+            var top = _evalStack.Last()
 
             return top.Item2 == (local.RefKind == RefKind.None ? ExprContext.Value : ExprContext.Address) &&
                 top.Item1.Kind == BoundKind.Local &&
                 ((BoundLocal)top.Item1).LocalSymbol == local
 
         private void RecordDummyWrite(LocalSymbol local)
-            Debug.Assert(local.SynthesizedKind == SynthesizedLocalKind.OptimizerTemp);
+            Debug.Assert(local.SynthesizedKind == SynthesizedLocalKind.OptimizerTemp)
 
-            var locInfo = _locals[local];
+            var locInfo = _locals[local]
 
             // dummy must be accessed on same stack.
-            Debug.Assert(local == empty || locInfo.StackAtDeclaration == StackDepth());
+            Debug.Assert(local == empty || locInfo.StackAtDeclaration == StackDepth())
 
-            var locDef = new LocalDefUseSpan(_counter);
-            locInfo.LocalDefs.Add(locDef);
+            var locDef = new LocalDefUseSpan(_counter)
+            locInfo.LocalDefs.Add(locDef)
 
         private void RecordVarWrite(LocalSymbol local)
-            Debug.Assert(local.SynthesizedKind != SynthesizedLocalKind.OptimizerTemp);
+            Debug.Assert(local.SynthesizedKind != SynthesizedLocalKind.OptimizerTemp)
 
             if (!CanScheduleToStack(local))
-                return;
+                return
 
-            var locInfo = _locals[local];
+            var locInfo = _locals[local]
             if (locInfo.CannotSchedule)
-                return;
+                return
 
             // check stack
             // -1 because real assignment "consumes, assigns, and then pushes back" the value.
-            var evalStack = StackDepth() - 1;
+            var evalStack = StackDepth() - 1
 
             if (locInfo.StackAtDeclaration != evalStack)
                 //writing at different eval stack.
-                locInfo.ShouldNotSchedule();
-                return;
+                locInfo.ShouldNotSchedule()
+                return
 
-            var locDef = new LocalDefUseSpan(_counter);
-            locInfo.LocalDefs.Add(locDef);
+            var locDef = new LocalDefUseSpan(_counter)
+            locInfo.LocalDefs.Add(locDef)
 
         private bool CanScheduleToStack(LocalSymbol local)
             return local.CanScheduleToStack &&
@@ -1533,18 +1533,18 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeGen
 
         private void DeclareLocals(ImmutableArray<LocalSymbol> locals, int stack)
             foreach (var local in locals)
-                DeclareLocal(local, stack);
+                DeclareLocal(local, stack)
 
         private void DeclareLocal(LocalSymbol local, int stack)
             if ((object)local != null)
                 if (CanScheduleToStack(local))
-                    LocalDefUseInfo info;
+                    LocalDefUseInfo info
                     if (!_locals.TryGetValue(local, out info))
-                        _locals.Add(local, LocalDefUseInfo.GetInstance(stack));
+                        _locals.Add(local, LocalDefUseInfo.GetInstance(stack))
                     else
-                        Debug.Assert(local.SynthesizedKind == SynthesizedLocalKind.LoweringTemp, "only lowering temps may be sometimes reused");
+                        Debug.Assert(local.SynthesizedKind == SynthesizedLocalKind.LoweringTemp, "only lowering temps may be sometimes reused")
                         if (info.StackAtDeclaration != stack)
-                            info.ShouldNotSchedule();
+                            info.ShouldNotSchedule()
 
         /// <summary>
         /// Checks whether there is a pointer indirection that may directly contribute to the final by-ref result of the visited expression.
@@ -1553,32 +1553,32 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeGen
         /// This is a conservative check (we prefer correctness over optimization).
         /// </summary>
         private sealed class PointerIndirectionMayFlowToRefResultVisitor : BoundTreeWalkerWithStackGuardWithoutRecursionOnTheLeftOfBinaryOperator
-            private bool _pointerIndirectionMayFlowToRefResult;
+            private bool _pointerIndirectionMayFlowToRefResult
 
             private PointerIndirectionMayFlowToRefResultVisitor(int recursionDepth) : base(recursionDepth);
                 ;
 
             public static bool Check(BoundExpression expression, int recursionDepth)
-                var visitor = new PointerIndirectionMayFlowToRefResultVisitor(recursionDepth);
-                visitor.Visit(expression);
-                return visitor._pointerIndirectionMayFlowToRefResult;
+                var visitor = new PointerIndirectionMayFlowToRefResultVisitor(recursionDepth)
+                visitor.Visit(expression)
+                return visitor._pointerIndirectionMayFlowToRefResult
 
             public override BoundNode Visit(BoundNode node)
                 if (_pointerIndirectionMayFlowToRefResult)
                     // No need to continue visiting nodes if the result is `true`.
-                    return node;
+                    return node
 
-                return base.Visit(node);
+                return base.Visit(node)
 
             public override BoundNode VisitPointerIndirectionOperator(BoundPointerIndirectionOperator node)
-                _pointerIndirectionMayFlowToRefResult = true;
-                return node;
+                _pointerIndirectionMayFlowToRefResult = true
+                return node
 
             public override BoundNode VisitCall(BoundCall node)
-                return node;
+                return node
 
             public override BoundNode VisitFunctionPointerInvocation(BoundFunctionPointerInvocation node)
-                return node;
+                return node
 
     // Rewrites the tree to account for destructive nature of stack local reads.
     //
@@ -1589,106 +1589,106 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeGen
     //              LastUse(X_stackLocal) ===> LastUse(X_stackLocal)
     //
     internal sealed class StackOptimizerPass2 : BoundTreeRewriterWithStackGuard
-        private int _nodeCounter;
-        private readonly Dictionary<LocalSymbol, LocalDefUseInfo> _info;
+        private int _nodeCounter
+        private readonly Dictionary<LocalSymbol, LocalDefUseInfo> _info
 
         private StackOptimizerPass2(Dictionary<LocalSymbol, LocalDefUseInfo> info)
-            _info = info;
+            _info = info
 
         public static BoundStatement Rewrite(BoundStatement src, Dictionary<LocalSymbol, LocalDefUseInfo> info)
-            var scheduler = new StackOptimizerPass2(info);
-            return (BoundStatement)scheduler.Visit(src);
+            var scheduler = new StackOptimizerPass2(info)
+            return (BoundStatement)scheduler.Visit(src)
 
         public override BoundNode Visit(BoundNode node)
-            BoundNode result;
+            BoundNode result
 
             // rewriting constants may undo constant folding and make thing worse.
             // so we will not go into constant nodes.
             // CodeGen will not do that either.
-            var asExpression = node as BoundExpression;
+            var asExpression = node as BoundExpression
             if (asExpression != null && asExpression.ConstantValueOpt != null)
-                result = node;
+                result = node
             else
-                result = base.Visit(node);
+                result = base.Visit(node)
 
-            _nodeCounter += 1;
+            _nodeCounter += 1
 
-            return result;
+            return result
 
         public override BoundNode VisitBinaryOperator(BoundBinaryOperator node)
-            BoundExpression child = node.Left;
+            BoundExpression child = node.Left
 
             if (child.Kind != BoundKind.BinaryOperator || child.ConstantValueOpt != null)
-                return base.VisitBinaryOperator(node);
+                return base.VisitBinaryOperator(node)
 
             // Do not blow the stack due to a deep recursion on the left.
-            var stack = ArrayBuilder<BoundBinaryOperator>.GetInstance();
-            stack.Push(node);
+            var stack = ArrayBuilder<BoundBinaryOperator>.GetInstance()
+            stack.Push(node)
 
-            BoundBinaryOperator binary = (BoundBinaryOperator)child;
+            BoundBinaryOperator binary = (BoundBinaryOperator)child
 
             while (true)
-                stack.Push(binary);
-                child = binary.Left;
+                stack.Push(binary)
+                child = binary.Left
 
                 if (child.Kind != BoundKind.BinaryOperator || child.ConstantValueOpt != null)
-                    break;
+                    break
 
-                binary = (BoundBinaryOperator)child;
+                binary = (BoundBinaryOperator)child
 
-            var left = (BoundExpression)this.Visit(child);
+            var left = (BoundExpression)this.Visit(child)
 
             while (true)
-                binary = stack.Pop();
-                var right = (BoundExpression)this.Visit(binary.Right);
-                var type = this.VisitType(binary.Type);
-                Debug.Assert(!binary.OperatorKind.IsDynamic());
-                left = binary.Update(binary.OperatorKind, binary.ConstantValueOpt, binary.BinaryOperatorMethod, binary.ConstrainedToType, binary.ResultKind, left, right, type);
+                binary = stack.Pop()
+                var right = (BoundExpression)this.Visit(binary.Right)
+                var type = this.VisitType(binary.Type)
+                Debug.Assert(!binary.OperatorKind.IsDynamic())
+                left = binary.Update(binary.OperatorKind, binary.ConstantValueOpt, binary.BinaryOperatorMethod, binary.ConstrainedToType, binary.ResultKind, left, right, type)
 
                 if (stack.Count == 0)
-                    break;
+                    break
 
-                _nodeCounter += 1;
+                _nodeCounter += 1
 
-            Debug.Assert((object)binary == node);
-            stack.Free();
+            Debug.Assert((object)binary == node)
+            stack.Free()
 
-            return left;
+            return left
 
         private static bool IsLastAccess(LocalDefUseInfo locInfo, int counter)
-            return locInfo.LocalDefs.Any((d) => counter == d.Start && counter == d.End);
+            return locInfo.LocalDefs.Any((d) => counter == d.Start && counter == d.End)
 
         public override BoundNode VisitLocal(BoundLocal node)
-            LocalDefUseInfo locInfo;
+            LocalDefUseInfo locInfo
             if (!_info.TryGetValue(node.LocalSymbol, out locInfo))
-                return base.VisitLocal(node);
+                return base.VisitLocal(node)
 
             // not the last access, emit Dup.
             if (!IsLastAccess(locInfo, _nodeCounter))
-                return new BoundDup(node.Syntax, node.LocalSymbol.RefKind, node.Type);
+                return new BoundDup(node.Syntax, node.LocalSymbol.RefKind, node.Type)
 
             // last access - leave the node as is. Emit will do nothing expecting the node on the stack
-            return base.VisitLocal(node);
+            return base.VisitLocal(node)
 
         public override BoundNode VisitObjectCreationExpression(BoundObjectCreationExpression node)
-            ImmutableArray<BoundExpression> arguments = this.VisitList(node.Arguments);
-            Debug.Assert(node.InitializerExpressionOpt == null);
-            TypeSymbol type = this.VisitType(node.Type);
-            return node.Update(node.Constructor, arguments, node.ArgumentNamesOpt, node.ArgumentRefKindsOpt, node.Expanded, node.ArgsToParamsOpt, node.DefaultArguments, node.ConstantValueOpt, initializerExpressionOpt: null, type);
+            ImmutableArray<BoundExpression> arguments = this.VisitList(node.Arguments)
+            Debug.Assert(node.InitializerExpressionOpt == null)
+            TypeSymbol type = this.VisitType(node.Type)
+            return node.Update(node.Constructor, arguments, node.ArgumentNamesOpt, node.ArgumentRefKindsOpt, node.Expanded, node.ArgsToParamsOpt, node.DefaultArguments, node.ConstantValueOpt, initializerExpressionOpt: null, type)
 
         public override BoundNode VisitAssignmentOperator(BoundAssignmentOperator node)
-            LocalDefUseInfo locInfo;
-            var left = node.Left as BoundLocal;
+            LocalDefUseInfo locInfo
+            var left = node.Left as BoundLocal
 
             // store to something that is not special. (operands still could be rewritten)
             if (left == null || !_info.TryGetValue(left.LocalSymbol, out locInfo))
-                return base.VisitAssignmentOperator(node);
+                return base.VisitAssignmentOperator(node)
 
             // indirect local store is not special. (operands still could be rewritten)
             // NOTE: if lhs is a stack local, it will be handled as a read and possibly duped.
-            var isIndirectLocalStore = left.LocalSymbol.RefKind != RefKind.None && !node.IsRef;
+            var isIndirectLocalStore = left.LocalSymbol.RefKind != RefKind.None && !node.IsRef
             if (isIndirectLocalStore)
-                return base.VisitAssignmentOperator(node);
+                return base.VisitAssignmentOperator(node)
 
             // ==  here we have a regular write to a stack local
             //
@@ -1699,15 +1699,15 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeGen
             // otherwise record a store.
 
             // fake visiting of left
-            _nodeCounter += 1;
+            _nodeCounter += 1
 
             // visit right
-            var right = (BoundExpression)Visit(node.Right);
+            var right = (BoundExpression)Visit(node.Right)
 
             // do actual assignment
 
-            Debug.Assert(locInfo.LocalDefs.Any((d) => _nodeCounter == d.Start && _nodeCounter <= d.End));
-            var isLast = IsLastAccess(locInfo, _nodeCounter);
+            Debug.Assert(locInfo.LocalDefs.Any((d) => _nodeCounter == d.Start && _nodeCounter <= d.End))
+            var isLast = IsLastAccess(locInfo, _nodeCounter)
 
             if (isLast)
                 if (node.IsRef &&
@@ -1716,121 +1716,121 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeGen
                     right is BoundArrayAccess arrayAccess &&
                         // Value types do not need runtime element type checks.
                     !arrayAccess.Type.IsValueType)
-                    return new BoundRefArrayAccess(arrayAccess.Syntax, arrayAccess);
+                    return new BoundRefArrayAccess(arrayAccess.Syntax, arrayAccess)
 
                 // assigned local is not used later => just emit the Right
-                return right;
+                return right
             else
                 // assigned local used later - keep assignment.
                 // codegen will keep value on stack when sees assignment "stackLocal = expr"
-                return node.Update(left, right, node.IsRef, node.Type);
+                return node.Update(left, right, node.IsRef, node.Type)
 
         #nullable enable
         public override BoundNode VisitCall(BoundCall node)
             if (node.ReceiverOpt is BoundCall receiver1)
-                var calls = ArrayBuilder<BoundCall>.GetInstance();
+                var calls = ArrayBuilder<BoundCall>.GetInstance()
 
-                calls.Push(node);
+                calls.Push(node)
 
-                node = receiver1;
+                node = receiver1
                 while (node.ReceiverOpt is BoundCall receiver2)
-                    calls.Push(node);
-                    node = receiver2;
+                    calls.Push(node)
+                    node = receiver2
 
-                BoundExpression? rewrittenReceiver = visitReceiver(node);
+                BoundExpression? rewrittenReceiver = visitReceiver(node)
 
                 while (true)
-                    rewrittenReceiver = visitArgumentsAndUpdateCall(node, rewrittenReceiver);
+                    rewrittenReceiver = visitArgumentsAndUpdateCall(node, rewrittenReceiver)
 
                     if (!calls.TryPop(out node!))
-                        break;
+                        break
 
                     // Visit does this after visiting each node
-                    _nodeCounter++;
+                    _nodeCounter++
 
-                calls.Free();
+                calls.Free()
 
-                return rewrittenReceiver;
+                return rewrittenReceiver
             else
-                BoundExpression? rewrittenReceiver = visitReceiver(node);
-                return visitArgumentsAndUpdateCall(node, rewrittenReceiver);
+                BoundExpression? rewrittenReceiver = visitReceiver(node)
+                return visitArgumentsAndUpdateCall(node, rewrittenReceiver)
 
             BoundExpression? visitReceiver(BoundCall node)
-                BoundExpression? receiverOpt = node.ReceiverOpt;
+                BoundExpression? receiverOpt = node.ReceiverOpt
 
                 if (node.Method.RequiresInstanceReceiver)
-                    receiverOpt = (BoundExpression?)this.Visit(receiverOpt);
+                    receiverOpt = (BoundExpression?)this.Visit(receiverOpt)
                 else
-                    _nodeCounter++;
+                    _nodeCounter++
 
                     if (receiverOpt is BoundTypeExpression { AliasOpt: null, BoundContainingTypeOpt: null, BoundDimensionsOpt: { IsEmpty: true }, Type: TypeParameterSymbol or NamedTypeSymbol { IsUnionType: true } } typeExpression)
                         receiverOpt = typeExpression.Update(aliasOpt: null, boundContainingTypeOpt: null, boundDimensionsOpt: ImmutableArray<BoundExpression>.Empty,
                             typeWithAnnotations: typeExpression.TypeWithAnnotations, type: this.VisitType(typeExpression.Type))
                     else if (receiverOpt is not null)
-                        throw ExceptionUtilities.Unreachable();
+                        throw ExceptionUtilities.Unreachable()
 
-                return receiverOpt;
+                return receiverOpt
 
             BoundExpression visitArgumentsAndUpdateCall(BoundCall node, BoundExpression? receiverOpt)
-                ImmutableArray<BoundExpression> arguments = this.VisitList(node.Arguments);
-                TypeSymbol? type = this.VisitType(node.Type);
-                return node.Update(receiverOpt, node.InitialBindingReceiverIsSubjectToCloning, node.Method, arguments, node.ArgumentNamesOpt, node.ArgumentRefKindsOpt, node.IsDelegateCall, node.Expanded, node.InvokedAsExtensionMethod, node.ArgsToParamsOpt, node.DefaultArguments, node.ResultKind, node.OriginalMethodsOpt, type);
+                ImmutableArray<BoundExpression> arguments = this.VisitList(node.Arguments)
+                TypeSymbol? type = this.VisitType(node.Type)
+                return node.Update(receiverOpt, node.InitialBindingReceiverIsSubjectToCloning, node.Method, arguments, node.ArgumentNamesOpt, node.ArgumentRefKindsOpt, node.IsDelegateCall, node.Expanded, node.InvokedAsExtensionMethod, node.ArgsToParamsOpt, node.DefaultArguments, node.ResultKind, node.OriginalMethodsOpt, type)
         #nullable disable
 
         public override BoundNode VisitCatchBlock(BoundCatchBlock node)
-            var exceptionSource = node.ExceptionSourceOpt;
-            var type = node.ExceptionTypeOpt;
-            var filterPrologue = node.ExceptionFilterPrologueOpt;
-            var filter = node.ExceptionFilterOpt;
-            var body = node.Body;
+            var exceptionSource = node.ExceptionSourceOpt
+            var type = node.ExceptionTypeOpt
+            var filterPrologue = node.ExceptionFilterPrologueOpt
+            var filter = node.ExceptionFilterOpt
+            var body = node.Body
 
             if (exceptionSource != null)
                 // runtime pushes the exception object
-                _nodeCounter++;
+                _nodeCounter++
 
                 if (exceptionSource.Kind == BoundKind.Local)
-                    var sourceLocal = ((BoundLocal)exceptionSource).LocalSymbol;
-                    LocalDefUseInfo locInfo;
+                    var sourceLocal = ((BoundLocal)exceptionSource).LocalSymbol
+                    LocalDefUseInfo locInfo
 
                     // If catch is the last access, we do not need to store the exception object.
                     if (_info.TryGetValue(sourceLocal, out locInfo) &&
                         IsLastAccess(locInfo, _nodeCounter))
-                        exceptionSource = null;
+                        exceptionSource = null
                 else
-                    exceptionSource = (BoundExpression)Visit(exceptionSource);
+                    exceptionSource = (BoundExpression)Visit(exceptionSource)
 
                 // we consume it by writing into the local
-                _nodeCounter++;
+                _nodeCounter++
 
-            filterPrologue = (filterPrologue != null) ? (BoundStatementList)this.Visit(filterPrologue) : null;
+            filterPrologue = (filterPrologue != null) ? (BoundStatementList)this.Visit(filterPrologue) : null
 
             if (filter != null)
-                filter = (BoundExpression)this.Visit(filter);
+                filter = (BoundExpression)this.Visit(filter)
 
                 // the value of filter expression is consumed by the VM
-                _nodeCounter++;
+                _nodeCounter++
 
-            body = (BoundBlock)this.Visit(body);
-            type = this.VisitType(type);
+            body = (BoundBlock)this.Visit(body)
+            type = this.VisitType(type)
 
-            return node.Update(node.Locals, exceptionSource, type, filterPrologue, filter, body, node.IsSynthesizedAsyncCatchAll);
+            return node.Update(node.Locals, exceptionSource, type, filterPrologue, filter, body, node.IsSynthesizedAsyncCatchAll)
 
     internal sealed class DummyLocal : LocalSymbol
         internal override bool IsImportedFromMetadata
             get
-                return false;
+                return false
 
         internal override LocalDeclarationKind DeclarationKind
             get
-                return LocalDeclarationKind.None;
+                return LocalDeclarationKind.None
 
         internal override SynthesizedLocalKind SynthesizedKind
             get
-                return SynthesizedLocalKind.OptimizerTemp;
+                return SynthesizedLocalKind.OptimizerTemp
 
         internal override SyntaxNode ScopeDesignatorOpt
             get
-                return null;
+                return null
 
         raw csharp
             internal override LocalSymbol WithSynthesizedLocalKindAndSyntax(
@@ -1847,49 +1847,49 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeGen
 
         internal override SyntaxToken IdentifierToken
             get
-                return default(SyntaxToken);
+                return default(SyntaxToken)
 
         internal override bool IsPinned
             get
-                return false;
+                return false
 
         internal override bool IsKnownToReferToTempIfReferenceType
             get
-                return false;
+                return false
 
         public override Symbol ContainingSymbol
             get
-                throw new NotImplementedException();
+                throw new NotImplementedException()
 
         public override TypeWithAnnotations TypeWithAnnotations
             get
-                throw new NotImplementedException();
+                throw new NotImplementedException()
 
         public override ImmutableArray<Location> Locations
             get
-                throw new NotImplementedException();
+                throw new NotImplementedException()
 
         public override ImmutableArray<SyntaxReference> DeclaringSyntaxReferences
             get
-                throw new NotImplementedException();
+                throw new NotImplementedException()
 
         internal override ConstantValue GetConstantValue(SyntaxNode node, LocalSymbol inProgress, BindingDiagnosticBag diagnostics)
-            throw new NotImplementedException();
+            throw new NotImplementedException()
 
         internal override bool IsCompilerGenerated
             get
-                return true;
+                return true
 
         internal override ReadOnlyBindingDiagnostic<AssemblySymbol> GetConstantValueDiagnostics(BoundExpression boundInitValue)
-            throw new NotImplementedException();
+            throw new NotImplementedException()
 
         internal override SyntaxNode GetDeclaratorSyntax()
-            throw new NotImplementedException();
+            throw new NotImplementedException()
 
-        internal override bool HasSourceLocation => false;
+        internal override bool HasSourceLocation => false
 
         public override RefKind RefKind
             get
-                return RefKind.None;
+                return RefKind.None
 
-        internal override ScopedKind Scope => ScopedKind.None;
+        internal override ScopedKind Scope => ScopedKind.None

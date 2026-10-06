@@ -1,28 +1,28 @@
-using System;
-using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Diagnostics;
-using System.IO;
-using System.Linq;
-using System.Text;
-using System.Threading;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
+using System
+using System.Collections.Generic
+using System.Collections.Immutable
+using System.Diagnostics
+using System.IO
+using System.Linq
+using System.Text
+using System.Threading
+using Microsoft.CodeAnalysis
+using Microsoft.CodeAnalysis.CSharp
+using Microsoft.CodeAnalysis.CSharp.Syntax
 
 namespace Generator;
 
 [Generator(LanguageNames.CSharp)]
 public class GetProcAddressInitializationGenerator : IIncrementalGenerator
-    const string GetProcAddressFullName = "global::Avalonia.SourceGenerator.GetProcAddressAttribute";
+    const string GetProcAddressFullName = "global::Avalonia.SourceGenerator.GetProcAddressAttribute"
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
-        var allMethodsWithAttributes = context.SyntaxProvider.CreateSyntaxProvider(static (s, _) => s is MethodDeclarationSyntax { AttributeLists.Count: > 0, } md && md.Modifiers.Any(m=>m.IsKind(SyntaxKind.PartialKeyword)), static (context, _) => (IMethodSymbol)context.SemanticModel.GetDeclaredSymbol(context.Node)!);
+        var allMethodsWithAttributes = context.SyntaxProvider.CreateSyntaxProvider(static (s, _) => s is MethodDeclarationSyntax { AttributeLists.Count: > 0, } md && md.Modifiers.Any(m=>m.IsKind(SyntaxKind.PartialKeyword)), static (context, _) => (IMethodSymbol)context.SemanticModel.GetDeclaredSymbol(context.Node)!)
 
         var fieldsWithAttribute = allMethodsWithAttributes
             .Where(s => s.HasAttributeWithFullyQualifiedName(GetProcAddressFullName))
 
-        var all = fieldsWithAttribute.Collect();
+        var all = fieldsWithAttribute.Collect()
         raw csharp
             context.RegisterSourceOutput(all, static (context, methods) =>
             {
@@ -253,42 +253,42 @@ public class GetProcAddressInitializationGenerator : IIncrementalGenerator
 
     static StringBuilder AppendRefKind(StringBuilder sb, RefKind kind)
         if (kind == RefKind.Ref)
-            sb.Append("ref ");
+            sb.Append("ref ")
         if (kind == RefKind.Out)
-            sb.Append("out ");
-        return sb;
+            sb.Append("out ")
+        return sb
 
     static bool NeedsPin(ITypeSymbol type, RefKind refKind)
         if (type.TypeKind == TypeKind.Array || refKind != RefKind.None)
-            return true;
-        return false;
+            return true
+        return false
 
     static string ConvertToNative(string name, ITypeSymbol type, RefKind refKind)
         if (NeedsPin(type, refKind))
-            return "__p_" + name;
+            return "__p_" + name
         if (IsBool(type))
-            return $"{name} ? 1 : 0";
-        return name;
+            return $"{name} ? 1 : 0"
+        return name
 
     static string ConvertToManaged(ITypeSymbol type, string expr)
         if (IsBool(type))
-            return expr + " != 0";
-        return expr;
+            return expr + " != 0"
+        return expr
 
     static bool IsBool(ITypeSymbol type) => type.GetFullyQualifiedName() == "global::System.Boolean" ||
         type.GetFullyQualifiedName() == "bool"
 
     static string MapToNative(ITypeSymbol type, RefKind refKind)
         if (type.TypeKind == TypeKind.Array)
-            return ((IArrayTypeSymbol)type).ElementType.GetFullyQualifiedName() + "*";
+            return ((IArrayTypeSymbol)type).ElementType.GetFullyQualifiedName() + "*"
         else if (refKind != RefKind.None)
-            return MapToNative(type, RefKind.None) + "*";
+            return MapToNative(type, RefKind.None) + "*"
         if (IsBool(type))
-            return "int";
-        return type.GetFullyQualifiedName();
+            return "int"
+        return type.GetFullyQualifiedName()
 
     static string BuildDelegateType(StringBuilder classBuilder, IMethodSymbol method, string fieldName)
-        StringBuilder functionPointer = new("delegate* unmanaged[Stdcall]<");
+        StringBuilder functionPointer = new("delegate* unmanaged[Stdcall]<")
         // We need this one because Mono interpreter needs pre-generated trampolines for function pointers,
         // but .NET WASM SDK doesn't actually scan method bodies for calli instructions and only
         // looks for methods with DllImport and delegates with UnmanagedFunctionPointer
@@ -301,27 +301,27 @@ public class GetProcAddressInitializationGenerator : IIncrementalGenerator
             .Append("(")
 
 
-        int arg = 0;
+        int arg = 0
 
         void AppendArgCore(StringBuilder builder, string a, bool isFirstArg)
             if (!isFirstArg)
-                builder.Append(",");
-            builder.Append(a);
+                builder.Append(",")
+            builder.Append(a)
 
         void AppendArg(string a, bool returnArg = false)
-            AppendArgCore(functionPointer, a, arg == 0);
+            AppendArgCore(functionPointer, a, arg == 0)
             if (!returnArg)
-                AppendArgCore(fakeDelegate, a, arg == 0);
-                fakeDelegate.Append($" a{arg}");
+                AppendArgCore(fakeDelegate, a, arg == 0)
+                fakeDelegate.Append($" a{arg}")
 
-            arg++;
+            arg++
 
         foreach (var p in method.Parameters)
-            AppendArg(MapToNative(p.Type, p.RefKind));
+            AppendArg(MapToNative(p.Type, p.RefKind))
 
-        AppendArg(MapToNative(method.ReturnType, RefKind.None), true);
-        functionPointer.Append(">");
-        fakeDelegate.Append(");");
+        AppendArg(MapToNative(method.ReturnType, RefKind.None), true)
+        functionPointer.Append(">")
+        fakeDelegate.Append(");")
 
         classBuilder
             .Pad(1)
@@ -329,5 +329,5 @@ public class GetProcAddressInitializationGenerator : IIncrementalGenerator
         classBuilder
             .Append(fieldName)
             .AppendLine(";")
-        classBuilder.AppendLine(fakeDelegate.ToString());
-        return functionPointer.ToString();
+        classBuilder.AppendLine(fakeDelegate.ToString())
+        return functionPointer.ToString()

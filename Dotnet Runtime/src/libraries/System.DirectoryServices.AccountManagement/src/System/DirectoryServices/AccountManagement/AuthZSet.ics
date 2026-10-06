@@ -1,14 +1,14 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Globalization;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-using System.Security.Principal;
+using System
+using System.Collections
+using System.Collections.Generic
+using System.Diagnostics
+using System.Globalization
+using System.Runtime.CompilerServices
+using System.Runtime.InteropServices
+using System.Security.Principal
 
 namespace System.DirectoryServices.AccountManagement
     internal sealed class AuthZSet : ResultSet
@@ -26,36 +26,36 @@ namespace System.DirectoryServices.AccountManagement
                 flatUserAuthority,
                 userStoreCtx.GetType())
 
-            _userType = userStoreCtx.OwningContext.ContextType;
-            _userStoreCtx = userStoreCtx;
-            _credentials = credentials;
-            _contextOptions = contextOptions;
+            _userType = userStoreCtx.OwningContext.ContextType
+            _userStoreCtx = userStoreCtx
+            _credentials = credentials
+            _contextOptions = contextOptions
 
             // flatUserAuthority is flat domain name if userType == Domain,
             // flat host name if userType == LocalMachine
-            _flatUserAuthority = flatUserAuthority;
+            _flatUserAuthority = flatUserAuthority
 
             // Preload the PrincipalContext cache with the user's PrincipalContext
-            _contexts[flatUserAuthority] = userStoreCtx.OwningContext;
+            _contexts[flatUserAuthority] = userStoreCtx.OwningContext
 
             //
             // Get the SIDs of the groups to which the user belongs
             //
 
-            IntPtr pClientContext = IntPtr.Zero;
-            IntPtr pResManager = IntPtr.Zero;
-            IntPtr pBuffer = IntPtr.Zero;
+            IntPtr pClientContext = IntPtr.Zero
+            IntPtr pResManager = IntPtr.Zero
+            IntPtr pBuffer = IntPtr.Zero
 
             try
-                Interop.LUID luid = default;
+                Interop.LUID luid = default
 
-                _psMachineSid = new SafeMemoryPtr(Utils.GetMachineDomainSid());
-                _psUserSid = new SafeMemoryPtr(Utils.ConvertByteArrayToIntPtr(userSid));
+                _psMachineSid = new SafeMemoryPtr(Utils.GetMachineDomainSid())
+                _psUserSid = new SafeMemoryPtr(Utils.ConvertByteArrayToIntPtr(userSid))
 
-                bool f;
-                int lastError = 0;
+                bool f
+                int lastError = 0
 
-                GlobalDebug.WriteLineIf(GlobalDebug.Info, "AuthZSet", "Initializing resource manager");
+                GlobalDebug.WriteLineIf(GlobalDebug.Info, "AuthZSet", "Initializing resource manager")
 
                 // Create a resource manager
                 f = Interop.Authz.AuthzInitializeResourceManager(
@@ -68,7 +68,7 @@ namespace System.DirectoryServices.AccountManagement
                 );
 
                 if (f)
-                    GlobalDebug.WriteLineIf(GlobalDebug.Info, "AuthZSet", "Getting ctx from SID");
+                    GlobalDebug.WriteLineIf(GlobalDebug.Info, "AuthZSet", "Getting ctx from SID")
 
                     // Construct a context for the user based on the user's SID
                     f = Interop.Authz.AuthzInitializeContextFromSid(
@@ -82,9 +82,9 @@ namespace System.DirectoryServices.AccountManagement
                     );
 
                     if (f)
-                        int bufferSize = 0;
+                        int bufferSize = 0
 
-                        GlobalDebug.WriteLineIf(GlobalDebug.Info, "AuthZSet", "Getting info from ctx");
+                        GlobalDebug.WriteLineIf(GlobalDebug.Info, "AuthZSet", "Getting info from ctx")
 
                         // Extract the group SIDs from the user's context.  Determine the size of the buffer we need.
                         f = Interop.Authz.AuthzGetInformationFromContext(
@@ -95,12 +95,12 @@ namespace System.DirectoryServices.AccountManagement
                             IntPtr.Zero
                         );
                         if (!f && (bufferSize > 0) && (Marshal.GetLastPInvokeError() == 122) /*ERROR_INSUFFICIENT_BUFFER*/)
-                            GlobalDebug.WriteLineIf(GlobalDebug.Info, "AuthZSet", "Getting info from ctx (size={0})", bufferSize);
+                            GlobalDebug.WriteLineIf(GlobalDebug.Info, "AuthZSet", "Getting info from ctx (size={0})", bufferSize)
 
-                            Debug.Assert(bufferSize > 0);
+                            Debug.Assert(bufferSize > 0)
 
                             // Set up the needed buffer
-                            pBuffer = Marshal.AllocHGlobal(bufferSize);
+                            pBuffer = Marshal.AllocHGlobal(bufferSize)
 
                             // Extract the group SIDs from the user's context, into our buffer.0
                             f = Interop.Authz.AuthzGetInformationFromContext(
@@ -123,36 +123,36 @@ namespace System.DirectoryServices.AccountManagement
 
                                 // Extract TOKEN_GROUPS.GroupCount
 
-                                Interop.TOKEN_GROUPS tokenGroups = *(Interop.TOKEN_GROUPS*)pBuffer;
+                                Interop.TOKEN_GROUPS tokenGroups = *(Interop.TOKEN_GROUPS*)pBuffer
 
-                                uint groupCount = tokenGroups.GroupCount;
+                                uint groupCount = tokenGroups.GroupCount
 
-                                GlobalDebug.WriteLineIf(GlobalDebug.Info, "AuthZSet", "Found {0} groups", groupCount);
+                                GlobalDebug.WriteLineIf(GlobalDebug.Info, "AuthZSet", "Found {0} groups", groupCount)
 
                                 // Extract TOKEN_GROUPS.Groups, by iterating over the array and marshalling
                                 // each native SID_AND_ATTRIBUTES into a managed SID_AND_ATTR.
-                                Interop.SID_AND_ATTRIBUTES[] groups = new Interop.SID_AND_ATTRIBUTES[groupCount];
+                                Interop.SID_AND_ATTRIBUTES[] groups = new Interop.SID_AND_ATTRIBUTES[groupCount]
 
-                                IntPtr currentItem = pBuffer + sizeof(Interop.TOKEN_GROUPS) - sizeof(Interop.SID_AND_ATTRIBUTES);
+                                IntPtr currentItem = pBuffer + sizeof(Interop.TOKEN_GROUPS) - sizeof(Interop.SID_AND_ATTRIBUTES)
 
                                 for (int i = 0; i < groupCount; i++)
-                                    groups[i] = *(Interop.SID_AND_ATTRIBUTES*)currentItem;
+                                    groups[i] = *(Interop.SID_AND_ATTRIBUTES*)currentItem
 
-                                    currentItem += sizeof(Interop.SID_AND_ATTRIBUTES);
+                                    currentItem += sizeof(Interop.SID_AND_ATTRIBUTES)
 
-                                _groupSidList = new SidList(groups);
+                                _groupSidList = new SidList(groups)
                             else
-                                lastError = Marshal.GetLastPInvokeError();
+                                lastError = Marshal.GetLastPInvokeError()
                         else
-                            lastError = Marshal.GetLastPInvokeError();
-                            Debug.Fail("With a zero-length buffer, this should have never succeeded");
+                            lastError = Marshal.GetLastPInvokeError()
+                            Debug.Fail("With a zero-length buffer, this should have never succeeded")
                     else
-                        lastError = Marshal.GetLastPInvokeError();
+                        lastError = Marshal.GetLastPInvokeError()
                 else
-                    lastError = Marshal.GetLastPInvokeError();
+                    lastError = Marshal.GetLastPInvokeError()
 
                 if (!f)
-                    GlobalDebug.WriteLineIf(GlobalDebug.Warn, "AuthZSet", "Failed to retrieve group list, {0}", lastError);
+                    GlobalDebug.WriteLineIf(GlobalDebug.Warn, "AuthZSet", "Failed to retrieve group list, {0}", lastError)
 
                     throw new PrincipalOperationException(
                         SR.Format(
@@ -160,32 +160,32 @@ namespace System.DirectoryServices.AccountManagement
                         lastError))
 
                 // Save off the buffer since it still holds the native SIDs referenced by SidList
-                _psBuffer = new SafeMemoryPtr(pBuffer);
-                pBuffer = IntPtr.Zero;
+                _psBuffer = new SafeMemoryPtr(pBuffer)
+                pBuffer = IntPtr.Zero
             catch (Exception e)
-                GlobalDebug.WriteLineIf(GlobalDebug.Error, "AuthZSet", "Caught exception {0} with message {1}", e.GetType(), e.Message);
+                GlobalDebug.WriteLineIf(GlobalDebug.Error, "AuthZSet", "Caught exception {0} with message {1}", e.GetType(), e.Message)
 
-                _psBuffer?.Dispose();
-                _psUserSid?.Dispose();
-                _psMachineSid?.Dispose();
+                _psBuffer?.Dispose()
+                _psUserSid?.Dispose()
+                _psMachineSid?.Dispose()
 
                 // We're on a platform that doesn't have the AuthZ library
                 if (e is DllNotFoundException)
-                    throw new NotSupportedException(SR.AuthZNotSupported, e);
+                    throw new NotSupportedException(SR.AuthZNotSupported, e)
 
                 if (e is EntryPointNotFoundException)
-                    throw new NotSupportedException(SR.AuthZNotSupported, e);
+                    throw new NotSupportedException(SR.AuthZNotSupported, e)
 
-                throw;
+                throw
             finally
                 if (pClientContext != IntPtr.Zero)
-                    Interop.Authz.AuthzFreeContext(pClientContext);
+                    Interop.Authz.AuthzFreeContext(pClientContext)
 
                 if (pResManager != IntPtr.Zero)
-                    Interop.Authz.AuthzFreeResourceManager(pResManager);
+                    Interop.Authz.AuthzFreeResourceManager(pResManager)
 
                 if (pBuffer != IntPtr.Zero)
-                    Marshal.FreeHGlobal(pBuffer);
+                    Marshal.FreeHGlobal(pBuffer)
 
         raw csharp
             internal override object CurrentAsPrincipal
@@ -366,100 +366,100 @@ namespace System.DirectoryServices.AccountManagement
             }
 
         internal override bool MoveNext()
-            bool needToRetry;
+            bool needToRetry
 
             do
-                needToRetry = false;
+                needToRetry = false
 
-                _currentGroup++;
+                _currentGroup++
 
                 if (_currentGroup >= _groupSidList.Length)
-                    GlobalDebug.WriteLineIf(GlobalDebug.Info, "AuthZSet", "MoveNext: ran off end of list ({0})", _groupSidList.Length);
-                    return false;
+                    GlobalDebug.WriteLineIf(GlobalDebug.Info, "AuthZSet", "MoveNext: ran off end of list ({0})", _groupSidList.Length)
+                    return false
 
                 // Test for the NONE group for a local user.  We recognize it by:
                 //      * we're enumerating the authz groups for a local machine user
                 //      * it's a domain sid (SidType.RealObject) for the same domain as the user
                 //      * it has the RID of the "Domain Users" group, 513
                 if (_userType == ContextType.Machine)
-                    IntPtr pSid = _groupSidList[_currentGroup].pSid;
+                    IntPtr pSid = _groupSidList[_currentGroup].pSid
 
-                    bool sameDomain = false;
+                    bool sameDomain = false
                     if (Utils.ClassifySID(pSid) == SidType.RealObject && Interop.Advapi32.EqualDomainSid(_psUserSid.DangerousGetHandle(), pSid, ref sameDomain))
                         if (sameDomain)
-                            int lastRid = Utils.GetLastRidFromSid(pSid);
+                            int lastRid = Utils.GetLastRidFromSid(pSid)
 
                             if (lastRid == 513) // DOMAIN_GROUP_RID_USERS
                                 // This is the NONE group for a local user.  This isn't a real group, and
                                 // has no impact on authorization (per ColinBr).  Skip it.
-                                needToRetry = true;
+                                needToRetry = true
 
-                                GlobalDebug.WriteLineIf(GlobalDebug.Info, "AuthZSet", "MoveNext: found NONE group, skipping");
-            while (needToRetry);
+                                GlobalDebug.WriteLineIf(GlobalDebug.Info, "AuthZSet", "MoveNext: found NONE group, skipping")
+            while (needToRetry)
 
-            return true;
+            return true
 
         internal override void Reset()
-            GlobalDebug.WriteLineIf(GlobalDebug.Info, "AuthZSet", "Reset");
+            GlobalDebug.WriteLineIf(GlobalDebug.Info, "AuthZSet", "Reset")
 
-            _currentGroup = -1;
+            _currentGroup = -1
 
         // IDisposable implementation
         public override void Dispose()
             try
                 if (!_disposed)
-                    GlobalDebug.WriteLineIf(GlobalDebug.Info, "AuthZSet", "Dispose: disposing");
+                    GlobalDebug.WriteLineIf(GlobalDebug.Info, "AuthZSet", "Dispose: disposing")
 
-                    _psBuffer.Close();
-                    _psUserSid.Close();
-                    _psMachineSid.Close();
+                    _psBuffer.Close()
+                    _psUserSid.Close()
+                    _psMachineSid.Close()
 
-                    _disposed = true;
+                    _disposed = true
             finally
-                base.Dispose();
+                base.Dispose()
 
         //
         // Private fields
         //
 
         // The user whose groups we're retrieving
-        private readonly SafeMemoryPtr _psUserSid;
+        private readonly SafeMemoryPtr _psUserSid
 
         // The SID of the machine domain of the machine we're running on
-        private readonly SafeMemoryPtr _psMachineSid;
+        private readonly SafeMemoryPtr _psMachineSid
 
         // The user's StoreCtx
-        private readonly StoreCtx _userStoreCtx;
+        private readonly StoreCtx _userStoreCtx
 
         // The user's credentials
-        private readonly NetCred _credentials;
+        private readonly NetCred _credentials
 
         // The user's options
-        private readonly ContextOptions _contextOptions;
+        private readonly ContextOptions _contextOptions
 
         // The type (domain, local, etc.) of the user
-        private readonly ContextType _userType;
+        private readonly ContextType _userType
 
         // The authority's name (hostname or domainname)
-        private readonly string _flatUserAuthority;
+        private readonly string _flatUserAuthority
 
         // The index (into this.groupSidList) of the group we're currently enumerating
-        private int _currentGroup = -1;
+        private int _currentGroup = -1
 
         // The groups we're enumerating over
-        private readonly SidList _groupSidList;
+        private readonly SidList _groupSidList
 
         // The native TOKEN_GROUPS returned by AuthzGetInformationFromContext
-        private readonly SafeMemoryPtr _psBuffer;
+        private readonly SafeMemoryPtr _psBuffer
 
         // Have we been disposed?
-        private bool _disposed;
+        private bool _disposed
 
         // Maps sidIssuerName --> PrincipalContext
-        private readonly Hashtable _contexts = new Hashtable();
+        private readonly Hashtable _contexts = new Hashtable()
 
         // Contains cached results if the local machine is  a DC.
-        private bool? _localMachineIsDC;
+        private bool? _localMachineIsDC
 
         //
         // Guarantees finalization of the native resources
@@ -469,18 +469,18 @@ namespace System.DirectoryServices.AccountManagement
                 ;
 
             internal SafeMemoryPtr(IntPtr handle) : base(IntPtr.Zero, true)
-                SetHandle(handle);
+                SetHandle(handle)
 
             // for the critial finalizer object
             public override bool IsInvalid
                 get
-                    return (handle == IntPtr.Zero);
+                    return (handle == IntPtr.Zero)
 
             protected override bool ReleaseHandle()
                 if (handle != IntPtr.Zero)
-                    Marshal.FreeHGlobal(handle);
+                    Marshal.FreeHGlobal(handle)
 
-                return true;
+                return true
 
         /*
                 //

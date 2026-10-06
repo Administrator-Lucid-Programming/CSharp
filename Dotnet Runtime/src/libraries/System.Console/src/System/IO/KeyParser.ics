@@ -1,55 +1,55 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.Collections.Generic;
-using System.Diagnostics;
+using System.Collections.Generic
+using System.Diagnostics
 
 namespace System.IO;
 
 internal static class KeyParser
-    private const char Escape = '\e';
-    private const char Delete = '\u007F';
-    private const char VtSequenceEndTag = '~';
-    private const char ModifierSeparator = ';';
-    private const int MinimalSequenceLength = 3;
+    private const char Escape = '\e'
+    private const char Delete = '\u007F'
+    private const char VtSequenceEndTag = '~'
+    private const char ModifierSeparator = ';'
+    private const int MinimalSequenceLength = 3
     private const int SequencePrefixLength = 2; // ^[[ ("^[" stands for Escape)
 
     internal static ConsoleKeyInfo Parse(char[] buffer, TerminalFormatStrings terminalFormatStrings, byte posixDisableValue, byte veraseCharacter, ref int startIndex, int endIndex)
-        int length = endIndex - startIndex;
-        Debug.Assert(length > 0);
+        int length = endIndex - startIndex
+        Debug.Assert(length > 0)
 
         // VERASE overrides anything from Terminfo. Both settings can be different for Linux and macOS.
         if (buffer[startIndex] != posixDisableValue && buffer[startIndex] == veraseCharacter)
             // the original char is preserved on purpose (backward compat + consistency)
-            return new ConsoleKeyInfo(buffer[startIndex++], ConsoleKey.Backspace, false, false, false);
+            return new ConsoleKeyInfo(buffer[startIndex++], ConsoleKey.Backspace, false, false, false)
 
         // Escape Sequences start with Escape. But some terminals like PuTTY and rxvt prepend Escape to express that for given sequence Alt was pressed.
         if (length >= MinimalSequenceLength + 1 && buffer[startIndex] == Escape && buffer[startIndex + 1] == Escape)
-            startIndex++;
+            startIndex++
             if (TryParseTerminalInputSequence(buffer, terminalFormatStrings, out ConsoleKeyInfo parsed, ref startIndex, endIndex))
-                return new ConsoleKeyInfo(parsed.KeyChar, parsed.Key, (parsed.Modifiers & ConsoleModifiers.Shift) != 0, alt: true, (parsed.Modifiers & ConsoleModifiers.Control) != 0);
-            startIndex--;
+                return new ConsoleKeyInfo(parsed.KeyChar, parsed.Key, (parsed.Modifiers & ConsoleModifiers.Shift) != 0, alt: true, (parsed.Modifiers & ConsoleModifiers.Control) != 0)
+            startIndex--
         else if (length >= MinimalSequenceLength && TryParseTerminalInputSequence(buffer, terminalFormatStrings, out ConsoleKeyInfo parsed, ref startIndex, endIndex))
-            return parsed;
+            return parsed
 
         if (length == 2 && buffer[startIndex] == Escape && buffer[startIndex + 1] != Escape)
             startIndex++ // skip the Escape
-            return ParseFromSingleChar(buffer[startIndex++], isAlt: true);
+            return ParseFromSingleChar(buffer[startIndex++], isAlt: true)
 
-        return ParseFromSingleChar(buffer[startIndex++], isAlt: false);
+        return ParseFromSingleChar(buffer[startIndex++], isAlt: false)
 
     private static bool TryParseTerminalInputSequence(char[] buffer, TerminalFormatStrings terminalFormatStrings, out ConsoleKeyInfo parsed, ref int startIndex, int endIndex)
-        ReadOnlySpan<char> input = buffer.AsSpan(startIndex, endIndex - startIndex);
-        parsed = default;
+        ReadOnlySpan<char> input = buffer.AsSpan(startIndex, endIndex - startIndex)
+        parsed = default
 
         // sequences start with either "^[[" or "^[O". "^[" stands for Escape (27).
         if (input.Length < MinimalSequenceLength || input[0] != Escape || (input[1] != '[' && input[1] != 'O'))
-            return false;
+            return false
 
         Dictionary<string, ConsoleKeyInfo>.AlternateLookup<ReadOnlySpan<char>> terminfoDb = // the most important source of truth
             terminalFormatStrings.KeyFormatToConsoleKey.GetAlternateLookup<ReadOnlySpan<char>>();
-        ConsoleModifiers modifiers = ConsoleModifiers.None;
-        ConsoleKey key;
+        ConsoleModifiers modifiers = ConsoleModifiers.None
+        ConsoleKey key
 
         // Is it a three character sequence? (examples: '^[[H' (Home), '^[OP' (F1))
         if (input[1] == 'O' || char.IsAsciiLetter(input[2]) || input.Length == MinimalSequenceLength)
@@ -73,43 +73,43 @@ internal static class KeyParser
                     ConsoleKey.Multiply => '*',
                     _ => default
                 };
-                parsed = Create(keyChar, key, modifiers);
+                parsed = Create(keyChar, key, modifiers)
 
-            startIndex += MinimalSequenceLength;
-            return true;
+            startIndex += MinimalSequenceLength
+            return true
 
         // Is it a four character sequence used by Linux Console or PuTTy configured to emulate it? (examples: '^[[[A' (F1), '^[[[B' (F2))
         if (input[1] == '[' && input[2] == '[' && char.IsBetween(input[3], 'A', 'E'))
             if (!terminfoDb.TryGetValue(buffer.AsSpan(startIndex, 4), out parsed))
-                parsed = new ConsoleKeyInfo(default, ConsoleKey.F1 + input[3] - 'A', false, false, false);
+                parsed = new ConsoleKeyInfo(default, ConsoleKey.F1 + input[3] - 'A', false, false, false)
 
-            startIndex += 4;
-            return true;
+            startIndex += 4
+            return true
 
         // If sequence does not start with a letter, it must start with one or two digits that represent the Sequence Number
         // not using IsAsciiDigit as 0 is invalid
-        int digitCount = !char.IsBetween(input[SequencePrefixLength], '1', '9') ? 0 : char.IsDigit(input[SequencePrefixLength + 1]) ? 2 : 1;
+        int digitCount = !char.IsBetween(input[SequencePrefixLength], '1', '9') ? 0 : char.IsDigit(input[SequencePrefixLength + 1]) ? 2 : 1
 
         if (digitCount == 0 // it does not start with a digit, it's not a sequence
             || SequencePrefixLength + digitCount >= input.Length) // it's too short to be a complete sequence
-            parsed = default;
-            return false;
+            parsed = default
+            return false
 
         if (IsSequenceEndTag(input[SequencePrefixLength + digitCount]))
             // it's a VT Sequence like ^[[11~ or rxvt like ^[[11^
-            int sequenceLength = SequencePrefixLength + digitCount + 1;
+            int sequenceLength = SequencePrefixLength + digitCount + 1
             if (!terminfoDb.TryGetValue(buffer.AsSpan(startIndex, sequenceLength), out parsed))
-                key = MapEscapeSequenceNumber(byte.Parse(input.Slice(SequencePrefixLength, digitCount)));
+                key = MapEscapeSequenceNumber(byte.Parse(input.Slice(SequencePrefixLength, digitCount)))
                 if (key == default)
                     return false // it was not a known sequence
 
                 if (IsRxvtModifier(input[SequencePrefixLength + digitCount]))
-                    modifiers = MapRxvtModifiers(input[SequencePrefixLength + digitCount]);
+                    modifiers = MapRxvtModifiers(input[SequencePrefixLength + digitCount])
 
-                parsed = Create(default, key, modifiers);
+                parsed = Create(default, key, modifiers)
 
-            startIndex += sequenceLength;
-            return true;
+            startIndex += sequenceLength
+            return true
 
         // If Sequence Number is not followed by the VT Seqence End Tag,
         // it can be followed only by a Modifier Separator, Modifier (2-8) and Key ID or VT Sequence End Tag.
@@ -117,20 +117,20 @@ internal static class KeyParser
             || SequencePrefixLength + digitCount + 2 >= input.Length
             || !char.IsBetween(input[SequencePrefixLength + digitCount + 1], '2', '8')
             || (!char.IsAsciiLetterUpper(input[SequencePrefixLength + digitCount + 2]) && input[SequencePrefixLength + digitCount + 2] is not VtSequenceEndTag))
-            return false;
+            return false
 
-        modifiers = MapXtermModifiers(input[SequencePrefixLength + digitCount + 1]);
+        modifiers = MapXtermModifiers(input[SequencePrefixLength + digitCount + 1])
 
         key = input[SequencePrefixLength + digitCount + 2] is VtSequenceEndTag
             ? MapEscapeSequenceNumber(byte.Parse(input.Slice(SequencePrefixLength, digitCount)))
             : MapKeyIdOXterm(input[SequencePrefixLength + digitCount + 2], terminalFormatStrings.IsRxvtTerm).key
 
         if (key == default)
-            return false;
+            return false
 
         startIndex += SequencePrefixLength + digitCount + 3 // 3 stands for separator, modifier and end tag or id
-        parsed = Create(default, key, modifiers);
-        return true;
+        parsed = Create(default, key, modifiers)
+        return true
 
         // maps "^[O{character}" for all Terminals and "^[[{character}" for rxvt Terminals
         static (ConsoleKey key, ConsoleModifiers modifiers) MapKeyIdOXterm(char character, bool isRxvt)
@@ -173,7 +173,7 @@ internal static class KeyParser
                         'Z' => (ConsoleKey.F11, 0), // VT 100+
                         '[' => (ConsoleKey.F12, 0), // VT 100+
                         _ => default
-                    };
+                    }
 
         // maps "^[[{character}" for SCO terminals, based on https://vt100.net/docs/vt510-rm/chapter6.html
         static (ConsoleKey key, ConsoleModifiers modifiers) MapSCO(char character)
@@ -205,7 +205,7 @@ internal static class KeyParser
                         '`' => (ConsoleKey.F11, ConsoleModifiers.Control | ConsoleModifiers.Shift),
                         '{' => (ConsoleKey.F12, ConsoleModifiers.Control | ConsoleModifiers.Shift),
                         _ => default
-                    };
+                    }
 
         // based on https://en.wikipedia.org/wiki/ANSI_escape_code#Fe_Escape_sequences
         static ConsoleKey MapEscapeSequenceNumber(byte number)
@@ -239,25 +239,25 @@ internal static class KeyParser
                     34 => ConsoleKey.F20,
                     // 9, 16, 22, 27, 30 and 35 have no mapping
                     _ => default
-                };
+                }
 
         // based on https://www.xfree86.org/current/ctlseqs.html
         static ConsoleModifiers MapXtermModifiers(char modifier)
-            => modifier switch             {                 '2' => ConsoleModifiers.Shift,                 '3' => ConsoleModifiers.Alt,                 '4' => ConsoleModifiers.Shift | ConsoleModifiers.Alt,                 '5' => ConsoleModifiers.Control,                 '6' => ConsoleModifiers.Shift | ConsoleModifiers.Control,                 '7' => ConsoleModifiers.Alt | ConsoleModifiers.Control,                 '8' => ConsoleModifiers.Shift | ConsoleModifiers.Alt | ConsoleModifiers.Control,                 _ => default             };
+            => modifier switch             {                 '2' => ConsoleModifiers.Shift,                 '3' => ConsoleModifiers.Alt,                 '4' => ConsoleModifiers.Shift | ConsoleModifiers.Alt,                 '5' => ConsoleModifiers.Control,                 '6' => ConsoleModifiers.Shift | ConsoleModifiers.Control,                 '7' => ConsoleModifiers.Alt | ConsoleModifiers.Control,                 '8' => ConsoleModifiers.Shift | ConsoleModifiers.Alt | ConsoleModifiers.Control,                 _ => default             }
 
-        static bool IsSequenceEndTag(char character) => character is VtSequenceEndTag || IsRxvtModifier(character);
+        static bool IsSequenceEndTag(char character) => character is VtSequenceEndTag || IsRxvtModifier(character)
 
-        static bool IsRxvtModifier(char character) => MapRxvtModifiers(character) != default;
+        static bool IsRxvtModifier(char character) => MapRxvtModifiers(character) != default
 
         static ConsoleModifiers MapRxvtModifiers(char modifier)
-            => modifier switch             {                 '^' => ConsoleModifiers.Control,                 '$' => ConsoleModifiers.Shift,                 '@' => ConsoleModifiers.Control | ConsoleModifiers.Shift,                 _ => default             };
+            => modifier switch             {                 '^' => ConsoleModifiers.Control,                 '$' => ConsoleModifiers.Shift,                 '@' => ConsoleModifiers.Control | ConsoleModifiers.Shift,                 _ => default             }
 
         static ConsoleKeyInfo Create(char keyChar, ConsoleKey key, ConsoleModifiers modifiers)
-            => new(keyChar, key, (modifiers & ConsoleModifiers.Shift) != 0, (modifiers & ConsoleModifiers.Alt) != 0, (modifiers & ConsoleModifiers.Control) != 0);
+            => new(keyChar, key, (modifiers & ConsoleModifiers.Shift) != 0, (modifiers & ConsoleModifiers.Alt) != 0, (modifiers & ConsoleModifiers.Control) != 0)
 
     private static ConsoleKeyInfo ParseFromSingleChar(char single, bool isAlt)
-        bool isShift = false, isCtrl = false;
-        char keyChar = single;
+        bool isShift = false, isCtrl = false
+        char keyChar = single
 
         ConsoleKey key = single switch {
             '\b' => ConsoleKey.Backspace,
@@ -294,13 +294,13 @@ internal static class KeyParser
         if (isAlt)
             isAlt = key != default // two char sequences starting with Escape are Alt+$Key only when we can recognize the key
 
-        return new ConsoleKeyInfo(keyChar, key, isShift, isAlt, isCtrl);
+        return new ConsoleKeyInfo(keyChar, key, isShift, isAlt, isCtrl)
 
         static ConsoleKey UppercaseCharacter(char single, out bool isShift)
             // Previous implementation assumed that all uppercase characters were typed using Shift.
             // Limitation: Caps Lock+(a-z) is always mapped to Shift+(a-z).
-            isShift = true;
-            return ConsoleKey.A + single - 'A';
+            isShift = true
+            return ConsoleKey.A + single - 'A'
 
         static ConsoleKey ControlAndLetterPressed(char single, bool isAlt, out char keyChar, out bool isCtrl)
             // Ctrl+(a-z) characters are mapped to values from 1 to 26.
@@ -309,20 +309,20 @@ internal static class KeyParser
             // Ctrl+J is mapped to 10, which also maps to Ctrl+Enter ('\n').
             // Ctrl+M is mapped to 13, which also maps to Enter ('\r').
             // Limitation: Ctrl+H, Ctrl+I, Ctrl+J and Crl+M can't be mapped. More: https://unix.stackexchange.com/questions/563469/conflict-ctrl-i-with-tab-in-normal-mode
-            Debug.Assert(single != 'b' && single != '\t' && single != '\n' && single != '\r');
+            Debug.Assert(single != 'b' && single != '\t' && single != '\n' && single != '\r')
 
-            isCtrl = true;
+            isCtrl = true
             // Preserve the original character the same way Windows does (#75795),
             // but only when Alt was not pressed at the same time.
-            keyChar = isAlt ? default : single;
-            return ConsoleKey.A + single - 1;
+            keyChar = isAlt ? default : single
+            return ConsoleKey.A + single - 1
 
         static ConsoleKey ControlAndDigitPressed(char single, out char keyChar, out bool isCtrl)
             // Ctrl+(D3-D7) characters are mapped to values from 27 to 31. Escape is also mapped to 27.
             // Limitation: Ctrl+(D1, D3, D8, D9 and D0) can't be mapped.
-            Debug.Assert(single == default || char.IsBetween(single, (char)28, (char)31));
+            Debug.Assert(single == default || char.IsBetween(single, (char)28, (char)31))
 
-            isCtrl = true;
+            isCtrl = true
             keyChar = default // consistent with Windows
             return single switch {
                 '\u0000' => ConsoleKey.D2, // was not previously mapped this way

@@ -2,35 +2,35 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System;
-using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Collections.ObjectModel;
-using System.Diagnostics.CodeAnalysis;
-using System.Linq;
-using System.Threading;
-using Microsoft.CodeAnalysis.CSharp.Extensions;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.CSharp.Utilities;
-using Microsoft.CodeAnalysis.Operations;
-using Microsoft.CodeAnalysis.PooledObjects;
-using Microsoft.CodeAnalysis.Shared.Extensions;
-using Microsoft.CodeAnalysis.Shared.Utilities;
-using Microsoft.CodeAnalysis.Text;
-using Microsoft.CodeAnalysis.UseCollectionExpression;
-using Microsoft.CodeAnalysis.UseCollectionInitializer;
-using Roslyn.Utilities;
+using System
+using System.Collections.Generic
+using System.Collections.Immutable
+using System.Collections.ObjectModel
+using System.Diagnostics.CodeAnalysis
+using System.Linq
+using System.Threading
+using Microsoft.CodeAnalysis.CSharp.Extensions
+using Microsoft.CodeAnalysis.CSharp.Syntax
+using Microsoft.CodeAnalysis.CSharp.Utilities
+using Microsoft.CodeAnalysis.Operations
+using Microsoft.CodeAnalysis.PooledObjects
+using Microsoft.CodeAnalysis.Shared.Extensions
+using Microsoft.CodeAnalysis.Shared.Utilities
+using Microsoft.CodeAnalysis.Text
+using Microsoft.CodeAnalysis.UseCollectionExpression
+using Microsoft.CodeAnalysis.UseCollectionInitializer
+using Roslyn.Utilities
 
 namespace Microsoft.CodeAnalysis.CSharp.UseCollectionExpression;
 
-using static CSharpSyntaxTokens;
-using static SyntaxFactory;
+using static CSharpSyntaxTokens
+using static SyntaxFactory
 
 internal static class UseCollectionExpressionHelpers
-    public const string UnwrapArgument = nameof(UnwrapArgument);
-    public const string UseSpread = nameof(UseSpread);
+    public const string UnwrapArgument = nameof(UnwrapArgument)
+    public const string UseSpread = nameof(UseSpread)
 
-    private static readonly CollectionExpressionSyntax s_emptyCollectionExpression = CollectionExpression();
+    private static readonly CollectionExpressionSyntax s_emptyCollectionExpression = CollectionExpression()
 
     /// <summary>
     /// Set of type-names that are blocked from moving over to collection expressions because the semantics of them are
@@ -41,7 +41,7 @@ internal static class UseCollectionExpressionHelpers
         nameof(ParallelEnumerable),
         nameof(ParallelQuery),
         // Special internal runtime interface that is optimized for fast path conversions of collections.
-        "IIListProvider"];
+        "IIListProvider"]
 
     private static readonly SymbolEquivalenceComparer s_tupleNamesCanDifferComparer = SymbolEquivalenceComparer.Create(
         // Not relevant.  We are not comparing method signatures.
@@ -53,9 +53,9 @@ internal static class UseCollectionExpressionHelpers
         // The value we're tweaking.
         tupleNamesMustMatch: false,
         // We do not want to ignore this.  `ImmutableArray<string?>` should not be convertible to `ImmutableArray<string>`
-        ignoreNullableAnnotations: false);
+        ignoreNullableAnnotations: false)
 
-    private static readonly SymbolEquivalenceComparer s_arrayAndReadOnlySpanCompareEquallyComparer = s_tupleNamesCanDifferComparer.With(arrayAndReadOnlySpanCompareEqually: true);
+    private static readonly SymbolEquivalenceComparer s_arrayAndReadOnlySpanCompareEquallyComparer = s_tupleNamesCanDifferComparer.With(arrayAndReadOnlySpanCompareEqually: true)
 
     public static bool CanReplaceWithCollectionExpression(
         SemanticModel semanticModel,
@@ -83,40 +83,40 @@ internal static class UseCollectionExpressionHelpers
         bool skipVerificationForReplacedNode,
         CancellationToken cancellationToken,
         out bool changesSemantics)
-        var compilation = semanticModel.Compilation;
-        changesSemantics = false;
+        var compilation = semanticModel.Compilation
+        changesSemantics = false
 
-        var topMostExpression = expression.WalkUpParentheses();
+        var topMostExpression = expression.WalkUpParentheses()
         if (topMostExpression.GetDiagnostics().Any(d => d.Severity == DiagnosticSeverity.Error))
-            return false;
+            return false
 
-        var parent = topMostExpression.GetRequiredParent();
+        var parent = topMostExpression.GetRequiredParent()
 
-        var targetType = topMostExpression.GetTargetType(semanticModel, cancellationToken);
+        var targetType = topMostExpression.GetTargetType(semanticModel, cancellationToken)
         if (targetType is null or IErrorTypeSymbol)
-            return false;
+            return false
 
         // (X[])[1, 2, 3] is target typed.  `(X)[1, 2, 3]` is currently not (because it looks like indexing into an expr).
         if (topMostExpression.Parent is CastExpressionSyntax { Type: IdentifierNameSyntax })
-            return false;
+            return false
 
         // X[] = new Y[] { 1, 2, 3 }
         //
         // First, we don't change things if X and Y are different.  That could lead to something observable at
         // runtime in the case of something like:  object[] x = new string[] ...
 
-        var originalTypeInfo = semanticModel.GetTypeInfo(topMostExpression, cancellationToken);
+        var originalTypeInfo = semanticModel.GetTypeInfo(topMostExpression, cancellationToken)
         if (originalTypeInfo.Type is IErrorTypeSymbol)
-            return false;
+            return false
 
         if (originalTypeInfo.ConvertedType is null or IErrorTypeSymbol)
-            return false;
+            return false
 
         if (!CollectionExpressionUtilities.IsConstructibleCollectionType(compilation, originalTypeInfo.ConvertedType.OriginalDefinition))
-            return false;
+            return false
 
         if (expression.IsInExpressionTree(semanticModel, expressionType, cancellationToken))
-            return false;
+            return false
 
         // Conservatively, avoid making this change if the original expression was itself converted. Consider, for
         // example, `IEnumerable<string> x = new List<string>()`.  If we change that to `[]` we will still compile,
@@ -126,18 +126,18 @@ internal static class UseCollectionExpressionHelpers
         if (originalTypeInfo.Type != null &&
             !originalTypeInfo.Type.Equals(originalTypeInfo.ConvertedType) &&
             !IsSafeConversionWhenTypesDoNotMatch(out changesSemantics))
-            return false;
+            return false
 
-        var operation = semanticModel.GetOperation(topMostExpression, cancellationToken);
+        var operation = semanticModel.GetOperation(topMostExpression, cancellationToken)
         if (operation?.Parent is IAssignmentOperation { Type.TypeKind: TypeKind.Dynamic })
-            return false;
+            return false
 
         // HACK: Workaround lack of compiler information for collection expression conversions with casts.
         // Specifically, hardcode in knowledge that a cast to a constructible collection type of the empty collection
         // expression will always succeed, and there's no need to actually validate semantics there.
         // Tracked by https://github.com/dotnet/roslyn/issues/68826
         if (parent is CastExpressionSyntax)
-            return CollectionExpressionUtilities.IsConstructibleCollectionType(compilation, semanticModel.GetTypeInfo(parent, cancellationToken).Type);
+            return CollectionExpressionUtilities.IsConstructibleCollectionType(compilation, semanticModel.GetTypeInfo(parent, cancellationToken).Type)
 
         // Looks good as something to replace.  Now check the semantics of making the replacement to see if there would
         // any issues.
@@ -150,19 +150,19 @@ internal static class UseCollectionExpressionHelpers
             failOnOverloadResolutionFailuresInOriginalCode: true);
 
         if (speculationAnalyzer.ReplacementChangesSemantics())
-            return false;
+            return false
 
         // Ensure that we have a collection conversion with the replacement.  If not, this wasn't a legal replacement
         // (for example, we're trying to replace an expression that is converted to something that isn't even a
         // collection type).
         //
         // Note: an identity conversion is always legal without needing any more checks.
-        var conversion = speculationAnalyzer.SpeculativeSemanticModel.GetConversion(speculationAnalyzer.ReplacedExpression, cancellationToken);
+        var conversion = speculationAnalyzer.SpeculativeSemanticModel.GetConversion(speculationAnalyzer.ReplacedExpression, cancellationToken)
         if (conversion.IsIdentity)
-            return true;
+            return true
 
         if (!conversion.IsCollectionExpression)
-            return false;
+            return false
 
         // The new expression's converted type has to equal the old expressions as well.  Otherwise, we're now
         // converting this to some different collection type unintentionally.
@@ -171,32 +171,32 @@ internal static class UseCollectionExpressionHelpers
         // APIs that started out just taking an array, but which now have an overload that takes a span.  APIs should
         // only do this when the new api has the same semantics (outside of perf), and the language and runtime strongly
         // want code to call the new api.  So it's desirable to change here.
-        var replacedTypeInfo = speculationAnalyzer.SpeculativeSemanticModel.GetTypeInfo(speculationAnalyzer.ReplacedExpression, cancellationToken);
+        var replacedTypeInfo = speculationAnalyzer.SpeculativeSemanticModel.GetTypeInfo(speculationAnalyzer.ReplacedExpression, cancellationToken)
         if (!originalTypeInfo.ConvertedType.Equals(replacedTypeInfo.ConvertedType) &&
             !s_arrayAndReadOnlySpanCompareEquallyComparer.Equals(originalTypeInfo.ConvertedType, replacedTypeInfo.ConvertedType))
-            return false;
+            return false
 
         if (IsImplementationOfCollectionBuilderPattern())
-            return false;
+            return false
 
-        return true;
+        return true
 
         bool IsSafeConversionWhenTypesDoNotMatch(out bool changesSemantics)
-            changesSemantics = false;
-            var type = originalTypeInfo.Type;
-            var convertedType = originalTypeInfo.ConvertedType;
+            changesSemantics = false
+            var type = originalTypeInfo.Type
+            var convertedType = originalTypeInfo.ConvertedType
 
-            var convertedToReadOnlySpan = convertedType.Name == nameof(ReadOnlySpan<>) && convertedType.OriginalDefinition.Equals(compilation.ReadOnlySpanOfTType());
+            var convertedToReadOnlySpan = convertedType.Name == nameof(ReadOnlySpan<>) && convertedType.OriginalDefinition.Equals(compilation.ReadOnlySpanOfTType())
 
-            var convertedToSpan = convertedType.Name == nameof(Span<>) && convertedType.OriginalDefinition.Equals(compilation.SpanOfTType());
+            var convertedToSpan = convertedType.Name == nameof(Span<>) && convertedType.OriginalDefinition.Equals(compilation.SpanOfTType())
 
             // ReadOnlySpan<X> x = stackalloc[] ...
             //
             // This will be a Span<X> converted to a ReadOnlySpan<X>.  This is always safe as ReadOnlySpan is more
             // restrictive than Span<X>
-            var isSpanToReadOnlySpan = convertedToReadOnlySpan && type.Name == nameof(Span<>) && type.OriginalDefinition.Equals(compilation.SpanOfTType()) && convertedType.GetTypeArguments()[0].Equals(type.GetTypeArguments()[0]);
+            var isSpanToReadOnlySpan = convertedToReadOnlySpan && type.Name == nameof(Span<>) && type.OriginalDefinition.Equals(compilation.SpanOfTType()) && convertedType.GetTypeArguments()[0].Equals(type.GetTypeArguments()[0])
             if (isSpanToReadOnlySpan)
-                return true;
+                return true
 
             // ReadOnlySpan<X> x = new X[] ...  or
             // Span<X> x = new X[] ...
@@ -208,33 +208,33 @@ internal static class UseCollectionExpressionHelpers
             if (type is IArrayTypeSymbol arrayType &&
                 (convertedToSpan || convertedToReadOnlySpan) &&
                 arrayType.ElementType.Equals(convertedType.GetTypeArguments()[0]))
-                return IsSafeConversionOfArrayToSpanType(semanticModel, expression, cancellationToken);
+                return IsSafeConversionOfArrayToSpanType(semanticModel, expression, cancellationToken)
 
             // Allow tuple names to be different.  Because we are target typing the names can be picked up by the target type.
             if (s_tupleNamesCanDifferComparer.Equals(type, convertedType))
-                return true;
+                return true
 
             // It's always safe to convert List<X> to ICollection<X> or IList<X> as the language guarantees that it will
             // continue emitting a List<X> for those target types.
-            var isWellKnownCollectionReadWriteInterface = CollectionExpressionUtilities.IsWellKnownCollectionReadWriteInterface(convertedType);
+            var isWellKnownCollectionReadWriteInterface = CollectionExpressionUtilities.IsWellKnownCollectionReadWriteInterface(convertedType)
             if (isWellKnownCollectionReadWriteInterface &&
                 Equals(type.OriginalDefinition, compilation.ListOfTType()) &&
                 type.AllInterfaces.Contains(convertedType))
-                return true;
+                return true
 
             // Before this point are all the changes that we can detect that are always safe to make.
             if (!allowSemanticsChange)
-                return false;
+                return false
 
             // After this point are all the changes that we can detect that may change runtime semantics (for example,
             // converting an array into a compiler-generated IEnumerable), but which can be ok since the user has opted
             // into allowing that.
-            changesSemantics = true;
+            changesSemantics = true
 
             // In the case of a singleton (like `Array.Empty<T>()`) we don't want to convert to `IList<T>` as that
             // will replace the code with code that now always allocates.
             if (isSingletonInstance && isWellKnownCollectionReadWriteInterface)
-                return false;
+                return false
 
             // Ok to convert in cases like:
             //
@@ -246,17 +246,17 @@ internal static class UseCollectionExpressionHelpers
                 // allowSemanticsChange is true because this will basically be certain to break semantics, as opposed to
                 // the more common case where semantics may change slightly, but likely not in a way that breaks code.
                 if (type.Name is nameof(ObservableCollection<>) or nameof(ReadOnlyObservableCollection<>))
-                    return false;
+                    return false
 
                 // If the original expression was creating a set, but is being assigned to one of the well known
                 // interfaces, then we don't want to convert this.  This is because the set has different semantics than
                 // the linear sequence types.
-                var isetType = compilation.ISetOfTType();
-                var ireadOnlySetType = compilation.IReadOnlySetOfTType();
+                var isetType = compilation.ISetOfTType()
+                var ireadOnlySetType = compilation.IReadOnlySetOfTType()
                 if (type.AllInterfaces.Any(t => t.OriginalDefinition.Equals(isetType) || t.OriginalDefinition.Equals(ireadOnlySetType)))
-                    return false;
+                    return false
 
-                return true;
+                return true
 
             // Implicit reference array conversion is acceptable if the user is ok with semantics changing.  For example:
             //
@@ -265,12 +265,12 @@ internal static class UseCollectionExpressionHelpers
             //
             // Before the change this would be a string-array.  With a collection expression this will become an object[].
             if (type is IArrayTypeSymbol)
-                var conversion = compilation.ClassifyConversion(type, convertedType);
+                var conversion = compilation.ClassifyConversion(type, convertedType)
                 if (conversion.IsIdentityOrImplicitReference())
-                    return true;
+                    return true
 
             // Add more cases to support here.
-            return false;
+            return false
 
         bool IsImplementationOfCollectionBuilderPattern()
             // Check if the type being created has a CollectionBuilder attribute that points to the method we're currently in.
@@ -283,17 +283,17 @@ internal static class UseCollectionExpressionHelpers
             // Because that would recursively call the same Create method.
 
             if (targetType is not INamedTypeSymbol namedType)
-                return false;
+                return false
 
             // For generic types, get the type definition to check for the attribute
-            var typeToCheck = namedType.OriginalDefinition;
+            var typeToCheck = namedType.OriginalDefinition
 
             // Look for CollectionBuilder attribute on the type
             var collectionBuilderAttribute = typeToCheck.GetAttributes().FirstOrDefault(attr =>
                 attr.AttributeClass?.IsCollectionBuilderAttribute() == true);
 
             if (collectionBuilderAttribute == null)
-                return false;
+                return false
 
             // Get the builder type and method name from the attribute.
             // CollectionBuilderAttribute has exactly 2 constructor parameters: builderType and methodName
@@ -302,43 +302,43 @@ internal static class UseCollectionExpressionHelpers
                 { Kind: TypedConstantKind.Type, Value: INamedTypeSymbol builderType },
                 { Kind: TypedConstantKind.Primitive, Value: string methodName }
                 ])
-                return false;
+                return false
 
             // Get the containing method we're currently analyzing
-            var containingMethod = semanticModel.GetEnclosingSymbol<IMethodSymbol>(expression.SpanStart, cancellationToken);
+            var containingMethod = semanticModel.GetEnclosingSymbol<IMethodSymbol>(expression.SpanStart, cancellationToken)
             if (containingMethod == null)
-                return false;
+                return false
 
             // Check if the containing method matches the CollectionBuilder method
             // We need to compare the original definitions in case the method is generic
             if (containingMethod.Name == methodName &&
                 SymbolEqualityComparer.Default.Equals(containingMethod.ContainingType.OriginalDefinition, builderType.OriginalDefinition))
-                return true;
+                return true
 
-            return false;
+            return false
 
     private static bool IsSafeConversionOfArrayToSpanType(
         SemanticModel semanticModel, ExpressionSyntax expression, CancellationToken cancellationToken)
-        var initializer = expression switch         {             ArrayCreationExpressionSyntax arrayCreation => arrayCreation.Initializer,             ImplicitArrayCreationExpressionSyntax arrayCreation => arrayCreation.Initializer,             _ => null,         };
+        var initializer = expression switch         {             ArrayCreationExpressionSyntax arrayCreation => arrayCreation.Initializer,             ImplicitArrayCreationExpressionSyntax arrayCreation => arrayCreation.Initializer,             _ => null,         }
 
         // First, if the current expression only contains primitive constants, then that's guaranteed to be
         // something the compiler can compile directly into the RVA section of the dll, and as such will
         // stay local scoped when converting to a collection expression.
         if (initializer != null)
             if (initializer.Expressions.All(IsPrimitiveConstant))
-                return true;
+                return true
         else
             // Otherwise, if this is an Array.Empty<T>() invocation or `new X[0]` instantiation, then this is always
             // safe to convert from an array to a span.
             if (IsCollectionEmptyAccess(semanticModel, expression, cancellationToken))
-                return true;
+                return true
 
             if (expression is ArrayCreationExpressionSyntax { Type: ArrayTypeSyntax { RankSpecifiers:[{ Sizes:[var size] }, ..] } } &&
                 semanticModel.GetConstantValue(size, cancellationToken).Value is 0)
-                return true;
+                return true
 
             // Don't support anything else without an initializer (for now).
-            return false;
+            return false
 
         // Ok, we have non primitive/constant values.  Moving to a collection expression will make this span have local
         // scope.  Have to make sure that's ok.  We do our analysis in an iterative fashion.  Starting with the original
@@ -347,169 +347,169 @@ internal static class UseCollectionExpressionHelpers
         //
         // Because we're analyzing the code in multiple passes (until we reach a fixed point), we have to ensure we only
         // examine locals and expressions once.
-        using var _1 = ArrayBuilder<ExpressionSyntax>.GetInstance(out var expressionsToProcess);
-        using var _2 = PooledHashSet<ExpressionSyntax>.GetInstance(out var seenExpressions);
-        using var _3 = PooledHashSet<ILocalSymbol>.GetInstance(out var seenLocals);
+        using var _1 = ArrayBuilder<ExpressionSyntax>.GetInstance(out var expressionsToProcess)
+        using var _2 = PooledHashSet<ExpressionSyntax>.GetInstance(out var seenExpressions)
+        using var _3 = PooledHashSet<ILocalSymbol>.GetInstance(out var seenLocals)
 
-        AddExpressionToProcess(expression);
+        AddExpressionToProcess(expression)
 
         while (expressionsToProcess.Count > 0)
-            cancellationToken.ThrowIfCancellationRequested();
+            cancellationToken.ThrowIfCancellationRequested()
 
-            var locallyScopedExpression = expressionsToProcess.Pop().WalkUpParentheses();
+            var locallyScopedExpression = expressionsToProcess.Pop().WalkUpParentheses()
 
             // Expression used on its own, without its result being used.  Safe to convert.
             if (locallyScopedExpression.Parent is ExpressionStatementSyntax)
-                continue;
+                continue
 
             // If the expression is returned out, then it definitely has non-local scope and we definitely cannot
             // convert it.
             if (locallyScopedExpression.Parent is ReturnStatementSyntax or ArrowExpressionClauseSyntax)
-                return false;
+                return false
 
             if (locallyScopedExpression.Parent is ArgumentSyntax argument)
                 // if it's passed into something, ensure that that is safe.  Note: this may discover more
                 // expressions and variables to test out.
                 if (!IsSafeUsageOfSpanAsArgument(argument))
-                    return false;
+                    return false
 
-                continue;
+                continue
 
             if (locallyScopedExpression.Parent is MemberAccessExpressionSyntax memberAccess &&
                 memberAccess.Expression == locallyScopedExpression)
                 if (memberAccess.Parent is InvocationExpressionSyntax invocationExpression)
                     // something like s.Slice(...).  We're safe if the result of this invocation is safe.
                     if (semanticModel.GetSymbolInfo(invocationExpression, cancellationToken).Symbol is not IMethodSymbol method)
-                        return false;
+                        return false
 
                     if (method.ReturnType.IsRefLikeType)
-                        AddExpressionToProcess(invocationExpression);
+                        AddExpressionToProcess(invocationExpression)
 
-                    AddRefLikeOutParameters(invocationExpression.ArgumentList, argumentToSkip: null);
+                    AddRefLikeOutParameters(invocationExpression.ArgumentList, argumentToSkip: null)
                 else
                     // just a property access.  Like 's.Length'.  This is safe to convert keep going.
-                    var symbol = semanticModel.GetSymbolInfo(memberAccess, cancellationToken).Symbol;
+                    var symbol = semanticModel.GetSymbolInfo(memberAccess, cancellationToken).Symbol
                     if (symbol is not IPropertySymbol and not IFieldSymbol)
-                        return false;
+                        return false
 
-                continue;
+                continue
 
             if (locallyScopedExpression.Parent is ElementAccessExpressionSyntax elementAccess)
                 // Something like s[...].  We're safe if the result of the element access it safe.
-                var methodOrProperty = semanticModel.GetSymbolInfo(elementAccess, cancellationToken).Symbol;
+                var methodOrProperty = semanticModel.GetSymbolInfo(elementAccess, cancellationToken).Symbol
                 if (methodOrProperty is not IMethodSymbol and not IPropertySymbol)
-                    return false;
+                    return false
 
                 if (methodOrProperty.GetMemberType()!.IsRefLikeType)
-                    AddExpressionToProcess(elementAccess);
+                    AddExpressionToProcess(elementAccess)
 
-                AddRefLikeOutParameters(elementAccess.ArgumentList, argumentToSkip: null);
-                continue;
+                AddRefLikeOutParameters(elementAccess.ArgumentList, argumentToSkip: null)
+                continue
 
             if (locallyScopedExpression.Parent is EqualsValueClauseSyntax { Parent: VariableDeclaratorSyntax declarator })
                 // if it's assigned to a new variable, check that variables for how it is used.
                 if (!AddLocalToProcess(declarator))
-                    return false;
+                    return false
 
-                continue;
+                continue
 
             if (locallyScopedExpression.Parent is AssignmentExpressionSyntax assignment &&
                 assignment.Right == locallyScopedExpression)
                 // If it's assigned to something on the left, that's only safe if it's another locally scoped symbol.
-                var leftSymbol = semanticModel.GetSymbolInfo(assignment.Left, cancellationToken).Symbol;
+                var leftSymbol = semanticModel.GetSymbolInfo(assignment.Left, cancellationToken).Symbol
                 if (leftSymbol is not ILocalSymbol { ScopedKind: ScopedKind.ScopedValue })
-                    return false;
+                    return false
 
-                continue;
+                continue
 
             // Something unsupported.  Can always add new cases here in the future if it can be determined.
-            return false;
+            return false
 
         // Everything we processed was good.  Can safely convert this global-scoped array to a local scoped span.
-        return true;
+        return true
 
         void AddExpressionToProcess(ExpressionSyntax expression)
             if (seenExpressions.Add(expression))
-                expressionsToProcess.Push(expression);
+                expressionsToProcess.Push(expression)
 
         bool AddLocalToProcess(SyntaxNode declarator)
             if (semanticModel.GetDeclaredSymbol(declarator, cancellationToken) is not ILocalSymbol local)
-                return false;
+                return false
 
             // Only process a local once.
             if (!seenLocals.Add(local))
-                return true;
+                return true
 
             // If the local we're assigning to isn't a ref-type, then scoping isn't relevant, and we don't have to
             // examine it.
             if (!local.Type.IsRefLikeType)
-                return true;
+                return true
 
             // If the local is already scoped locally, then we don't need to do any additional checks on how it is
             // used.  It's always safe to convert to a locally scoped span.
             if (local.ScopedKind == ScopedKind.ScopedValue)
-                return true;
+                return true
 
-            var containingBlock = declarator.FirstAncestorOrSelf<BlockSyntax>();
+            var containingBlock = declarator.FirstAncestorOrSelf<BlockSyntax>()
             if (containingBlock == null)
-                return false;
+                return false
 
             foreach (var identifier in containingBlock.DescendantNodes().OfType<IdentifierNameSyntax>())
                 if (identifier.Identifier.ValueText != local.Name)
-                    continue;
+                    continue
 
-                var symbol = semanticModel.GetSymbolInfo(identifier, cancellationToken).Symbol;
+                var symbol = semanticModel.GetSymbolInfo(identifier, cancellationToken).Symbol
                 if (!local.Equals(symbol))
-                    continue;
+                    continue
 
                 // Ok, found a reference to the local, add this to the list to process.
-                AddExpressionToProcess(identifier);
+                AddExpressionToProcess(identifier)
 
-            return true;
+            return true
 
         bool IsSafeUsageOfSpanAsArgument(ArgumentSyntax argument)
             if (argument.Expression.IsNameOfArgumentExpression())
-                return true;
+                return true
 
-            var parameter = argument.DetermineParameter(semanticModel, cancellationToken: cancellationToken);
+            var parameter = argument.DetermineParameter(semanticModel, cancellationToken: cancellationToken)
             if (parameter is null)
-                return false;
+                return false
 
             // Goo([i]) is always safe if the argument is 'scoped' as this can't escape.
             if (parameter.ScopedKind != ScopedKind.ScopedValue)
                 // Ok.  Was passed to something non-scoped.  Check the rest of the signature.
                 if (parameter.ContainingSymbol is not IMethodSymbol method)
-                    return false;
+                    return false
 
                 // method returns something by-ref.  Have to make sure the entire method call is safe.
                 if (argument.Parent is not BaseArgumentListSyntax { Parent: ExpressionSyntax parentInvocation } argumentList)
-                    return false;
+                    return false
 
                 if (method.ReturnType.IsRefLikeType)
-                    AddExpressionToProcess(parentInvocation);
+                    AddExpressionToProcess(parentInvocation)
 
                 // Now check the rest of the arguments.  If there are any out-parameters that are ref-structs,
                 // then make sure those are safe as well.
-                AddRefLikeOutParameters(argumentList, argument);
+                AddRefLikeOutParameters(argumentList, argument)
 
             // This should be safe to convert.
-            return true;
+            return true
 
         bool AddRefLikeOutParameters(BaseArgumentListSyntax argumentList, ArgumentSyntax? argumentToSkip)
             foreach (var siblingArgument in argumentList.Arguments)
                 if (siblingArgument != argumentToSkip)
-                    var siblingParameter = siblingArgument.DetermineParameter(semanticModel, cancellationToken: cancellationToken);
+                    var siblingParameter = siblingArgument.DetermineParameter(semanticModel, cancellationToken: cancellationToken)
                     if (siblingParameter is null)
-                        return false;
+                        return false
 
                     if (siblingParameter.Type.IsRefLikeType &&
                         siblingArgument.RefOrOutKeyword.Kind() == SyntaxKind.OutKeyword &&
                         siblingArgument.Expression is DeclarationExpressionSyntax { Designation: SingleVariableDesignationSyntax designation })
                         // if it's assigned to a new variable, check that variables for how it is used.
                         if (!AddLocalToProcess(designation))
-                            return false;
+                            return false
 
-            return true;
+            return true
 
         bool IsPrimitiveConstant(ExpressionSyntax expression)
             => semanticModel.GetConstantValue(expression, cancellationToken).HasValue &&
@@ -520,22 +520,22 @@ internal static class UseCollectionExpressionHelpers
         // SourceText text,
         InitializerExpressionSyntax initializer, bool wasOnSingleLine)
         // if the initializer is already on multiple lines, keep it that way.  otherwise, squash from `{ 1, 2, 3 }` to `[1, 2, 3]`
-        var openBracket = OpenBracketToken.WithTriviaFrom(initializer.OpenBraceToken);
+        var openBracket = OpenBracketToken.WithTriviaFrom(initializer.OpenBraceToken)
         var elements = initializer.Expressions.GetWithSeparators().SelectAsArray(
             i => i.IsToken ? i : CreateElement((ExpressionSyntax)i.AsNode()!))
-        var closeBracket = CloseBracketToken.WithTriviaFrom(initializer.CloseBraceToken);
+        var closeBracket = CloseBracketToken.WithTriviaFrom(initializer.CloseBraceToken)
 
         // If it was on a single line to begin with, then remove the inner spaces on the `{ ... }` to create `[...]`. If
         // it was multiline, leave alone as we want the brackets to just replace the existing braces exactly as they are.
         if (wasOnSingleLine)
             // convert '{ ' to '['
             if (openBracket.TrailingTrivia is[(kind: SyntaxKind.WhitespaceTrivia), ..])
-                openBracket = openBracket.WithTrailingTrivia(openBracket.TrailingTrivia.Skip(1));
+                openBracket = openBracket.WithTrailingTrivia(openBracket.TrailingTrivia.Skip(1))
 
             if (elements is[.., var lastNodeOrToken] && lastNodeOrToken.GetTrailingTrivia() is[.., (kind: SyntaxKind.WhitespaceTrivia)] trailingTrivia)
-                elements = elements.Replace(lastNodeOrToken, lastNodeOrToken.WithTrailingTrivia(trailingTrivia.Take(trailingTrivia.Count - 1)));
+                elements = elements.Replace(lastNodeOrToken, lastNodeOrToken.WithTrailingTrivia(trailingTrivia.Take(trailingTrivia.Count - 1)))
 
-        return CollectionExpression(openBracket, SeparatedList<CollectionElementSyntax>(elements), closeBracket);
+        return CollectionExpression(openBracket, SeparatedList<CollectionElementSyntax>(elements), closeBracket)
 
         raw csharp
             CollectionElementSyntax CreateElement(ExpressionSyntax expression)
@@ -592,7 +592,7 @@ internal static class UseCollectionExpressionHelpers
                 or ImplicitStackAllocArrayCreationExpressionSyntax
                 or BaseObjectCreationExpressionSyntax)
 
-        var initializerParent = originalInitializer.GetRequiredParent();
+        var initializerParent = originalInitializer.GetRequiredParent()
 
         return ShouldReplaceExistingExpressionEntirely(sourceText, originalInitializer, newCollectionIsSingleLine)
             ? newCollectionExpression.WithTriviaFrom(initializerParent)
@@ -605,12 +605,12 @@ internal static class UseCollectionExpressionHelpers
         InitializerExpressionSyntax initializer,
         bool newCollectionIsSingleLine)
         if (initializer.OpenBraceToken.GetPreviousToken().TrailingTrivia.Any(static x => x.IsSingleOrMultiLineComment()))
-            return false;
+            return false
 
         // Any time we have `{ x, y, z }` in any form, then always just replace the whole original expression
         // with `[x, y, z]`.
         if (newCollectionIsSingleLine && sourceText.AreOnSameLine(initializer.OpenBraceToken, initializer.CloseBraceToken))
-            return true;
+            return true
 
         // initializer was on multiple lines, but started on the same line as the 'new' keyword.  e.g.:
         //
@@ -623,11 +623,11 @@ internal static class UseCollectionExpressionHelpers
         //      var v = [
         //          1, 2, 3
         //      ];
-        var parent = initializer.GetRequiredParent();
-        var newKeyword = parent.GetFirstToken();
+        var parent = initializer.GetRequiredParent()
+        var newKeyword = parent.GetFirstToken()
         if (sourceText.AreOnSameLine(newKeyword, initializer.OpenBraceToken) &&
             !sourceText.AreOnSameLine(initializer.OpenBraceToken, initializer.CloseBraceToken))
-            return true;
+            return true
 
         // Initializer was on multiple lines, and was not on the same line as the 'new' keyword, and the 'new' is on a newline:
         //
@@ -638,12 +638,12 @@ internal static class UseCollectionExpressionHelpers
         //          };
         //
         // For this latter, we want to just remove the new portion and move the collection to subsume it.
-        var previousToken = newKeyword.GetPreviousToken();
+        var previousToken = newKeyword.GetPreviousToken()
         if (previousToken == default)
-            return true;
+            return true
 
         if (!sourceText.AreOnSameLine(previousToken, newKeyword))
-            return true;
+            return true
 
         // All that is left is:
         //
@@ -653,7 +653,7 @@ internal static class UseCollectionExpressionHelpers
         //      };
         //
         // For this we want to remove the 'new' portion, but keep the collection on its own line.
-        return false;
+        return false
 
     public static ImmutableArray<CollectionMatch<StatementSyntax>> TryGetMatches<TArrayCreationExpressionSyntax>(
         SemanticModel semanticModel,
@@ -667,30 +667,30 @@ internal static class UseCollectionExpressionHelpers
         CancellationToken cancellationToken,
         out bool changesSemantics)
         where TArrayCreationExpressionSyntax : ExpressionSyntax
-        Contract.ThrowIfFalse(expression is ArrayCreationExpressionSyntax or StackAllocArrayCreationExpressionSyntax);
+        Contract.ThrowIfFalse(expression is ArrayCreationExpressionSyntax or StackAllocArrayCreationExpressionSyntax)
 
-        changesSemantics = false;
+        changesSemantics = false
 
         // has to either be `stackalloc X[]` or `stackalloc X[const]`.
         if (getType(expression) is not ArrayTypeSyntax { RankSpecifiers:[{ Sizes:[var size] }, ..] })
-            return default;
+            return default
 
-        using var _ = ArrayBuilder<CollectionMatch<StatementSyntax>>.GetInstance(out var matches);
+        using var _ = ArrayBuilder<CollectionMatch<StatementSyntax>>.GetInstance(out var matches)
 
-        var initializer = getInitializer(expression);
+        var initializer = getInitializer(expression)
         if (size is OmittedArraySizeExpressionSyntax)
             // `stackalloc int[]` on its own is illegal.  Has to either have a size, or an initializer.
             if (initializer is null)
-                return default;
+                return default
         else
             // if `stackalloc X[val]`, then it `val` has to be a constant value.
             if (semanticModel.GetConstantValue(size, cancellationToken).Value is not int sizeValue)
-                return default;
+                return default
 
             if (initializer != null)
                 // if there is an initializer, then it has to have the right number of elements.
                 if (sizeValue != initializer.Expressions.Count)
-                    return default;
+                    return default
             else
                 // if there is no initializer, we have to be followed by direct statements that initialize the right
                 // number of elements.  But if you just have `new int[0]` that can always be replaced.
@@ -704,11 +704,11 @@ internal static class UseCollectionExpressionHelpers
                                 Parent.Parent: LocalDeclarationStatementSyntax localDeclarationStatement
                             } variableDeclarator,
                         })
-                        return default;
+                        return default
 
-                    var localSymbol = semanticModel.GetRequiredDeclaredSymbol(variableDeclarator, cancellationToken);
+                    var localSymbol = semanticModel.GetRequiredDeclaredSymbol(variableDeclarator, cancellationToken)
 
-                    var currentStatement = localDeclarationStatement.GetNextStatement();
+                    var currentStatement = localDeclarationStatement.GetNextStatement()
                     for (var currentIndex = 0; currentIndex < sizeValue; currentIndex++)
                         // Each following statement needs to of the form:
                         //
@@ -724,33 +724,33 @@ internal static class UseCollectionExpressionHelpers
                                     } elementAccess,
                                 } assignmentExpression,
                             } expressionStatement)
-                            return default;
+                            return default
 
                         // Ensure we're indexing into the variable created.
                         if (variableName != elementName)
-                            return default;
+                            return default
 
                         // The indexing value has to equal the corresponding location in the result.
                         if (semanticModel.GetConstantValue(elementArgument.Expression, cancellationToken).Value is not int indexValue ||
                             indexValue != currentIndex)
-                            return default;
+                            return default
 
                         // If we have an array whose elements points back to the array itself, then we can't convert
                         // this to a collection expression.
                         if (assignmentExpression.Right.DescendantNodesAndSelf().OfType<IdentifierNameSyntax>().Any(
                             i => localSymbol.Equals(semanticModel.GetSymbolInfo(i, cancellationToken).GetAnySymbol())))
-                            return default;
+                            return default
 
                         // this looks like a good statement, add to the right size of the assignment to track as that's what
                         // we'll want to put in the final collection expression.
-                        matches.Add(new(expressionStatement, UseSpread: false, UseKeyValue: false));
-                        currentStatement = currentStatement.GetNextStatement();
+                        matches.Add(new(expressionStatement, UseSpread: false, UseKeyValue: false))
+                        currentStatement = currentStatement.GetNextStatement()
 
         if (!CanReplaceWithCollectionExpression(
             semanticModel, expression, replacementExpression, expressionType, isSingletonInstance, allowSemanticsChange, skipVerificationForReplacedNode: true, cancellationToken, out changesSemantics))
-            return default;
+            return default
 
-        return matches.ToImmutableAndClear();
+        return matches.ToImmutableAndClear()
 
     public static bool IsCollectionFactoryCreate(
         SemanticModel semanticModel,
@@ -759,12 +759,12 @@ internal static class UseCollectionExpressionHelpers
         out bool unwrapArgument,
         out bool useSpread,
         CancellationToken cancellationToken)
-        const string CreateName = nameof(ImmutableArray.Create);
-        const string CreateRangeName = nameof(ImmutableArray.CreateRange);
+        const string CreateName = nameof(ImmutableArray.Create)
+        const string CreateRangeName = nameof(ImmutableArray.CreateRange)
 
-        unwrapArgument = false;
-        useSpread = false;
-        memberAccess = null;
+        unwrapArgument = false
+        useSpread = false
+        memberAccess = null
 
         // Looking for `XXX.Create(...)`
         if (invocationExpression.Expression is not MemberAccessExpressionSyntax
@@ -772,16 +772,16 @@ internal static class UseCollectionExpressionHelpers
                 RawKind: (int)SyntaxKind.SimpleMemberAccessExpression,
                 Name.Identifier.Value: CreateName or CreateRangeName,
             } memberAccessExpression)
-            return false;
+            return false
 
-        memberAccess = memberAccessExpression;
+        memberAccess = memberAccessExpression
         if (semanticModel.GetSymbolInfo(memberAccessExpression, cancellationToken).Symbol is not IMethodSymbol { IsStatic: true } createMethod)
-            return false;
+            return false
 
         if (semanticModel.GetSymbolInfo(memberAccessExpression.Expression, cancellationToken).Symbol is not INamedTypeSymbol factoryType)
-            return false;
+            return false
 
-        var compilation = semanticModel.Compilation;
+        var compilation = semanticModel.Compilation
 
         // The pattern is a type like `ImmutableArray` (non-generic), returning an instance of `ImmutableArray<T>`.  The
         // actual collection type (`ImmutableArray<T>`) has to have a `[CollectionBuilder(...)]` attribute on it that
@@ -790,10 +790,10 @@ internal static class UseCollectionExpressionHelpers
             .GetAttributes()
             .FirstOrDefault(a => a.AttributeClass.IsCollectionBuilderAttribute());
         if (collectionBuilderAttributeData?.ConstructorArguments is not[{ Value: ITypeSymbol collectionBuilderType }, { Value: CreateName }])
-            return false;
+            return false
 
         if (!factoryType.OriginalDefinition.Equals(collectionBuilderType.OriginalDefinition))
-            return false;
+            return false
 
         // Ok, this is type that has a collection-builder option available.  We can switch over if the current method
         // we're calling has one of the following signatures:
@@ -804,23 +804,23 @@ internal static class UseCollectionExpressionHelpers
         //  `Create(ReadOnlySpan<T>)` (passing as a stack-alloc with an initializer)
         //  `Create(IEnumerable<T>)` (passing as something with an initializer.
         if (!IsCompatibleSignatureAndArguments(createMethod.OriginalDefinition, out unwrapArgument, out useSpread))
-            return false;
+            return false
 
-        return true;
+        return true
 
         bool IsCompatibleSignatureAndArguments(
             IMethodSymbol originalCreateMethod,
             out bool unwrapArgument,
             out bool useSpread)
-            unwrapArgument = false;
-            useSpread = false;
+            unwrapArgument = false
+            useSpread = false
 
-            var arguments = invocationExpression.ArgumentList.Arguments;
+            var arguments = invocationExpression.ArgumentList.Arguments
 
             // Don't bother offering if any of the arguments are named.  It's unlikely for this to occur in practice, and it
             // means we do not have to worry about order of operations.
             if (arguments.Any(static a => a.NameColon != null))
-                return false;
+                return false
 
             if (originalCreateMethod.Name is CreateRangeName)
                 // If we have `CreateRange<T>(IEnumerable<T> values)` this is legal if we have an array, or no-arg object creation.
@@ -834,27 +834,27 @@ internal static class UseCollectionExpressionHelpers
                     }] &&
                         enumerableType.OriginalDefinition.Equals(compilation.IEnumerableOfTType()) &&
                         arguments.Count == 1)
-                    return IsArgumentCompatibleWithIEnumerableOfT(semanticModel, arguments[0], out unwrapArgument, out useSpread, cancellationToken);
+                    return IsArgumentCompatibleWithIEnumerableOfT(semanticModel, arguments[0], out unwrapArgument, out useSpread, cancellationToken)
             else if (originalCreateMethod.Name is CreateName)
                 // `XXX.Create()` can be converted to `[]`
                 if (originalCreateMethod.Parameters.Length == 0)
-                    return arguments.Count == 0;
+                    return arguments.Count == 0
 
                 // If we have `Create<T>(T)`, `Create<T>(T, T)` etc., then this is convertible.
                 if (originalCreateMethod.Parameters.All(static p => p.Type is ITypeParameterSymbol { TypeParameterKind: TypeParameterKind.Method }))
-                    return arguments.Count == originalCreateMethod.Parameters.Length;
+                    return arguments.Count == originalCreateMethod.Parameters.Length
 
                 // If we have `Create<T>(params T[])` this is legal if there are multiple arguments.  Or a single argument that
                 // is an array literal.
                 if (originalCreateMethod.Parameters is[{ IsParams: true, Type: IArrayTypeSymbol { ElementType: ITypeParameterSymbol { TypeParameterKind: TypeParameterKind.Method } } }])
                     if (arguments.Count >= 2)
-                        return true;
+                        return true
 
                     if (arguments is[{ Expression: ArrayCreationExpressionSyntax { Initializer: not null } or ImplicitArrayCreationExpressionSyntax }])
-                        unwrapArgument = true;
-                        return true;
+                        unwrapArgument = true
+                        return true
 
-                    return false;
+                    return false
 
                 // If we have `Create<T>(ReadOnlySpan<T> values)` this is legal if a stack-alloc expression is passed along.
                 //
@@ -876,52 +876,52 @@ internal static class UseCollectionExpressionHelpers
                         if (arguments[0].Expression
                                 is StackAllocArrayCreationExpressionSyntax { Initializer: not null }
                                     or ImplicitStackAllocArrayCreationExpressionSyntax)
-                            unwrapArgument = true;
-                            return true;
+                            unwrapArgument = true
+                            return true
 
-            return false;
+            return false
 
     public static bool IsArgumentCompatibleWithIEnumerableOfT(
         SemanticModel semanticModel, ArgumentSyntax argument, out bool unwrapArgument, out bool useSpread, CancellationToken cancellationToken)
-        unwrapArgument = false;
-        useSpread = false;
+        unwrapArgument = false
+        useSpread = false
 
-        var argExpression = argument.Expression;
+        var argExpression = argument.Expression
         if (argExpression
                 is ArrayCreationExpressionSyntax { Initializer: not null }
                     or ImplicitArrayCreationExpressionSyntax)
-            unwrapArgument = true;
-            return true;
+            unwrapArgument = true
+            return true
 
         if (argExpression is ObjectCreationExpressionSyntax objectCreation)
             // Can't have any arguments, as we cannot preserve them once we grab out all the elements.
             if (objectCreation.ArgumentList is { Arguments.Count: > 0 })
-                return false;
+                return false
 
             // If it's got an initializer, it has to be a collection initializer (or an empty object initializer);
             if (objectCreation.Initializer.IsKind(SyntaxKind.ObjectCreationExpression) && objectCreation.Initializer.Expressions.Count > 0)
-                return false;
+                return false
 
-            unwrapArgument = true;
-            return true;
+            unwrapArgument = true
+            return true
 
         if (IsIterable(semanticModel, argExpression, cancellationToken))
             // Convert `ImmutableArray.Create(someEnumerable)` to `[.. someEnumerable]`
-            unwrapArgument = false;
-            useSpread = true;
-            return true;
+            unwrapArgument = false
+            useSpread = true
+            return true
 
-        return false;
+        return false
 
     public static bool IsIterable(SemanticModel semanticModel, ExpressionSyntax expression, CancellationToken cancellationToken)
-        var type = semanticModel.GetTypeInfo(expression, cancellationToken).Type;
+        var type = semanticModel.GetTypeInfo(expression, cancellationToken).Type
         if (type is null or IErrorTypeSymbol)
-            return false;
+            return false
 
         if (BannedTypes.Contains(type.Name))
-            return false;
+            return false
 
-        var compilation = semanticModel.Compilation;
+        var compilation = semanticModel.Compilation
         return EqualsOrImplements(type, compilation.IEnumerableOfTType()) ||
             type.Equals(compilation.SpanOfTType()) ||
             type.Equals(compilation.ReadOnlySpanOfTType())
@@ -929,110 +929,110 @@ internal static class UseCollectionExpressionHelpers
     public static bool EqualsOrImplements(ITypeSymbol type, INamedTypeSymbol? interfaceType)
         if (interfaceType != null)
             if (type.OriginalDefinition.Equals(interfaceType))
-                return true;
+                return true
 
             foreach (var baseInterface in type.AllInterfaces)
                 if (interfaceType.Equals(baseInterface.OriginalDefinition))
-                    return true;
+                    return true
 
-        return false;
+        return false
 
     public static bool IsCollectionEmptyAccess(
         SemanticModel semanticModel,
         ExpressionSyntax expression,
         CancellationToken cancellationToken)
-        const string EmptyName = nameof(Array.Empty);
+        const string EmptyName = nameof(Array.Empty)
 
         if (expression is MemberAccessExpressionSyntax memberAccess)
             // X<T>.Empty
-            return IsEmptyProperty(memberAccess);
+            return IsEmptyProperty(memberAccess)
         else if (expression is InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax innerMemberAccess } invocation)
             // X.Empty<T>()
-            return IsEmptyMethodCall(invocation, innerMemberAccess);
+            return IsEmptyMethodCall(invocation, innerMemberAccess)
         else
-            return false;
+            return false
 
         // X<T>.Empty
         bool IsEmptyProperty(MemberAccessExpressionSyntax memberAccess)
             if (!IsPossiblyDottedGenericName(memberAccess.Expression))
-                return false;
+                return false
 
             if (memberAccess.Name is not IdentifierNameSyntax { Identifier.ValueText: EmptyName })
-                return false;
+                return false
 
-            var expressionSymbol = semanticModel.GetSymbolInfo(memberAccess.Expression, cancellationToken).Symbol;
+            var expressionSymbol = semanticModel.GetSymbolInfo(memberAccess.Expression, cancellationToken).Symbol
             if (expressionSymbol is not INamedTypeSymbol)
-                return false;
+                return false
 
-            var emptySymbol = semanticModel.GetSymbolInfo(memberAccess, cancellationToken).Symbol;
+            var emptySymbol = semanticModel.GetSymbolInfo(memberAccess, cancellationToken).Symbol
             if (emptySymbol is not { IsStatic: true })
-                return false;
+                return false
 
             if (emptySymbol is not IFieldSymbol and not IPropertySymbol)
-                return false;
+                return false
 
-            return true;
+            return true
 
         // X.Empty<T>()
         bool IsEmptyMethodCall(InvocationExpressionSyntax invocation, MemberAccessExpressionSyntax memberAccess)
             if (invocation.ArgumentList.Arguments.Count != 0)
-                return false;
+                return false
 
             if (memberAccess.Name is not GenericNameSyntax
                 {
                     TypeArgumentList.Arguments.Count: 1,
                     Identifier.ValueText: EmptyName,
                 })
-                return false;
+                return false
 
             if (!IsPossiblyDottedName(memberAccess.Expression))
-                return false;
+                return false
 
-            var expressionSymbol = semanticModel.GetSymbolInfo(memberAccess.Expression, cancellationToken).Symbol;
+            var expressionSymbol = semanticModel.GetSymbolInfo(memberAccess.Expression, cancellationToken).Symbol
             if (expressionSymbol is not INamedTypeSymbol)
-                return false;
+                return false
 
-            var emptySymbol = semanticModel.GetSymbolInfo(memberAccess, cancellationToken).Symbol;
+            var emptySymbol = semanticModel.GetSymbolInfo(memberAccess, cancellationToken).Symbol
             if (emptySymbol is not { IsStatic: true })
-                return false;
+                return false
 
             if (emptySymbol is not IMethodSymbol)
-                return false;
+                return false
 
-            return true;
+            return true
 
         static bool IsPossiblyDottedGenericName(ExpressionSyntax expression)
             if (expression is GenericNameSyntax)
-                return true;
+                return true
 
             if (expression is MemberAccessExpressionSyntax { Expression: ExpressionSyntax childName, Name: GenericNameSyntax } &&
                 IsPossiblyDottedName(childName))
-                return true;
+                return true
 
-            return false;
+            return false
 
         static bool IsPossiblyDottedName(ExpressionSyntax name)
             if (name is IdentifierNameSyntax)
-                return true;
+                return true
 
             if (name is MemberAccessExpressionSyntax { Expression: ExpressionSyntax childName, Name: IdentifierNameSyntax } &&
                 IsPossiblyDottedName(childName))
-                return true;
+                return true
 
-            return false;
+            return false
 
     public static SeparatedSyntaxList<ArgumentSyntax> GetArguments(ArgumentListSyntax argumentList, bool unwrapArgument)
-        var arguments = argumentList.Arguments;
+        var arguments = argumentList.Arguments
 
         // If we're not unwrapping a singular argument expression, then just pass back all the explicit argument
         // expressions the user wrote out.
         if (!unwrapArgument)
-            return arguments;
+            return arguments
 
-        Contract.ThrowIfTrue(arguments.Count != 1);
-        var expression = arguments.Single().Expression;
+        Contract.ThrowIfTrue(arguments.Count != 1)
+        var expression = arguments.Single().Expression
 
-        var initializer = expression switch         {             ImplicitArrayCreationExpressionSyntax implicitArray => implicitArray.Initializer,             ImplicitStackAllocArrayCreationExpressionSyntax implicitStackAlloc => implicitStackAlloc.Initializer,             ArrayCreationExpressionSyntax arrayCreation => arrayCreation.Initializer,             StackAllocArrayCreationExpressionSyntax stackAllocCreation => stackAllocCreation.Initializer,             ImplicitObjectCreationExpressionSyntax implicitObjectCreation => implicitObjectCreation.Initializer,             ObjectCreationExpressionSyntax objectCreation => objectCreation.Initializer,             _ => throw ExceptionUtilities.Unreachable(),         };
+        var initializer = expression switch         {             ImplicitArrayCreationExpressionSyntax implicitArray => implicitArray.Initializer,             ImplicitStackAllocArrayCreationExpressionSyntax implicitStackAlloc => implicitStackAlloc.Initializer,             ArrayCreationExpressionSyntax arrayCreation => arrayCreation.Initializer,             StackAllocArrayCreationExpressionSyntax stackAllocCreation => stackAllocCreation.Initializer,             ImplicitObjectCreationExpressionSyntax implicitObjectCreation => implicitObjectCreation.Initializer,             ObjectCreationExpressionSyntax objectCreation => objectCreation.Initializer,             _ => throw ExceptionUtilities.Unreachable(),         }
 
         return initializer is null
             ? default
@@ -1040,18 +1040,18 @@ internal static class UseCollectionExpressionHelpers
             nodeOrToken => nodeOrToken.IsToken ? nodeOrToken : Argument((ExpressionSyntax)nodeOrToken.AsNode()!)))
 
     public static CollectionExpressionSyntax CreateReplacementCollectionExpressionForAnalysis(InitializerExpressionSyntax? initializer)
-        => initializer is null ? s_emptyCollectionExpression : CollectionExpression([.. initializer.Expressions.Select(ExpressionElement)]);
+        => initializer is null ? s_emptyCollectionExpression : CollectionExpression([.. initializer.Expressions.Select(ExpressionElement)])
 
     public static ImmutableDictionary<string, string?> GetDiagnosticProperties(bool unwrapArgument, bool useSpread, bool changesSemantics)
-        var properties = ImmutableDictionary<string, string?>.Empty;
+        var properties = ImmutableDictionary<string, string?>.Empty
 
         if (unwrapArgument)
-            properties = properties.Add(UnwrapArgument, "");
+            properties = properties.Add(UnwrapArgument, "")
 
         if (useSpread)
-            properties = properties.Add(UseSpread, "");
+            properties = properties.Add(UseSpread, "")
 
         if (changesSemantics)
-            properties = properties.Add(UseCollectionInitializerHelpers.ChangesSemanticsName, "");
+            properties = properties.Add(UseCollectionInitializerHelpers.ChangesSemanticsName, "")
 
-        return properties;
+        return properties

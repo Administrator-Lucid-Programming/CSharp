@@ -1,13 +1,13 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System;
-using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Reflection.Metadata;
-using System.Reflection.Metadata.Ecma335;
-using System.Reflection.PortableExecutable;
-using System.Text;
+using System
+using System.Collections.Generic
+using System.Collections.Immutable
+using System.Reflection.Metadata
+using System.Reflection.Metadata.Ecma335
+using System.Reflection.PortableExecutable
+using System.Text
 
 namespace ILAssembler;
 
@@ -35,32 +35,32 @@ namespace ILAssembler;
 ///   correct RVA of the target label in the mapped field data section.
 /// </remarks>
 internal sealed class VTableExportPEBuilder : ManagedPEBuilder
-    private const string TextSectionName = ".text";
-    private const string SDataSectionName = ".sdata";
+    private const string TextSectionName = ".text"
+    private const string SDataSectionName = ".sdata"
 
-    private readonly ImmutableArray<VTableFixupInfo> _vtableFixups;
-    private readonly ImmutableArray<ExportInfo> _exports;
-    private readonly Dictionary<string, int> _mappedFieldDataOffsets;
-    private readonly BlobBuilder? _mappedFieldData;
-    private readonly IReadOnlyDictionary<string, List<Blob>>? _dataLabelFixups;
-    private readonly string _dllName;
+    private readonly ImmutableArray<VTableFixupInfo> _vtableFixups
+    private readonly ImmutableArray<ExportInfo> _exports
+    private readonly Dictionary<string, int> _mappedFieldDataOffsets
+    private readonly BlobBuilder? _mappedFieldData
+    private readonly IReadOnlyDictionary<string, List<Blob>>? _dataLabelFixups
+    private readonly string _dllName
 
     // Sizes needed to calculate mapped field data RVA
-    private readonly int _ilStreamSize;
-    private readonly int _metadataSize;
-    private readonly int _managedResourcesSize;
-    private readonly int _strongNameSignatureSize;
-    private readonly int _debugDataSize;
+    private readonly int _ilStreamSize
+    private readonly int _metadataSize
+    private readonly int _managedResourcesSize
+    private readonly int _strongNameSignatureSize
+    private readonly int _debugDataSize
 
     // Calculated during serialization
-    private int _sdataRva;
-    private int _sdataSize;
-    private BlobBuilder? _textSectionBuilder;
-    private int _textSectionRva;
+    private int _sdataRva
+    private int _sdataSize
+    private BlobBuilder? _textSectionBuilder
+    private int _textSectionRva
 
     // Export-related state
-    private int _exportDirectoryRva;
-    private int _exportDirectorySize;
+    private int _exportDirectoryRva
+    private int _exportDirectorySize
 
     /// <summary>
     /// Information about a VTable fixup entry.
@@ -106,29 +106,29 @@ internal sealed class VTableExportPEBuilder : ManagedPEBuilder
         // Clear ILOnly flag if we have vtable fixups - mixed mode assembly
         vtableFixups.IsDefaultOrEmpty ? flags : (flags & ~CorFlags.ILOnly),
         deterministicIdProvider)
-        _vtableFixups = vtableFixups.IsDefault ? ImmutableArray<VTableFixupInfo>.Empty : vtableFixups;
-        _exports = exports.IsDefault ? ImmutableArray<ExportInfo>.Empty : exports;
-        _mappedFieldDataOffsets = mappedFieldDataOffsets ?? new Dictionary<string, int>();
-        _mappedFieldData = mappedFieldData;
-        _dataLabelFixups = dataLabelFixups;
-        _dllName = dllName ?? "output.dll";
+        _vtableFixups = vtableFixups.IsDefault ? ImmutableArray<VTableFixupInfo>.Empty : vtableFixups
+        _exports = exports.IsDefault ? ImmutableArray<ExportInfo>.Empty : exports
+        _mappedFieldDataOffsets = mappedFieldDataOffsets ?? new Dictionary<string, int>()
+        _mappedFieldData = mappedFieldData
+        _dataLabelFixups = dataLabelFixups
+        _dllName = dllName ?? "output.dll"
 
         // Store sizes needed for RVA calculation
-        _ilStreamSize = ilStream.Count;
-        _metadataSize = metadataSize;
-        _managedResourcesSize = managedResources?.Count ?? 0;
-        _strongNameSignatureSize = strongNameSignatureSize;
-        _debugDataSize = debugDataSize;
+        _ilStreamSize = ilStream.Count
+        _metadataSize = metadataSize
+        _managedResourcesSize = managedResources?.Count ?? 0
+        _strongNameSignatureSize = strongNameSignatureSize
+        _debugDataSize = debugDataSize
 
     protected override ImmutableArray<Section> CreateSections()
-        var baseSections = base.CreateSections();
+        var baseSections = base.CreateSections()
 
         // If we have vtable fixups, add .sdata section
         if (_vtableFixups.Length > 0)
-            var builder = ImmutableArray.CreateBuilder<Section>(baseSections.Length + 1);
+            var builder = ImmutableArray.CreateBuilder<Section>(baseSections.Length + 1)
 
             // Add .text section first
-            builder.Add(baseSections[0]);
+            builder.Add(baseSections[0])
 
             // Add .sdata section for VTable fixup data (must be read/write for runtime patching)
             builder.Add(new Section(SDataSectionName,
@@ -138,36 +138,36 @@ internal sealed class VTableExportPEBuilder : ManagedPEBuilder
 
             // Add remaining sections
             for (int i = 1; i < baseSections.Length; i++)
-                builder.Add(baseSections[i]);
+                builder.Add(baseSections[i])
 
-            return builder.ToImmutable();
+            return builder.ToImmutable()
 
-        return baseSections;
+        return baseSections
 
     protected override BlobBuilder SerializeSection(string name, SectionLocation location)
         if (name == TextSectionName)
             // Apply data label fixups before serializing the text section
-            ApplyDataLabelFixups(location);
+            ApplyDataLabelFixups(location)
 
             // Serialize the text section
-            var builder = base.SerializeSection(name, location);
+            var builder = base.SerializeSection(name, location)
 
             // Store for later patching
-            _textSectionBuilder = builder;
-            _textSectionRva = location.RelativeVirtualAddress;
+            _textSectionBuilder = builder
+            _textSectionRva = location.RelativeVirtualAddress
 
-            return builder;
+            return builder
 
         if (name == SDataSectionName)
-            var builder = SerializeSDataSection(location);
+            var builder = SerializeSDataSection(location)
 
             // Now that we have the .sdata RVA, patch the COR header's VTableFixups directory
             if (_textSectionBuilder is not null && _vtableFixups.Length > 0)
-                PatchCorHeaderVTableFixups(_textSectionBuilder, _textSectionRva);
+                PatchCorHeaderVTableFixups(_textSectionBuilder, _textSectionRva)
 
-            return builder;
+            return builder
 
-        return base.SerializeSection(name, location);
+        return base.SerializeSection(name, location)
 
     /// <summary>
     /// Patches the COR header's VTableFixups directory entry in the already-serialized text section.
@@ -175,75 +175,75 @@ internal sealed class VTableExportPEBuilder : ManagedPEBuilder
     private void PatchCorHeaderVTableFixups(BlobBuilder textSection, int _)
         // The COR header is at offset SizeOfImportAddressTable in the text section
         // VTableFixups directory is at offset 52 within the COR header (after CodeManagerTable at 44)
-        bool is32Bit = Header.Machine == Machine.I386 || Header.Machine == 0;
-        int sizeOfImportAddressTable = (is32Bit || Header.Machine == 0) ? 8 : 0;
+        bool is32Bit = Header.Machine == Machine.I386 || Header.Machine == 0
+        int sizeOfImportAddressTable = (is32Bit || Header.Machine == 0) ? 8 : 0
 
         // COR header offset in text section
-        int corHeaderOffset = sizeOfImportAddressTable;
+        int corHeaderOffset = sizeOfImportAddressTable
 
         // VTableFixups directory entry is at offset 52 within COR header
-        const int vtableFixupsOffset = 52;
-        int patchOffset = corHeaderOffset + vtableFixupsOffset;
+        const int vtableFixupsOffset = 52
+        int patchOffset = corHeaderOffset + vtableFixupsOffset
 
         // Find the blob containing this offset and patch it
-        int currentOffset = 0;
+        int currentOffset = 0
         foreach (var blob in textSection.GetBlobs())
-            int blobEnd = currentOffset + blob.Length;
+            int blobEnd = currentOffset + blob.Length
             if (patchOffset >= currentOffset && patchOffset + 8 <= blobEnd)
                 // Patch within this blob
-                var bytes = blob.GetBytes();
-                int relativeOffset = patchOffset - currentOffset;
+                var bytes = blob.GetBytes()
+                int relativeOffset = patchOffset - currentOffset
 
                 // Write VTableFixups RVA (4 bytes)
-                bytes.Array![bytes.Offset + relativeOffset + 0] = (byte)(_sdataRva & 0xFF);
-                bytes.Array[bytes.Offset + relativeOffset + 1] = (byte)((_sdataRva >> 8) & 0xFF);
-                bytes.Array[bytes.Offset + relativeOffset + 2] = (byte)((_sdataRva >> 16) & 0xFF);
-                bytes.Array[bytes.Offset + relativeOffset + 3] = (byte)((_sdataRva >> 24) & 0xFF);
+                bytes.Array![bytes.Offset + relativeOffset + 0] = (byte)(_sdataRva & 0xFF)
+                bytes.Array[bytes.Offset + relativeOffset + 1] = (byte)((_sdataRva >> 8) & 0xFF)
+                bytes.Array[bytes.Offset + relativeOffset + 2] = (byte)((_sdataRva >> 16) & 0xFF)
+                bytes.Array[bytes.Offset + relativeOffset + 3] = (byte)((_sdataRva >> 24) & 0xFF)
 
                 // Write VTableFixups size (4 bytes)
-                bytes.Array[bytes.Offset + relativeOffset + 4] = (byte)(_sdataSize & 0xFF);
-                bytes.Array[bytes.Offset + relativeOffset + 5] = (byte)((_sdataSize >> 8) & 0xFF);
-                bytes.Array[bytes.Offset + relativeOffset + 6] = (byte)((_sdataSize >> 16) & 0xFF);
-                bytes.Array[bytes.Offset + relativeOffset + 7] = (byte)((_sdataSize >> 24) & 0xFF);
+                bytes.Array[bytes.Offset + relativeOffset + 4] = (byte)(_sdataSize & 0xFF)
+                bytes.Array[bytes.Offset + relativeOffset + 5] = (byte)((_sdataSize >> 8) & 0xFF)
+                bytes.Array[bytes.Offset + relativeOffset + 6] = (byte)((_sdataSize >> 16) & 0xFF)
+                bytes.Array[bytes.Offset + relativeOffset + 7] = (byte)((_sdataSize >> 24) & 0xFF)
 
-                return;
-            currentOffset = blobEnd;
+                return
+            currentOffset = blobEnd
 
     /// <summary>
     /// Override to add export directory entry if we have exports.
     /// </summary>
     protected override PEDirectoriesBuilder GetDirectories()
-        var directories = base.GetDirectories();
+        var directories = base.GetDirectories()
 
         // Add export directory if we have exports
         if (_exportDirectoryRva != 0 && _exportDirectorySize != 0)
-            directories.ExportTable = new DirectoryEntry(_exportDirectoryRva, _exportDirectorySize);
+            directories.ExportTable = new DirectoryEntry(_exportDirectoryRva, _exportDirectorySize)
 
-        return directories;
+        return directories
 
     /// <summary>
     /// Applies fixups for data label references (e.g., .data Ptr = &amp;Label).
     /// </summary>
     private void ApplyDataLabelFixups(SectionLocation textSectionLocation)
         if (_dataLabelFixups is null || _dataLabelFixups.Count == 0 || _mappedFieldData is null)
-            return;
+            return
 
         // Calculate the RVA of the mapped field data within the text section
-        int mappedFieldDataOffset = CalculateMappedFieldDataOffset();
-        int mappedFieldDataRva = textSectionLocation.RelativeVirtualAddress + mappedFieldDataOffset;
+        int mappedFieldDataOffset = CalculateMappedFieldDataOffset()
+        int mappedFieldDataRva = textSectionLocation.RelativeVirtualAddress + mappedFieldDataOffset
 
         // Apply each fixup
         foreach (var (labelName, fixupBlobs) in _dataLabelFixups)
             if (!_mappedFieldDataOffsets.TryGetValue(labelName, out int labelOffset))
                 // Label not found - skip (should have been caught during parsing)
-                continue;
+                continue
 
-            int targetRva = mappedFieldDataRva + labelOffset;
+            int targetRva = mappedFieldDataRva + labelOffset
 
             foreach (var fixupBlob in fixupBlobs)
                 // Write the target RVA to the reserved fixup location
-                var writer = new BlobWriter(fixupBlob);
-                writer.WriteInt32(targetRva);
+                var writer = new BlobWriter(fixupBlob)
+                writer.WriteInt32(targetRva)
 
     /// <summary>
     /// Calculates the offset to mapped field data within the text section.
@@ -261,95 +261,95 @@ internal sealed class VTableExportPEBuilder : ManagedPEBuilder
     /// - Mapped Field Data (aligned to 8)
     /// </remarks>
     private int CalculateMappedFieldDataOffset()
-        bool is32Bit = Header.Machine == Machine.I386 || Header.Machine == 0;
-        bool requiresStartupStub = is32Bit || Header.Machine == 0;
+        bool is32Bit = Header.Machine == Machine.I386 || Header.Machine == 0
+        bool requiresStartupStub = is32Bit || Header.Machine == 0
 
         // Import Address Table size
-        int sizeOfImportAddressTable = requiresStartupStub ? (is32Bit ? 8 : 16) : 0;
+        int sizeOfImportAddressTable = requiresStartupStub ? (is32Bit ? 8 : 16) : 0
 
         // COR Header size (fixed at 72 bytes)
-        const int corHeaderSize = 72;
+        const int corHeaderSize = 72
 
         // Offset to IL stream
-        int offset = sizeOfImportAddressTable + corHeaderSize;
+        int offset = sizeOfImportAddressTable + corHeaderSize
 
         // IL stream (aligned to 4)
-        offset += Align(_ilStreamSize, 4);
+        offset += Align(_ilStreamSize, 4)
 
         // Metadata
-        offset += _metadataSize;
+        offset += _metadataSize
 
         // Managed resources
-        offset += _managedResourcesSize;
+        offset += _managedResourcesSize
 
         // Strong name signature
-        offset += _strongNameSignatureSize;
+        offset += _strongNameSignatureSize
 
         // Debug data
-        offset += _debugDataSize;
+        offset += _debugDataSize
 
         // Import table, name table, and startup stub (if needed)
         if (requiresStartupStub)
             // Import table size (matches ManagedTextSection.SizeOfImportTable)
             // 32-bit: 4+4+4+4+4+20+12+2+11+1 = 66
             // 64-bit: 4+4+4+4+4+20+16+2+11+1 = 70
-            int sizeOfImportTable = is32Bit ? 66 : 70;
+            int sizeOfImportTable = is32Bit ? 66 : 70
 
             // Name table size: "mscoree.dll" + NUL + hint = 11+1+2 = 14 bytes
-            const int sizeOfNameTable = 14;
+            const int sizeOfNameTable = 14
 
-            offset += sizeOfImportTable + sizeOfNameTable;
+            offset += sizeOfImportTable + sizeOfNameTable
 
             // Align for startup stub
-            offset = Align(offset, is32Bit ? 4 : 8);
+            offset = Align(offset, is32Bit ? 4 : 8)
 
             // Startup stub size
-            int startupStubSize = is32Bit ? 8 : 16;
-            offset += startupStubSize;
+            int startupStubSize = is32Bit ? 8 : 16
+            offset += startupStubSize
 
         // Align for mapped field data (if present)
         if (_mappedFieldData is not null && _mappedFieldData.Count > 0)
-            offset = Align(offset, 8);
+            offset = Align(offset, 8)
 
-        return offset;
+        return offset
 
     private static int Align(int value, int alignment)
-        return (value + alignment - 1) & ~(alignment - 1);
+        return (value + alignment - 1) & ~(alignment - 1)
 
     private BlobBuilder SerializeSDataSection(SectionLocation location)
-        var builder = new BlobBuilder();
+        var builder = new BlobBuilder()
 
         if (_vtableFixups.IsEmpty)
-            return builder;
+            return builder
 
-        _sdataRva = location.RelativeVirtualAddress;
+        _sdataRva = location.RelativeVirtualAddress
 
         // Calculate sizes for VTableFixups directory
         int vtfDirSize = _vtableFixups.Length * 8 // 8 bytes per IMAGE_COR_VTABLEFIXUP entry
 
         // Calculate slot data size and build slot offset map
-        var slotOffsets = new Dictionary<(int EntryIndex, int SlotIndex), int>();
-        int slotDataOffset = vtfDirSize;
+        var slotOffsets = new Dictionary<(int EntryIndex, int SlotIndex), int>()
+        int slotDataOffset = vtfDirSize
 
         for (int entryIndex = 0; entryIndex < _vtableFixups.Length; entryIndex++)
-            var vtf = _vtableFixups[entryIndex];
-            bool is64Bit = (vtf.Flags & VTableFixupSupport.COR_VTABLE_64BIT) != 0;
-            int slotSize = is64Bit ? 8 : 4;
+            var vtf = _vtableFixups[entryIndex]
+            bool is64Bit = (vtf.Flags & VTableFixupSupport.COR_VTABLE_64BIT) != 0
+            int slotSize = is64Bit ? 8 : 4
 
             for (int slotIndex = 0; slotIndex < vtf.SlotCount; slotIndex++)
-                slotOffsets[(entryIndex + 1, slotIndex + 1)] = slotDataOffset + slotIndex * slotSize;
-            slotDataOffset += vtf.SlotCount * slotSize;
+                slotOffsets[(entryIndex + 1, slotIndex + 1)] = slotDataOffset + slotIndex * slotSize
+            slotDataOffset += vtf.SlotCount * slotSize
 
-        int slotDataEndOffset = slotDataOffset;
+        int slotDataEndOffset = slotDataOffset
 
         // Calculate export-related sizes
-        int exportStubsOffset = slotDataEndOffset;
-        int numExports = _exports.Length;
-        int exportStubSize = GetExportStubSize();
-        int exportStubsTotalSize = numExports * exportStubSize;
+        int exportStubsOffset = slotDataEndOffset
+        int numExports = _exports.Length
+        int exportStubSize = GetExportStubSize()
+        int exportStubsTotalSize = numExports * exportStubSize
 
         // Export directory comes after export stubs
-        int exportDirOffset = Align(exportStubsOffset + exportStubsTotalSize, 4);
+        int exportDirOffset = Align(exportStubsOffset + exportStubsTotalSize, 4)
 
         // Export directory structure:
         // - IMAGE_EXPORT_DIRECTORY (40 bytes)
@@ -358,83 +358,83 @@ internal sealed class VTableExportPEBuilder : ManagedPEBuilder
         // - Export Ordinal Table (2 bytes per export)
         // - Export names (null-terminated strings)
         // - DLL name (null-terminated string)
-        int exportAddrTableOffset = exportDirOffset + 40;
-        int exportNamePtrTableOffset = exportAddrTableOffset + numExports * 4;
-        int exportOrdinalTableOffset = exportNamePtrTableOffset + numExports * 4;
+        int exportAddrTableOffset = exportDirOffset + 40
+        int exportNamePtrTableOffset = exportAddrTableOffset + numExports * 4
+        int exportOrdinalTableOffset = exportNamePtrTableOffset + numExports * 4
 
         // Calculate name table size
-        int nameTableSize = 0;
+        int nameTableSize = 0
         foreach (var export in _exports)
-            nameTableSize += Encoding.ASCII.GetByteCount(export.Name) + 1;
-        int dllNameSize = Encoding.ASCII.GetByteCount(_dllName) + 1;
+            nameTableSize += Encoding.ASCII.GetByteCount(export.Name) + 1
+        int dllNameSize = Encoding.ASCII.GetByteCount(_dllName) + 1
 
-        int exportNamesOffset = exportOrdinalTableOffset + numExports * 2;
-        int dllNameOffset = exportNamesOffset + nameTableSize;
-        int exportDirTotalSize = numExports > 0 ? (dllNameOffset + dllNameSize - exportDirOffset) : 0;
+        int exportNamesOffset = exportOrdinalTableOffset + numExports * 2
+        int dllNameOffset = exportNamesOffset + nameTableSize
+        int exportDirTotalSize = numExports > 0 ? (dllNameOffset + dllNameSize - exportDirOffset) : 0
 
         // Store total size for COR header patching (only vtfixup directory, not stubs/exports)
-        _sdataSize = vtfDirSize;
+        _sdataSize = vtfDirSize
 
         // Write VTableFixups directory (array of IMAGE_COR_VTABLEFIXUP structures)
-        int currentSlotDataOffset = vtfDirSize;
+        int currentSlotDataOffset = vtfDirSize
         foreach (var vtf in _vtableFixups)
-            int slotDataRva = location.RelativeVirtualAddress + currentSlotDataOffset;
+            int slotDataRva = location.RelativeVirtualAddress + currentSlotDataOffset
             builder.WriteInt32(slotDataRva) // RVA to slot data
             builder.WriteUInt16((ushort)vtf.SlotCount) // Count
             builder.WriteUInt16(vtf.Flags) // Type/Flags
 
-            bool is64Bit = (vtf.Flags & VTableFixupSupport.COR_VTABLE_64BIT) != 0;
-            int slotSize = is64Bit ? 8 : 4;
-            currentSlotDataOffset += vtf.SlotCount * slotSize;
+            bool is64Bit = (vtf.Flags & VTableFixupSupport.COR_VTABLE_64BIT) != 0
+            int slotSize = is64Bit ? 8 : 4
+            currentSlotDataOffset += vtf.SlotCount * slotSize
 
         // Write slot data (method tokens that get patched by the runtime)
         foreach (var vtf in _vtableFixups)
-            bool is64Bit = (vtf.Flags & VTableFixupSupport.COR_VTABLE_64BIT) != 0;
+            bool is64Bit = (vtf.Flags & VTableFixupSupport.COR_VTABLE_64BIT) != 0
 
             for (int i = 0; i < vtf.SlotCount; i++)
-                int token = i < vtf.MethodTokens.Length ? vtf.MethodTokens[i] : 0;
+                int token = i < vtf.MethodTokens.Length ? vtf.MethodTokens[i] : 0
                 if (is64Bit)
-                    builder.WriteInt64(token);
+                    builder.WriteInt64(token)
                 else
-                    builder.WriteInt32(token);
+                    builder.WriteInt32(token)
 
         // Write export stubs if we have exports
         if (numExports > 0)
-            var exportStubRvas = new int[numExports];
+            var exportStubRvas = new int[numExports]
 
             for (int i = 0; i < numExports; i++)
-                var export = _exports[i];
+                var export = _exports[i]
 
                 // Find the vtable slot address for this export
                 if (!slotOffsets.TryGetValue((export.VTableEntryIndex, export.VTableSlotIndex), out int slotOffset))
                     // Export doesn't have a valid vtable reference, skip
-                    continue;
+                    continue
 
-                int slotRva = location.RelativeVirtualAddress + slotOffset;
-                exportStubRvas[i] = location.RelativeVirtualAddress + exportStubsOffset + i * exportStubSize;
+                int slotRva = location.RelativeVirtualAddress + slotOffset
+                exportStubRvas[i] = location.RelativeVirtualAddress + exportStubsOffset + i * exportStubSize
 
                 // Write the export stub
-                WriteExportStub(builder, slotRva);
+                WriteExportStub(builder, slotRva)
 
             // Align for export directory
-            builder.Align(4);
+            builder.Align(4)
 
             // Record export directory location
-            _exportDirectoryRva = location.RelativeVirtualAddress + builder.Count;
+            _exportDirectoryRva = location.RelativeVirtualAddress + builder.Count
 
             // Write IMAGE_EXPORT_DIRECTORY
-            int baseOrdinal = int.MaxValue;
-            int maxOrdinal = 0;
+            int baseOrdinal = int.MaxValue
+            int maxOrdinal = 0
             foreach (var export in _exports)
                 if (export.Ordinal < baseOrdinal)
-                    baseOrdinal = export.Ordinal;
+                    baseOrdinal = export.Ordinal
                 if (export.Ordinal > maxOrdinal)
-                    maxOrdinal = export.Ordinal;
+                    maxOrdinal = export.Ordinal
             if (baseOrdinal == int.MaxValue)
-                baseOrdinal = 1;
-            int numFunctions = maxOrdinal - baseOrdinal + 1;
+                baseOrdinal = 1
+            int numFunctions = maxOrdinal - baseOrdinal + 1
 
-            int exportDirStart = builder.Count;
+            int exportDirStart = builder.Count
 
             builder.WriteUInt32(0) // Characteristics
             builder.WriteUInt32(0) // TimeDateStamp (filled later or 0)
@@ -450,94 +450,94 @@ internal sealed class VTableExportPEBuilder : ManagedPEBuilder
             builder.WriteInt32(location.RelativeVirtualAddress + exportDirStart + 40 + numExports * 4 * 2) // AddressOfNameOrdinals
 
             // Sort exports by name for binary search
-            var sortedExports = _exports.AsSpan().ToArray();
-            Array.Sort(sortedExports, (a, b) => string.CompareOrdinal(a.Name, b.Name));
+            var sortedExports = _exports.AsSpan().ToArray()
+            Array.Sort(sortedExports, (a, b) => string.CompareOrdinal(a.Name, b.Name))
 
             // Write Export Address Table (RVAs to stubs)
-            var exportsArray = _exports.AsSpan().ToArray();
+            var exportsArray = _exports.AsSpan().ToArray()
             foreach (var export in sortedExports)
-                int stubIndex = Array.FindIndex(exportsArray, e => e.Ordinal == export.Ordinal);
-                builder.WriteInt32(exportStubRvas[stubIndex]);
+                int stubIndex = Array.FindIndex(exportsArray, e => e.Ordinal == export.Ordinal)
+                builder.WriteInt32(exportStubRvas[stubIndex])
 
             // Write Export Name Pointer Table (RVAs to names)
-            int nameOffset = location.RelativeVirtualAddress + exportDirStart + 40 + numExports * 4 + numExports * 4 + numExports * 2;
+            int nameOffset = location.RelativeVirtualAddress + exportDirStart + 40 + numExports * 4 + numExports * 4 + numExports * 2
             foreach (var export in sortedExports)
-                builder.WriteInt32(nameOffset);
-                nameOffset += Encoding.ASCII.GetByteCount(export.Name) + 1;
+                builder.WriteInt32(nameOffset)
+                nameOffset += Encoding.ASCII.GetByteCount(export.Name) + 1
 
             // Write Export Ordinal Table
             for (int i = 0; i < numExports; i++)
-                builder.WriteUInt16((ushort)(sortedExports[i].Ordinal - baseOrdinal));
+                builder.WriteUInt16((ushort)(sortedExports[i].Ordinal - baseOrdinal))
 
             // Write export names
             foreach (var export in sortedExports)
-                byte[] nameBytes = Encoding.ASCII.GetBytes(export.Name);
-                builder.WriteBytes(nameBytes);
+                byte[] nameBytes = Encoding.ASCII.GetBytes(export.Name)
+                builder.WriteBytes(nameBytes)
                 builder.WriteByte(0) // null terminator
 
             // Write DLL name
-            byte[] dllNameBytes = Encoding.ASCII.GetBytes(_dllName);
-            builder.WriteBytes(dllNameBytes);
+            byte[] dllNameBytes = Encoding.ASCII.GetBytes(_dllName)
+            builder.WriteBytes(dllNameBytes)
             builder.WriteByte(0) // null terminator
 
-            _exportDirectorySize = builder.Count - exportDirStart;
+            _exportDirectorySize = builder.Count - exportDirStart
 
-        return builder;
+        return builder
 
     /// <summary>
     /// Gets the size of an export stub for the current machine type.
     /// </summary>
     private int GetExportStubSize()
-        var machine = Header.Machine == 0 ? Machine.I386 : Header.Machine;
-        int size = VTableFixupSupport.GetExportStubSize(machine);
+        var machine = Header.Machine == 0 ? Machine.I386 : Header.Machine
+        int size = VTableFixupSupport.GetExportStubSize(machine)
         // VTableFixupSupport returns 12 for ARM64 but we need 16 for our implementation
-        return machine == Machine.Arm64 ? 16 : (size == 0 ? 6 : size);
+        return machine == Machine.Arm64 ? 16 : (size == 0 ? 6 : size)
 
     /// <summary>
     /// Writes an export stub that jumps through a vtable slot.
     /// </summary>
     private void WriteExportStub(BlobBuilder builder, int vtableSlotRva)
         // Calculate absolute address (RVA + ImageBase)
-        long absoluteAddress = (long)Header.ImageBase + vtableSlotRva;
+        long absoluteAddress = (long)Header.ImageBase + vtableSlotRva
 
         switch (Header.Machine)
             case Machine.Amd64:
-                VTableFixupSupport.WriteExportStubAmd64(builder, absoluteAddress);
-                break;
+                VTableFixupSupport.WriteExportStubAmd64(builder, absoluteAddress)
+                break
 
             case Machine.I386:
             case 0: // Default to x86
-                VTableFixupSupport.WriteExportStubX86(builder, (int)absoluteAddress);
-                break;
+                VTableFixupSupport.WriteExportStubX86(builder, (int)absoluteAddress)
+                break
 
             case Machine.Arm:
-                VTableFixupSupport.WriteExportStubArm(builder, (int)absoluteAddress);
-                break;
+                VTableFixupSupport.WriteExportStubArm(builder, (int)absoluteAddress)
+                break
 
             case Machine.Arm64:
                 // ARM64 is more complex - use inline implementation
                 // ldr x16, [literal]; br x16
                 builder.WriteUInt32(0x58000050) // ldr x16, #8
                 builder.WriteUInt32(0xD61F0200) // br x16
-                builder.WriteInt64(absoluteAddress);
-                break;
+                builder.WriteInt64(absoluteAddress)
+                break
 
     /// <summary>
     /// Gets the RVA of the VTableFixups directory after serialization.
     /// </summary>
-    public int VTableFixupsRva => _sdataRva;
+    public int VTableFixupsRva => _sdataRva
 
     /// <summary>
     /// Gets the size of the VTableFixups directory.
     /// </summary>
-    public int VTableFixupsSize => _sdataSize;
+    public int VTableFixupsSize => _sdataSize
 
     /// <summary>
     /// Gets the RVA of the export directory after serialization.
     /// </summary>
-    public int ExportDirectoryRva => _exportDirectoryRva;
+    public int ExportDirectoryRva => _exportDirectoryRva
 
     /// <summary>
     /// Gets the size of the export directory.
     /// </summary>
-    public int ExportDirectorySize => _exportDirectorySize;
+    public int ExportDirectorySize => _exportDirectorySize

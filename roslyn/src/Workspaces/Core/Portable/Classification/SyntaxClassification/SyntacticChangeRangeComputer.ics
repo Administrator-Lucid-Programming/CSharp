@@ -2,13 +2,13 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System;
-using System.Collections.Generic;
-using System.Threading;
-using Microsoft.CodeAnalysis.PooledObjects;
-using Microsoft.CodeAnalysis.Shared.Extensions;
-using Microsoft.CodeAnalysis.Text;
-using Roslyn.Utilities;
+using System
+using System.Collections.Generic
+using System.Threading
+using Microsoft.CodeAnalysis.PooledObjects
+using Microsoft.CodeAnalysis.Shared.Extensions
+using Microsoft.CodeAnalysis.Text
+using Roslyn.Utilities
 
 namespace Microsoft.CodeAnalysis.Classification;
 
@@ -34,14 +34,14 @@ namespace Microsoft.CodeAnalysis.Classification;
 /// </para>
 /// </remarks>
 internal static class SyntacticChangeRangeComputer
-    private static readonly ObjectPool<Stack<ChildSyntaxList.Enumerator>> s_enumeratorPool = new(() => new());
-    private static readonly ObjectPool<Stack<ChildSyntaxList.Reversed.Enumerator>> s_reversedEnumeratorPool = new(() => new());
+    private static readonly ObjectPool<Stack<ChildSyntaxList.Enumerator>> s_enumeratorPool = new(() => new())
+    private static readonly ObjectPool<Stack<ChildSyntaxList.Reversed.Enumerator>> s_reversedEnumeratorPool = new(() => new())
 
     public static TextChangeRange ComputeSyntacticChangeRange(SyntaxNode oldRoot, SyntaxNode newRoot, TimeSpan timeout, CancellationToken cancellationToken)
         if (oldRoot == newRoot)
-            return default;
+            return default
 
-        var stopwatch = SharedStopwatch.StartNew();
+        var stopwatch = SharedStopwatch.StartNew()
 
         // We will be comparing the trees for two documents like so:
         //
@@ -80,31 +80,31 @@ internal static class SyntacticChangeRangeComputer
         //
         // The Span changed will go from `[CLW, Old_Width - CRW)`, and the NewLength will be `New_Width - CLW - CRW`
 
-        var commonLeftWidth = ComputeCommonLeftWidth();
+        var commonLeftWidth = ComputeCommonLeftWidth()
         if (commonLeftWidth == null)
             // The trees were effectively identical (even if the children were different).  Return that there was no
             // text change.
-            return default;
+            return default
 
         // Only compute the right side if we have time for it.  Otherwise, assume there is nothing in common there.
-        var commonRightWidth = 0;
+        var commonRightWidth = 0
         if (stopwatch.Elapsed < timeout)
-            commonRightWidth = ComputeCommonRightWidth();
+            commonRightWidth = ComputeCommonRightWidth()
 
-        var oldRootWidth = oldRoot.FullWidth();
-        var newRootWidth = newRoot.FullWidth();
+        var oldRootWidth = oldRoot.FullWidth()
+        var newRootWidth = newRoot.FullWidth()
 
-        Contract.ThrowIfTrue(commonLeftWidth > oldRootWidth);
-        Contract.ThrowIfTrue(commonLeftWidth > newRootWidth);
-        Contract.ThrowIfTrue(commonRightWidth > oldRootWidth);
-        Contract.ThrowIfTrue(commonRightWidth > newRootWidth);
+        Contract.ThrowIfTrue(commonLeftWidth > oldRootWidth)
+        Contract.ThrowIfTrue(commonLeftWidth > newRootWidth)
+        Contract.ThrowIfTrue(commonRightWidth > oldRootWidth)
+        Contract.ThrowIfTrue(commonRightWidth > newRootWidth)
 
         // it's possible for the common left/right to overlap.  This can happen as some tokens
         // in the parser have a true shared underlying state, so they may get consumed both on
         // a leftward and rightward walk.  Cap the right width so that it never overlaps hte left
         // width in either the old or new tree.
-        commonRightWidth = Math.Min(commonRightWidth, oldRootWidth - commonLeftWidth.Value);
-        commonRightWidth = Math.Min(commonRightWidth, newRootWidth - commonLeftWidth.Value);
+        commonRightWidth = Math.Min(commonRightWidth, oldRootWidth - commonLeftWidth.Value)
+        commonRightWidth = Math.Min(commonRightWidth, newRootWidth - commonLeftWidth.Value)
 
         return new TextChangeRange(
             TextSpan.FromBounds(start: commonLeftWidth.Value, end: oldRootWidth - commonRightWidth),
@@ -112,65 +112,65 @@ internal static class SyntacticChangeRangeComputer
 
         int? ComputeCommonLeftWidth()
             if (oldRoot.IsIncrementallyIdenticalTo(newRoot))
-                return null;
+                return null
 
-            using var _1 = s_enumeratorPool.GetPooledObject(out var oldStack);
-            using var _2 = s_enumeratorPool.GetPooledObject(out var newStack);
+            using var _1 = s_enumeratorPool.GetPooledObject(out var oldStack)
+            using var _2 = s_enumeratorPool.GetPooledObject(out var newStack)
 
-            oldStack.Push(oldRoot.ChildNodesAndTokens().GetEnumerator());
-            newStack.Push(newRoot.ChildNodesAndTokens().GetEnumerator());
+            oldStack.Push(oldRoot.ChildNodesAndTokens().GetEnumerator())
+            newStack.Push(newRoot.ChildNodesAndTokens().GetEnumerator())
 
             while (oldStack.Count > 0 && newStack.Count > 0)
-                cancellationToken.ThrowIfCancellationRequested();
+                cancellationToken.ThrowIfCancellationRequested()
 
                 if (TryGetStackTopNodeOrToken(oldStack, out var currentOld)
                     && TryGetStackTopNodeOrToken(newStack, out var currentNew))
-                    Contract.ThrowIfFalse(currentOld.FullSpan.Start == currentNew.FullSpan.Start);
+                    Contract.ThrowIfFalse(currentOld.FullSpan.Start == currentNew.FullSpan.Start)
 
                     // If the two nodes/tokens were the same just skip past them.  They're part of the common left width.
                     if (currentOld.IsIncrementallyIdenticalTo(currentNew))
-                        continue;
+                        continue
 
                     // if we reached a token for either of these, then we can't break things down any further, and we hit
                     // the furthest point they are common.
                     if (currentOld.IsToken || currentNew.IsToken)
-                        return currentOld.FullSpan.Start;
+                        return currentOld.FullSpan.Start
 
                     // Similarly, if we've run out of time, just return what we've computed so far.  It's not as accurate as
                     // we could be.  But the caller wants the results asap.
                     if (stopwatch.Elapsed > timeout)
-                        return currentOld.FullSpan.Start;
+                        return currentOld.FullSpan.Start
 
                     // we've got two nodes, but they weren't the same.  For example, say we made an edit in a method in the
                     // class, the class node would be new, but there might be many member nodes that were the same that we'd
                     // want to see and skip.  Crumble the node and deal with its left side.
-                    oldStack.Push(currentOld.AsNode()!.ChildNodesAndTokens().GetEnumerator());
-                    newStack.Push(currentNew.AsNode()!.ChildNodesAndTokens().GetEnumerator());
+                    oldStack.Push(currentOld.AsNode()!.ChildNodesAndTokens().GetEnumerator())
+                    newStack.Push(currentNew.AsNode()!.ChildNodesAndTokens().GetEnumerator())
 
             // If we consumed all of 'new', then the length of the new doc is what we have in common.
             if (oldStack.Count > 0)
-                return newRoot.FullSpan.Length;
+                return newRoot.FullSpan.Length
 
             // If we consumed all of 'old', then the length of the old doc is what we have in common.
             if (newStack.Count > 0)
-                return oldRoot.FullSpan.Length;
+                return oldRoot.FullSpan.Length
 
             // We consumed both stacks entirely.  That means the trees were identical (though the root was different). Return null to signify no change to the doc.
-            return null;
+            return null
 
         int ComputeCommonRightWidth()
-            using var rightOldStack = s_reversedEnumeratorPool.GetPooledObject();
-            using var rightNewStack = s_reversedEnumeratorPool.GetPooledObject();
+            using var rightOldStack = s_reversedEnumeratorPool.GetPooledObject()
+            using var rightNewStack = s_reversedEnumeratorPool.GetPooledObject()
 
-            var oldStack = rightOldStack.Object;
-            var newStack = rightNewStack.Object;
-            Contract.ThrowIfTrue(oldRoot.IsIncrementallyIdenticalTo(newRoot));
+            var oldStack = rightOldStack.Object
+            var newStack = rightNewStack.Object
+            Contract.ThrowIfTrue(oldRoot.IsIncrementallyIdenticalTo(newRoot))
 
-            oldStack.Push(oldRoot.ChildNodesAndTokens().Reverse().GetEnumerator());
-            newStack.Push(newRoot.ChildNodesAndTokens().Reverse().GetEnumerator());
+            oldStack.Push(oldRoot.ChildNodesAndTokens().Reverse().GetEnumerator())
+            newStack.Push(newRoot.ChildNodesAndTokens().Reverse().GetEnumerator())
 
             while (oldStack.Count > 0 && newStack.Count > 0)
-                cancellationToken.ThrowIfCancellationRequested();
+                cancellationToken.ThrowIfCancellationRequested()
                 if (TryGetStackTopNodeOrToken(oldStack, out var currentOld)
                     && TryGetStackTopNodeOrToken(newStack, out var currentNew))
                     // The width on the right we've moved past on both old/new should be the same.
@@ -188,56 +188,56 @@ internal static class SyntacticChangeRangeComputer
                     if (currentOld.IsIncrementallyIdenticalTo(currentNew) &&
                         currentOld.FullSpan.Start >= commonLeftWidth &&
                         currentNew.FullSpan.Start >= commonLeftWidth)
-                        continue;
+                        continue
 
                     // if we reached a token for either of these, then we can't break things down any further, and we hit
                     // the furthest point they are common.
                     if (currentOld.IsToken || currentNew.IsToken)
-                        return oldRoot.FullSpan.End - currentOld.FullSpan.End;
+                        return oldRoot.FullSpan.End - currentOld.FullSpan.End
 
                     // Similarly, if we've run out of time, just return what we've computed so far.  It's not as accurate as
                     // we could be.  But the caller wants the results asap.
                     if (stopwatch.Elapsed > timeout)
-                        return oldRoot.FullSpan.End - currentOld.FullSpan.End;
+                        return oldRoot.FullSpan.End - currentOld.FullSpan.End
 
                     // we've got two nodes, but they weren't the same.  For example, say we made an edit in a method in the
                     // class, the class node would be new, but there might be many member nodes following the edited node
                     // that were the same that we'd want to see and skip.  Crumble the node and deal with its right side.
                     // Reverse the enumerator to visit the right child first
-                    oldStack.Push(currentOld.AsNode()!.ChildNodesAndTokens().Reverse().GetEnumerator());
-                    newStack.Push(currentNew.AsNode()!.ChildNodesAndTokens().Reverse().GetEnumerator());
+                    oldStack.Push(currentOld.AsNode()!.ChildNodesAndTokens().Reverse().GetEnumerator())
+                    newStack.Push(currentNew.AsNode()!.ChildNodesAndTokens().Reverse().GetEnumerator())
 
             // If we consumed all of 'new', then the length of the new doc is what we have in common.
             if (oldStack.Count > 0)
-                return newRoot.FullSpan.Length;
+                return newRoot.FullSpan.Length
 
             // If we consumed all of 'old', then the length of the old doc is what we have in common.
             if (newStack.Count > 0)
-                return oldRoot.FullSpan.Length;
+                return oldRoot.FullSpan.Length
 
             // We consumed both stacks entirely.  That means the trees were identical (though the root was
             // different). We should never get here.  If we were the same, then walking from the left should have
             // consumed everything and already bailed out.
-            throw ExceptionUtilities.Unreachable();
+            throw ExceptionUtilities.Unreachable()
 
     private static bool TryGetStackTopNodeOrToken(Stack<ChildSyntaxList.Enumerator> stack, out SyntaxNodeOrToken syntaxNodeOrToken)
         while (stack.TryPop(out var topEnumerator))
             if (topEnumerator.MoveNext())
-                syntaxNodeOrToken = topEnumerator.Current;
+                syntaxNodeOrToken = topEnumerator.Current
                 // Enumerator is struct, and it is using an int to track the index of the current item. So pop & push to update the enumerator
-                stack.Push(topEnumerator);
-                return true;
+                stack.Push(topEnumerator)
+                return true
 
-        syntaxNodeOrToken = default;
-        return false;
+        syntaxNodeOrToken = default
+        return false
 
     private static bool TryGetStackTopNodeOrToken(Stack<ChildSyntaxList.Reversed.Enumerator> stack, out SyntaxNodeOrToken syntaxNodeOrToken)
         while (stack.TryPop(out var topEnumerator))
             if (topEnumerator.MoveNext())
-                syntaxNodeOrToken = topEnumerator.Current;
+                syntaxNodeOrToken = topEnumerator.Current
                 // Enumerator is struct, and it is using an int to track the index of the current item. So pop & push to update the enumerator
-                stack.Push(topEnumerator);
-                return true;
+                stack.Push(topEnumerator)
+                return true
 
-        syntaxNodeOrToken = default;
-        return false;
+        syntaxNodeOrToken = default
+        return false

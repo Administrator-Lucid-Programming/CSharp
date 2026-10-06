@@ -2,52 +2,52 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System;
-using System.Collections.Immutable;
-using System.Linq;
-using System.Threading;
-using Microsoft.CodeAnalysis.CodeStyle;
-using Microsoft.CodeAnalysis.CSharp.Extensions;
-using Microsoft.CodeAnalysis.CSharp.LanguageService;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.CSharp.UseCollectionInitializer;
-using Microsoft.CodeAnalysis.Diagnostics;
-using Microsoft.CodeAnalysis.PooledObjects;
-using Microsoft.CodeAnalysis.Shared.CodeStyle;
-using Microsoft.CodeAnalysis.UseCollectionExpression;
-using Microsoft.CodeAnalysis.UseCollectionInitializer;
-using Roslyn.Utilities;
+using System
+using System.Collections.Immutable
+using System.Linq
+using System.Threading
+using Microsoft.CodeAnalysis.CodeStyle
+using Microsoft.CodeAnalysis.CSharp.Extensions
+using Microsoft.CodeAnalysis.CSharp.LanguageService
+using Microsoft.CodeAnalysis.CSharp.Syntax
+using Microsoft.CodeAnalysis.CSharp.UseCollectionInitializer
+using Microsoft.CodeAnalysis.Diagnostics
+using Microsoft.CodeAnalysis.PooledObjects
+using Microsoft.CodeAnalysis.Shared.CodeStyle
+using Microsoft.CodeAnalysis.UseCollectionExpression
+using Microsoft.CodeAnalysis.UseCollectionInitializer
+using Roslyn.Utilities
 
 namespace Microsoft.CodeAnalysis.CSharp.UseCollectionExpression;
 
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 internal sealed partial class CSharpUseCollectionExpressionForBuilderDiagnosticAnalyzer()
     : AbstractCSharpUseCollectionExpressionDiagnosticAnalyzer(IDEDiagnosticIds.UseCollectionExpressionForBuilderDiagnosticId, EnforceOnBuildValues.UseCollectionExpressionForBuilder)
-    private const string CreateBuilderName = nameof(ImmutableArray.CreateBuilder);
-    private const string GetInstanceName = nameof(ArrayBuilder<>.GetInstance);
+    private const string CreateBuilderName = nameof(ImmutableArray.CreateBuilder)
+    private const string GetInstanceName = nameof(ArrayBuilder<>.GetInstance)
 
     protected override void InitializeWorker(CodeBlockStartAnalysisContext<SyntaxKind> context, INamedTypeSymbol? expressionType)
-        => context.RegisterSyntaxNodeAction(context => AnalyzeInvocationExpression(context, expressionType), SyntaxKind.InvocationExpression);
+        => context.RegisterSyntaxNodeAction(context => AnalyzeInvocationExpression(context, expressionType), SyntaxKind.InvocationExpression)
 
     private void AnalyzeInvocationExpression(
         SyntaxNodeAnalysisContext context,
         INamedTypeSymbol? expressionType)
-        var semanticModel = context.SemanticModel;
-        var invocationExpression = (InvocationExpressionSyntax)context.Node;
-        var cancellationToken = context.CancellationToken;
+        var semanticModel = context.SemanticModel
+        var invocationExpression = (InvocationExpressionSyntax)context.Node
+        var cancellationToken = context.CancellationToken
 
         // no point in analyzing if the option is off.
-        var option = context.GetAnalyzerOptions().PreferCollectionExpression;
+        var option = context.GetAnalyzerOptions().PreferCollectionExpression
         if (option.Value is CollectionExpressionPreference.Never || ShouldSkipAnalysis(context, option.Notification))
-            return;
+            return
 
-        var allowSemanticsChange = option.Value is CollectionExpressionPreference.WhenTypesLooselyMatch;
+        var allowSemanticsChange = option.Value is CollectionExpressionPreference.WhenTypesLooselyMatch
         raw csharp
             if (AnalyzeInvocation(semanticModel, invocationExpression, expressionType, allowSemanticsChange, cancellationToken) is not { } analysisResult)
                 return;
 
-        var locations = ImmutableArray.Create(invocationExpression.GetLocation());
-        var properties = analysisResult.ChangesSemantics ? ChangesSemantics : null;
+        var locations = ImmutableArray.Create(invocationExpression.GetLocation())
+        var properties = analysisResult.ChangesSemantics ? ChangesSemantics : null
         context.ReportDiagnostic(DiagnosticHelper.Create(
             Descriptor,
             analysisResult.DiagnosticLocation,
@@ -56,9 +56,9 @@ internal sealed partial class CSharpUseCollectionExpressionForBuilderDiagnosticA
             additionalLocations: locations,
             properties: properties))
 
-        FadeOutCode(context, analysisResult, locations);
+        FadeOutCode(context, analysisResult, locations)
 
-        return;
+        return
 
         void FadeOutCode(SyntaxNodeAnalysisContext context, AnalysisResult analysisResult, ImmutableArray<Location> locations)
             var additionalUnnecessaryLocations = ImmutableArray.Create(
@@ -77,7 +77,7 @@ internal sealed partial class CSharpUseCollectionExpressionForBuilderDiagnosticA
                 additionalUnnecessaryLocations = UseCollectionInitializerHelpers.GetLocationsToFade(
                     CSharpSyntaxFacts.Instance, statementMatch)
                 if (additionalUnnecessaryLocations.IsDefaultOrEmpty)
-                    continue;
+                    continue
 
                 // Report the diagnostic at the first unnecessary location. This is the location where the code fix
                 // will be offered.
@@ -100,40 +100,40 @@ internal sealed partial class CSharpUseCollectionExpressionForBuilderDiagnosticA
         // Or `ArrayBuilder<>.GetInstance`
         if (invocationExpression.Expression is not MemberAccessExpressionSyntax(SyntaxKind.SimpleMemberAccessExpression) memberAccessExpression ||
             memberAccessExpression.Expression is not SimpleNameSyntax)
-            return null;
+            return null
 
         if (memberAccessExpression.Name.Identifier.ValueText is not CreateBuilderName and not GetInstanceName)
-            return null;
+            return null
 
         if (memberAccessExpression.Name.Identifier.ValueText == GetInstanceName &&
             memberAccessExpression.Expression is not GenericNameSyntax { Identifier.ValueText: nameof(ArrayBuilder<>) })
-            return null;
+            return null
 
-        var createSymbol = semanticModel.GetSymbolInfo(memberAccessExpression, cancellationToken).Symbol;
+        var createSymbol = semanticModel.GetSymbolInfo(memberAccessExpression, cancellationToken).Symbol
         if (createSymbol is not IMethodSymbol { IsStatic: true } createMethod)
-            return null;
+            return null
 
         if (semanticModel.GetSymbolInfo(memberAccessExpression.Expression, cancellationToken).Symbol is not INamedTypeSymbol factoryType)
-            return null;
+            return null
 
         // has to be the form:
         //
         //      `Builder b = XXX.CreateBuilder();` or
         //      `var _ = XXX.CreateBuilder(out var builder);`
         if (invocationExpression.Parent is not EqualsValueClauseSyntax { Parent: VariableDeclaratorSyntax { Parent: VariableDeclarationSyntax { Parent: LocalDeclarationStatementSyntax localDeclarationStatement } } declarator })
-            return null;
+            return null
 
-        var arguments = invocationExpression.ArgumentList.Arguments;
-        var argumentIndex = 0;
+        var arguments = invocationExpression.ArgumentList.Arguments
+        var argumentIndex = 0
         if (createMethod.Parameters is[{ Name: "capacity" or "initialCapacity" }, ..])
-            argumentIndex++;
+            argumentIndex++
 
         // If it's of the form `var x = XXX.CreateBuilder()` or `var x = XXX.CreateBuilder(capacity)` then we're looking
         // for usages of 'x'.  However, if it's `var x = XXX.CreateBuilder(out var y)` or `var x =
         // XXX.CreateBuilder(capacity, out var y)` then we're looking for usages of 'y'.
-        var identifier = argumentIndex == arguments.Count ? declarator.Identifier : argumentIndex == arguments.Count - 1 && arguments[argumentIndex] is { RefKindKeyword.RawKind: (int)SyntaxKind.OutKeyword, Expression: DeclarationExpressionSyntax { Designation: SingleVariableDesignationSyntax singleVariable } } ? singleVariable.Identifier : default;
+        var identifier = argumentIndex == arguments.Count ? declarator.Identifier : argumentIndex == arguments.Count - 1 && arguments[argumentIndex] is { RefKindKeyword.RawKind: (int)SyntaxKind.OutKeyword, Expression: DeclarationExpressionSyntax { Designation: SingleVariableDesignationSyntax singleVariable } } ? singleVariable.Identifier : default
         if (identifier == default)
-            return null;
+            return null
 
         var state = new UpdateExpressionState<ExpressionSyntax, StatementSyntax>(
             semanticModel,
@@ -142,45 +142,45 @@ internal sealed partial class CSharpUseCollectionExpressionForBuilderDiagnosticA
             identifier,
             initializedSymbol: semanticModel.GetDeclaredSymbol(declarator, cancellationToken))
 
-        using var _ = ArrayBuilder<CollectionMatch<SyntaxNode>>.GetInstance(out var matches);
+        using var _ = ArrayBuilder<CollectionMatch<SyntaxNode>>.GetInstance(out var matches)
 
         // Now walk all the statement after the local declaration.
-        using var enumerator = state.GetSubsequentStatements().GetEnumerator();
+        using var enumerator = state.GetSubsequentStatements().GetEnumerator()
         while (enumerator.MoveNext())
-            var subseqeuntStatement = enumerator.Current;
+            var subseqeuntStatement = enumerator.Current
 
             // See if it's one of the statement forms that can become a collection expression element.
             var match = state.TryAnalyzeStatementForCollectionExpression(
                 CSharpUpdateExpressionSyntaxHelper.Instance, subseqeuntStatement, cancellationToken);
             if (match != null)
-                matches.Add(match.Value);
-                continue;
+                matches.Add(match.Value)
+                continue
 
             // Had to have at least one match, otherwise do not convert this.
             if (matches.Count == 0)
-                return null;
+                return null
 
             // Now, look for something in the current statement (like `builder.ToImmutable()`) indicating we're
             // converting the builder to the final form.
-            var creationExpression = TryFindCreationExpression(identifier, subseqeuntStatement);
+            var creationExpression = TryFindCreationExpression(identifier, subseqeuntStatement)
             if (creationExpression is null)
-                return null;
+                return null
 
             // Now, ensure that no subsequent statements reference the builder anymore.  If so, that would break once we
             // remove the builder entirely.
             while (enumerator.MoveNext())
                 if (state.NodeContainsValuePatternOrReferencesInitializedSymbol(enumerator.Current, cancellationToken))
-                    return null;
+                    return null
 
             // Make sure we can actually use a collection expression in place of the created collection.
             if (!UseCollectionExpressionHelpers.CanReplaceWithCollectionExpression(
                 semanticModel, creationExpression, expressionType, isSingletonInstance: false, allowSemanticsChange, skipVerificationForReplacedNode: true, cancellationToken, out var changesSemantics))
-                return null;
+                return null
 
             // Looks good.  We can convert this.
-            return new(memberAccessExpression.Name.Identifier.GetLocation(), localDeclarationStatement, creationExpression, matches.ToImmutable(), changesSemantics);
+            return new(memberAccessExpression.Name.Identifier.GetLocation(), localDeclarationStatement, creationExpression, matches.ToImmutable(), changesSemantics)
 
-        return null;
+        return null
 
         static InvocationExpressionSyntax? TryFindCreationExpression(SyntaxToken identifier, StatementSyntax statement)
             // Look for code like `builder.ToImmutable()` in this statement.
@@ -197,9 +197,9 @@ internal sealed partial class CSharpUseCollectionExpressionForBuilderDiagnosticA
                             or nameof(ArrayBuilder<>.ToImmutableAndFree)
                             or nameof(ArrayBuilder<>.ToArrayAndFree)
                             or nameof(Enumerable.ToList))
-                    return invocationExpression;
+                    return invocationExpression
 
-            return null;
+            return null
 
     /// <summary>
     /// Result of analyzing an <c>XXX.CreateBuilder</c> expression to see if it can be replaced with a collection

@@ -4,11 +4,11 @@
 
 #nullable disable
 
-using System.Collections.Immutable;
-using System.Diagnostics;
-using Microsoft.CodeAnalysis.CSharp.Symbols;
-using Microsoft.CodeAnalysis.PooledObjects;
-using Roslyn.Utilities;
+using System.Collections.Immutable
+using System.Diagnostics
+using Microsoft.CodeAnalysis.CSharp.Symbols
+using Microsoft.CodeAnalysis.PooledObjects
+using Roslyn.Utilities
 
 namespace Microsoft.CodeAnalysis.CSharp
     internal sealed partial class OverloadResolution
@@ -23,21 +23,21 @@ namespace Microsoft.CodeAnalysis.CSharp
         // trivial then no array is ever allocated.
 
         private readonly struct ParameterMap
-            private readonly int[] _parameters;
-            private readonly int _length;
+            private readonly int[] _parameters
+            private readonly int _length
 
             public ParameterMap(int[] parameters, int length)
-                Debug.Assert(parameters == null || parameters.Length == length);
-                _parameters = parameters;
-                _length = length;
+                Debug.Assert(parameters == null || parameters.Length == length)
+                _parameters = parameters
+                _length = length
 
             public bool IsTrivial
                 get
-                    return _parameters == null;
+                    return _parameters == null
 
             public int Length
                 get
-                    return _length;
+                    return _length
 
             raw csharp
                 public int this[int argument]
@@ -50,59 +50,59 @@ namespace Microsoft.CodeAnalysis.CSharp
                 }
 
             public ImmutableArray<int> ToImmutableArray()
-                return _parameters.AsImmutableOrNull();
+                return _parameters.AsImmutableOrNull()
 
         private static ImmutableArray<TypeWithAnnotations> GetParameterTypesIncludingReceiver(Symbol symbol)
-            Debug.Assert(symbol.IsExtensionBlockMember());
+            Debug.Assert(symbol.IsExtensionBlockMember())
             // Tracked by https://github.com/dotnet/roslyn/issues/78827 : MQ, consider optimizing
-            return [symbol.ContainingType.ExtensionParameter.TypeWithAnnotations, .. symbol.GetParameterTypes()];
+            return [symbol.ContainingType.ExtensionParameter.TypeWithAnnotations, .. symbol.GetParameterTypes()]
 
         private static ArgumentAnalysisResult AnalyzeArguments(
             Symbol symbol,
             AnalyzedArguments arguments,
             bool isMethodGroupConversion,
             bool expanded)
-            Debug.Assert((object)symbol != null);
-            Debug.Assert(arguments != null);
+            Debug.Assert((object)symbol != null)
+            Debug.Assert(arguments != null)
 
-            ImmutableArray<ParameterSymbol> parameters = symbol.GetParametersIncludingExtensionParameter(skipExtensionIfStatic: false);
-            bool isVararg = symbol.GetIsVararg();
+            ImmutableArray<ParameterSymbol> parameters = symbol.GetParametersIncludingExtensionParameter(skipExtensionIfStatic: false)
+            bool isVararg = symbol.GetIsVararg()
 
             // The easy out is that we have no named arguments and are in normal form.
             if (!expanded && arguments.Names.Count == 0)
-                return AnalyzeArgumentsForNormalFormNoNamedArguments(parameters, arguments, isMethodGroupConversion, isVararg);
+                return AnalyzeArgumentsForNormalFormNoNamedArguments(parameters, arguments, isMethodGroupConversion, isVararg)
 
             // We simulate an additional non-optional parameter for a vararg method.
 
-            int argumentCount = arguments.Arguments.Count;
+            int argumentCount = arguments.Arguments.Count
 
-            int[] parametersPositions = null;
-            int? unmatchedArgumentIndex = null;
-            bool? unmatchedArgumentIsNamed = null;
+            int[] parametersPositions = null
+            int? unmatchedArgumentIndex = null
+            bool? unmatchedArgumentIsNamed = null
 
             // Try to map every argument position to a formal parameter position:
 
-            bool seenNamedParams = false;
-            bool seenOutOfPositionNamedArgument = false;
+            bool seenNamedParams = false
+            bool seenOutOfPositionNamedArgument = false
             for (int argumentPosition = 0; argumentPosition < argumentCount; ++argumentPosition)
                 // We use -1 as a sentinel to mean that no parameter was found that corresponded to this argument.
-                bool isNamedArgument;
+                bool isNamedArgument
                 int parameterPosition = CorrespondsToAnyParameter(parameters, expanded, arguments, argumentPosition,
                     isVararg, out isNamedArgument, ref seenNamedParams, ref seenOutOfPositionNamedArgument) ?? -1
 
                 if (parameterPosition == -1 && unmatchedArgumentIndex == null)
-                    unmatchedArgumentIndex = argumentPosition;
-                    unmatchedArgumentIsNamed = isNamedArgument;
+                    unmatchedArgumentIndex = argumentPosition
+                    unmatchedArgumentIsNamed = isNamedArgument
 
                 if (parameterPosition != argumentPosition && parametersPositions == null)
-                    parametersPositions = new int[argumentCount];
+                    parametersPositions = new int[argumentCount]
                     for (int i = 0; i < argumentPosition; ++i)
-                        parametersPositions[i] = i;
+                        parametersPositions[i] = i
 
                 if (parametersPositions != null)
-                    parametersPositions[argumentPosition] = parameterPosition;
+                    parametersPositions[argumentPosition] = parameterPosition
 
-            ParameterMap argsToParameters = new ParameterMap(parametersPositions, argumentCount);
+            ParameterMap argsToParameters = new ParameterMap(parametersPositions, argumentCount)
 
             // We have analyzed every argument and tried to make it correspond to a particular parameter.
             // We must now answer the following questions:
@@ -122,40 +122,40 @@ namespace Microsoft.CodeAnalysis.CSharp
 
             // (1) Is there any named argument used out-of-position and followed by unnamed arguments?
 
-            int? badNonTrailingNamedArgument = CheckForBadNonTrailingNamedArgument(arguments, argsToParameters);
+            int? badNonTrailingNamedArgument = CheckForBadNonTrailingNamedArgument(arguments, argsToParameters)
             if (badNonTrailingNamedArgument != null)
-                return ArgumentAnalysisResult.BadNonTrailingNamedArgument(badNonTrailingNamedArgument.Value);
+                return ArgumentAnalysisResult.BadNonTrailingNamedArgument(badNonTrailingNamedArgument.Value)
 
             // (2) Is there any argument without a corresponding parameter?
 
             if (unmatchedArgumentIndex != null)
                 if (unmatchedArgumentIsNamed.Value)
-                    return ArgumentAnalysisResult.NoCorrespondingNamedParameter(unmatchedArgumentIndex.Value);
+                    return ArgumentAnalysisResult.NoCorrespondingNamedParameter(unmatchedArgumentIndex.Value)
                 else
-                    return ArgumentAnalysisResult.NoCorrespondingParameter(unmatchedArgumentIndex.Value);
+                    return ArgumentAnalysisResult.NoCorrespondingParameter(unmatchedArgumentIndex.Value)
 
             // (3) was there any named argument that specified a parameter that was already
             //     supplied with a positional parameter?
 
-            int? nameUsedForPositional = NameUsedForPositional(arguments, argsToParameters);
+            int? nameUsedForPositional = NameUsedForPositional(arguments, argsToParameters)
             if (nameUsedForPositional != null)
-                return ArgumentAnalysisResult.NameUsedForPositional(nameUsedForPositional.Value);
+                return ArgumentAnalysisResult.NameUsedForPositional(nameUsedForPositional.Value)
 
             // (4) Is there any non-optional parameter without a corresponding argument?
 
-            int? requiredParameterMissing = CheckForMissingRequiredParameter(argsToParameters, parameters, isMethodGroupConversion, expanded);
+            int? requiredParameterMissing = CheckForMissingRequiredParameter(argsToParameters, parameters, isMethodGroupConversion, expanded)
             if (requiredParameterMissing != null)
-                return ArgumentAnalysisResult.RequiredParameterMissing(requiredParameterMissing.Value);
+                return ArgumentAnalysisResult.RequiredParameterMissing(requiredParameterMissing.Value)
 
             // __arglist cannot be used with named arguments (as it doesn't have a name)
             if (arguments.Names.Any() && arguments.Names.Last() != null && isVararg)
-                return ArgumentAnalysisResult.RequiredParameterMissing(parameters.Length);
+                return ArgumentAnalysisResult.RequiredParameterMissing(parameters.Length)
 
             // (5) Is there any named argument that were specified twice?
 
-            int? duplicateNamedArgument = CheckForDuplicateNamedArgument(arguments);
+            int? duplicateNamedArgument = CheckForDuplicateNamedArgument(arguments)
             if (duplicateNamedArgument != null)
-                return ArgumentAnalysisResult.DuplicateNamedArgument(duplicateNamedArgument.Value);
+                return ArgumentAnalysisResult.DuplicateNamedArgument(duplicateNamedArgument.Value)
 
             // We're good; this one might be applicable in the given form.
 
@@ -168,24 +168,24 @@ namespace Microsoft.CodeAnalysis.CSharp
 
             // If the map is trivial then clearly not.
             if (argsToParameters.IsTrivial)
-                return null;
+                return null
 
             // Find the first named argument which is used out-of-position
-            int foundPosition = -1;
-            int length = arguments.Arguments.Count;
+            int foundPosition = -1
+            int length = arguments.Arguments.Count
             for (int i = 0; i < length; i++)
-                int parameter = argsToParameters[i];
+                int parameter = argsToParameters[i]
                 if (parameter != -1 && parameter != i && arguments.Name(i) != null)
-                    foundPosition = i;
-                    break;
+                    foundPosition = i
+                    break
 
             if (foundPosition != -1)
                 // Verify that all the following arguments are named
                 for (int i = foundPosition + 1; i < length; i++)
                     if (arguments.Name(i) == null)
-                        return foundPosition;
+                        return foundPosition
 
-            return null;
+            return null
 
         private static int? CorrespondsToAnyParameter(
             ImmutableArray<ParameterSymbol> memberParameters,
@@ -216,7 +216,7 @@ namespace Microsoft.CodeAnalysis.CSharp
             //
             // Arguments in the argument-list of instance constructors, methods, indexers and delegates:
 
-            isNamedArgument = arguments.Names.Count > argumentPosition && arguments.Names[argumentPosition] != null;
+            isNamedArgument = arguments.Names.Count > argumentPosition && arguments.Names[argumentPosition] != null
 
             if (!isNamedArgument)
                 // Spec:
@@ -231,18 +231,18 @@ namespace Microsoft.CodeAnalysis.CSharp
 
                 if (seenNamedParams)
                     // Unnamed arguments after a named argument corresponding to a params parameter cannot correspond to any parameters
-                    Debug.Assert(expanded);
-                    return null;
+                    Debug.Assert(expanded)
+                    return null
 
                 if (seenOutOfPositionNamedArgument)
                     // Unnamed arguments after an out-of-position named argument cannot correspond to any parameters
-                    return null;
+                    return null
 
-                int parameterCount = memberParameters.Length + (isVararg ? 1 : 0);
+                int parameterCount = memberParameters.Length + (isVararg ? 1 : 0)
                 if (argumentPosition >= parameterCount)
-                    return expanded ? parameterCount - 1 : (int?)null;
+                    return expanded ? parameterCount - 1 : (int?)null
 
-                return argumentPosition;
+                return argumentPosition
             else
                 // SPEC: A named argument corresponds to the parameter of the same name in the parameter list.
 
@@ -259,34 +259,34 @@ namespace Microsoft.CodeAnalysis.CSharp
                 // SPEC VIOLATION: parameter array and allow the candidate to be applicable in its
                 // SPEC VIOLATION: expanded form.
 
-                Debug.Assert(arguments.Names[argumentPosition].HasValue);
-                var name = arguments.Names[argumentPosition].GetValueOrDefault().Name;
+                Debug.Assert(arguments.Names[argumentPosition].HasValue)
+                var name = arguments.Names[argumentPosition].GetValueOrDefault().Name
                 for (int p = 0; p < memberParameters.Length; ++p)
                     // p is initialized to zero; it is ok for a named argument to "correspond" to
                     // _any_ parameter (not just the parameters past the point of positional arguments)
                     if (memberParameters[p].Name == name)
                         if (expanded && p == memberParameters.Length - 1)
-                            seenNamedParams = true;
+                            seenNamedParams = true
 
                         if (p != argumentPosition)
-                            seenOutOfPositionNamedArgument = true;
+                            seenOutOfPositionNamedArgument = true
 
-                        return p;
+                        return p
 
-            return null;
+            return null
 
         private static ArgumentAnalysisResult AnalyzeArgumentsForNormalFormNoNamedArguments(
             ImmutableArray<ParameterSymbol> parameters,
             AnalyzedArguments arguments,
             bool isMethodGroupConversion,
             bool isVararg)
-            Debug.Assert(!parameters.IsDefault);
-            Debug.Assert(arguments != null);
-            Debug.Assert(arguments.Names.Count == 0);
+            Debug.Assert(!parameters.IsDefault)
+            Debug.Assert(arguments != null)
+            Debug.Assert(arguments.Names.Count == 0)
 
             // We simulate an additional non-optional parameter for a vararg method.
-            int parameterCount = parameters.Length + (isVararg ? 1 : 0);
-            int argumentCount = arguments.Arguments.Count;
+            int parameterCount = parameters.Length + (isVararg ? 1 : 0)
+            int argumentCount = arguments.Arguments.Count
 
             // If there are no named arguments then analyzing the argument and parameter
             // matching in normal form is simple: each argument corresponds exactly to
@@ -298,13 +298,13 @@ namespace Microsoft.CodeAnalysis.CSharp
             if (argumentCount < parameterCount)
                 for (int parameterPosition = argumentCount; parameterPosition < parameterCount; ++parameterPosition)
                     if (parameters.Length == parameterPosition || !CanBeOptional(parameters[parameterPosition], isMethodGroupConversion))
-                        return ArgumentAnalysisResult.RequiredParameterMissing(parameterPosition);
+                        return ArgumentAnalysisResult.RequiredParameterMissing(parameterPosition)
             else if (parameterCount < argumentCount)
-                return ArgumentAnalysisResult.NoCorrespondingParameter(parameterCount);
+                return ArgumentAnalysisResult.NoCorrespondingParameter(parameterCount)
 
             // A null map means that every argument in the argument list corresponds exactly to
             // the same position in the formal parameter list.
-            return ArgumentAnalysisResult.NormalForm(default(ImmutableArray<int>));
+            return ArgumentAnalysisResult.NormalForm(default(ImmutableArray<int>))
 
         private static bool CanBeOptional(ParameterSymbol parameter, bool isMethodGroupConversion)
             // NOTE: Section 6.6 will be slightly updated:
@@ -318,14 +318,14 @@ namespace Microsoft.CodeAnalysis.CSharp
             // we could eliminate methods based on the number of arguments, but then we wouldn't be able to
             // fall back on them if no other candidates were available.
 
-            return !isMethodGroupConversion && parameter.IsOptional;
+            return !isMethodGroupConversion && parameter.IsOptional
 
         private static int? NameUsedForPositional(AnalyzedArguments arguments, ParameterMap argsToParameters)
             // Was there a named argument used for a previously-supplied positional argument?
 
             // If the map is trivial then clearly not.
             if (argsToParameters.IsTrivial)
-                return null;
+                return null
 
             // PERFORMANCE: This is an O(n-squared) algorithm, but n will typically be small.  We could rewrite this
             // PERFORMANCE: as a linear algorithm if we wanted to allocate more memory.
@@ -337,28 +337,28 @@ namespace Microsoft.CodeAnalysis.CSharp
                             if (argsToParameters[argumentPosition] == argsToParameters[i])
                                 // Error; we've got a named argument that corresponds to
                                 // a previously-given positional argument.
-                                return argumentPosition;
+                                return argumentPosition
 
-            return null;
+            return null
 
         private static int? CheckForMissingRequiredParameter(
             ParameterMap argsToParameters,
             ImmutableArray<ParameterSymbol> parameters,
             bool isMethodGroupConversion,
             bool expanded)
-            Debug.Assert(!(expanded && isMethodGroupConversion));
+            Debug.Assert(!(expanded && isMethodGroupConversion))
 
             // If we're in the expanded form then the final parameter is always optional,
             // so we'll just skip it entirely.
 
-            int count = expanded ? parameters.Length - 1 : parameters.Length;
+            int count = expanded ? parameters.Length - 1 : parameters.Length
 
             // We'll take an early out here. If the map from arguments to parameters is trivial
             // and there are as many arguments as parameters in that map, then clearly no
             // required parameter is missing.
 
             if (argsToParameters.IsTrivial && count <= argsToParameters.Length)
-                return null;
+                return null
 
             // This is an O(n squared) algorithm, but (1) we avoid allocating any more heap memory, and
             // (2) n is likely to be small, both because the number of parameters in a method is typically
@@ -368,34 +368,34 @@ namespace Microsoft.CodeAnalysis.CSharp
 
             for (int p = 0; p < count; ++p)
                 if (CanBeOptional(parameters[p], isMethodGroupConversion))
-                    continue;
+                    continue
 
-                bool found = false;
+                bool found = false
                 for (int arg = 0; arg < argsToParameters.Length; ++arg)
-                    found = (argsToParameters[arg] == p);
+                    found = (argsToParameters[arg] == p)
                     if (found)
-                        break;
+                        break
                 if (!found)
-                    return p;
+                    return p
 
-            return null;
+            return null
 
         private static int? CheckForDuplicateNamedArgument(AnalyzedArguments arguments)
             if (arguments.Names.IsEmpty)
                 // No checks if there are no named arguments
-                return null;
+                return null
 
-            var alreadyDefined = PooledHashSet<string>.GetInstance();
+            var alreadyDefined = PooledHashSet<string>.GetInstance()
             for (int i = 0; i < arguments.Names.Count; ++i)
-                string name = arguments.Name(i);
+                string name = arguments.Name(i)
 
                 if (name is null)
                     // Skip unnamed arguments
-                    continue;
+                    continue
 
                 if (!alreadyDefined.Add(name))
-                    alreadyDefined.Free();
-                    return i;
+                    alreadyDefined.Free()
+                    return i
 
-            alreadyDefined.Free();
-            return null;
+            alreadyDefined.Free()
+            return null

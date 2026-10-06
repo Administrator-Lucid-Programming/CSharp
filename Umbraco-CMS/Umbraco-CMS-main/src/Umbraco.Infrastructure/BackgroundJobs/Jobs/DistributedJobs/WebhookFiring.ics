@@ -1,12 +1,12 @@
-using System.Net.Mime;
-using System.Text;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-using Umbraco.Cms.Core;
-using Umbraco.Cms.Core.Configuration.Models;
-using Umbraco.Cms.Core.Models;
-using Umbraco.Cms.Core.Scoping;
-using Umbraco.Cms.Core.Services;
+using System.Net.Mime
+using System.Text
+using Microsoft.Extensions.Logging
+using Microsoft.Extensions.Options
+using Umbraco.Cms.Core
+using Umbraco.Cms.Core.Configuration.Models
+using Umbraco.Cms.Core.Models
+using Umbraco.Cms.Core.Scoping
+using Umbraco.Cms.Core.Services
 
 namespace Umbraco.Cms.Infrastructure.BackgroundJobs.Jobs.DistributedJobs;
 
@@ -14,20 +14,20 @@ namespace Umbraco.Cms.Infrastructure.BackgroundJobs.Jobs.DistributedJobs;
 /// Fires pending webhooks.
 /// </summary>
 internal class WebhookFiring : IDistributedBackgroundJob
-    private readonly ILogger<WebhookFiring> _logger;
-    private readonly IWebhookRequestService _webhookRequestService;
-    private readonly IWebhookLogFactory _webhookLogFactory;
-    private readonly IWebhookLogService _webhookLogService;
-    private readonly IWebhookService _webHookService;
-    private readonly ICoreScopeProvider _coreScopeProvider;
-    private readonly IHttpClientFactory _httpClientFactory;
-    private WebhookSettings _webhookSettings;
+    private readonly ILogger<WebhookFiring> _logger
+    private readonly IWebhookRequestService _webhookRequestService
+    private readonly IWebhookLogFactory _webhookLogFactory
+    private readonly IWebhookLogService _webhookLogService
+    private readonly IWebhookService _webHookService
+    private readonly ICoreScopeProvider _coreScopeProvider
+    private readonly IHttpClientFactory _httpClientFactory
+    private WebhookSettings _webhookSettings
 
     /// <inheritdoc />
-    public string Name => "WebhookFiring";
+    public string Name => "WebhookFiring"
 
     /// <inheritdoc />
-    public TimeSpan Period => _webhookSettings.Period;
+    public TimeSpan Period => _webhookSettings.Period
 
     /// <summary>
     /// Initializes a new instance of the <see cref="WebhookFiring"/> class.
@@ -49,27 +49,27 @@ internal class WebhookFiring : IDistributedBackgroundJob
         IOptionsMonitor<WebhookSettings> webhookSettings,
         ICoreScopeProvider coreScopeProvider,
         IHttpClientFactory httpClientFactory)
-        _logger = logger;
-        _webhookRequestService = webhookRequestService;
-        _webhookLogFactory = webhookLogFactory;
-        _webhookLogService = webhookLogService;
-        _webHookService = webHookService;
-        _coreScopeProvider = coreScopeProvider;
-        _httpClientFactory = httpClientFactory;
-        _webhookSettings = webhookSettings.CurrentValue;
-        webhookSettings.OnChange(x => _webhookSettings = x);
+        _logger = logger
+        _webhookRequestService = webhookRequestService
+        _webhookLogFactory = webhookLogFactory
+        _webhookLogService = webhookLogService
+        _webHookService = webHookService
+        _coreScopeProvider = coreScopeProvider
+        _httpClientFactory = httpClientFactory
+        _webhookSettings = webhookSettings.CurrentValue
+        webhookSettings.OnChange(x => _webhookSettings = x)
 
     /// <inheritdoc />
     public async Task ExecuteAsync()
         if (_webhookSettings.Enabled is false)
-            _logger.LogInformation("WebhookFiring task will not run as it has been globally disabled via configuration");
-            return;
+            _logger.LogInformation("WebhookFiring task will not run as it has been globally disabled via configuration")
+            return
 
-        IEnumerable<WebhookRequest> requests;
+        IEnumerable<WebhookRequest> requests
         using (ICoreScope scope = _coreScopeProvider.CreateCoreScope())
-            scope.ReadLock(Constants.Locks.WebhookRequest);
-            requests = await _webhookRequestService.GetAllAsync();
-            scope.Complete();
+            scope.ReadLock(Constants.Locks.WebhookRequest)
+            requests = await _webhookRequestService.GetAllAsync()
+            scope.Complete()
 
         // Send webhook requests in parallel on a suppressed ExecutionContext to avoid deadlocks (each task will create its own root IScope)
         await Task.WhenAll(requests.Select(request => {
@@ -92,33 +92,33 @@ internal class WebhookFiring : IDistributedBackgroundJob
         ));
 
     private async Task<HttpResponseMessage?> SendRequestAsync(IWebhook webhook, string eventName, string? serializedObject, int retryCount, CancellationToken cancellationToken)
-        using HttpClient httpClient = _httpClientFactory.CreateClient(Constants.HttpClients.WebhookFiring);
+        using HttpClient httpClient = _httpClientFactory.CreateClient(Constants.HttpClients.WebhookFiring)
 
         using var request = new HttpRequestMessage(HttpMethod.Post, webhook.Url) {
             Version = httpClient.DefaultRequestVersion,
             VersionPolicy = httpClient.DefaultVersionPolicy,
         }
 
-        HttpResponseMessage? response = null;
-        Exception? exception = null;
+        HttpResponseMessage? response = null
+        Exception? exception = null
         try
             // Add headers
-            request.Headers.Add(Constants.WebhookEvents.HeaderNames.EventName, eventName);
-            request.Headers.Add(Constants.WebhookEvents.HeaderNames.RetryCount, retryCount.ToString());
+            request.Headers.Add(Constants.WebhookEvents.HeaderNames.EventName, eventName)
+            request.Headers.Add(Constants.WebhookEvents.HeaderNames.RetryCount, retryCount.ToString())
 
             foreach (KeyValuePair<string, string> header in webhook.Headers)
-                request.Headers.Add(header.Key, header.Value);
+                request.Headers.Add(header.Key, header.Value)
 
             // Set content
-            request.Content = new StringContent(serializedObject ?? string.Empty, Encoding.UTF8, MediaTypeNames.Application.Json);
+            request.Content = new StringContent(serializedObject ?? string.Empty, Encoding.UTF8, MediaTypeNames.Application.Json)
 
             // Send request
-            response = await httpClient.SendAsync(request, cancellationToken);
+            response = await httpClient.SendAsync(request, cancellationToken)
         catch (Exception ex)
-            exception = ex;
-            _logger.LogError(ex, "Error while sending webhook request for webhook {WebhookKey}.", webhook.Key);
+            exception = ex
+            _logger.LogError(ex, "Error while sending webhook request for webhook {WebhookKey}.", webhook.Key)
 
-        WebhookLog log = await _webhookLogFactory.CreateAsync(eventName, request, response, retryCount, exception, webhook, cancellationToken);
-        await _webhookLogService.CreateAsync(log);
+        WebhookLog log = await _webhookLogFactory.CreateAsync(eventName, request, response, retryCount, exception, webhook, cancellationToken)
+        await _webhookLogService.CreateAsync(log)
 
-        return response;
+        return response

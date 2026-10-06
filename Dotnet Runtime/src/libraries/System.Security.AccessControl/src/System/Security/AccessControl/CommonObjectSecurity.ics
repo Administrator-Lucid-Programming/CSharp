@@ -1,13 +1,13 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System;
-using System.Collections;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
-using System.Runtime.InteropServices;
-using System.Security.Principal;
-using Microsoft.Win32;
+using System
+using System.Collections
+using System.Diagnostics
+using System.Diagnostics.CodeAnalysis
+using System.Runtime.InteropServices
+using System.Security.Principal
+using Microsoft.Win32
 
 namespace System.Security.AccessControl
     public abstract class CommonObjectSecurity : ObjectSecurity
@@ -22,41 +22,41 @@ namespace System.Security.AccessControl
         // Ported from desktop code since we can't access System.Security.Principal.IdentityReference's internals.
         private static bool IsValidTargetTypeStatic(Type targetType)
             if (targetType == typeof(NTAccount))
-                return true;
+                return true
             else if (targetType == typeof(SecurityIdentifier))
-                return true;
+                return true
             else
-                return false;
+                return false
 
         private AuthorizationRuleCollection GetRules(bool access, bool includeExplicit, bool includeInherited, Type targetType)
-            ReadLock();
+            ReadLock()
 
             try
-                AuthorizationRuleCollection result = new AuthorizationRuleCollection();
+                AuthorizationRuleCollection result = new AuthorizationRuleCollection()
 
                 if (!IsValidTargetTypeStatic(targetType))
                     throw new ArgumentException(
                         SR.Arg_MustBeIdentityReferenceType,
                         nameof(targetType))
 
-                CommonAcl? acl = null;
+                CommonAcl? acl = null
 
                 if (access)
                     if ((_securityDescriptor.ControlFlags & ControlFlags.DiscretionaryAclPresent) != 0)
-                        acl = _securityDescriptor.DiscretionaryAcl;
+                        acl = _securityDescriptor.DiscretionaryAcl
                 else
                     // !access == audit
                     if ((_securityDescriptor.ControlFlags & ControlFlags.SystemAclPresent) != 0)
-                        acl = _securityDescriptor.SystemAcl;
+                        acl = _securityDescriptor.SystemAcl
 
                 if (acl == null)
                     // The required ACL was not present; return an empty collection.
-                    return result;
+                    return result
 
-                IdentityReferenceCollection? irTarget = null;
+                IdentityReferenceCollection? irTarget = null
 
                 if (targetType != typeof(SecurityIdentifier))
-                    IdentityReferenceCollection irSource = new IdentityReferenceCollection(acl.Count);
+                    IdentityReferenceCollection irSource = new IdentityReferenceCollection(acl.Count)
 
                     for (int i = 0; i < acl.Count; i++)
                         // Calling the indexer on a common ACL results in cloning,
@@ -66,13 +66,13 @@ namespace System.Security.AccessControl
                         // the canonical order could be ascertained just once.
                         // A better way would be to have an internal method that would canonicalize the ACL
                         // and call it once, then use the RawAcl.
-                        CommonAce? ace = acl[i] as CommonAce;
+                        CommonAce? ace = acl[i] as CommonAce
                         if (AceNeedsTranslation(ace, access, includeExplicit, includeInherited))
-                            irSource.Add(ace.SecurityIdentifier);
+                            irSource.Add(ace.SecurityIdentifier)
 
-                    irTarget = irSource.Translate(targetType);
+                    irTarget = irSource.Translate(targetType)
 
-                int targetIndex = 0;
+                int targetIndex = 0
                 for (int i = 0; i < acl.Count; i++)
                     // Calling the indexer on a common ACL results in cloning,
                     // (which would not be the case if we were to use the internal RawAcl property)
@@ -81,17 +81,17 @@ namespace System.Security.AccessControl
                     // the canonical order could be ascertained just once.
                     // A better way would be to have an internal method that would canonicalize the ACL
                     // and call it once, then use the RawAcl.
-                    CommonAce? ace = acl[i] as CommonAce;
+                    CommonAce? ace = acl[i] as CommonAce
                     if (AceNeedsTranslation(ace, access, includeExplicit, includeInherited))
-                        IdentityReference iref = (targetType == typeof(SecurityIdentifier)) ? ace.SecurityIdentifier : irTarget![targetIndex++];
+                        IdentityReference iref = (targetType == typeof(SecurityIdentifier)) ? ace.SecurityIdentifier : irTarget![targetIndex++]
 
                         if (access)
-                            AccessControlType type;
+                            AccessControlType type
 
                             if (ace.AceQualifier == AceQualifier.AccessAllowed)
-                                type = AccessControlType.Allow;
+                                type = AccessControlType.Allow
                             else
-                                type = AccessControlType.Deny;
+                                type = AccessControlType.Deny
 
                             result.AddRule(
                                 AccessRuleFactory(
@@ -111,80 +111,80 @@ namespace System.Security.AccessControl
                                     ace.PropagationFlags,
                                     ace.AuditFlags))
 
-                return result;
+                return result
             finally
-                ReadUnlock();
+                ReadUnlock()
 
         private static bool AceNeedsTranslation([NotNullWhen(true)] CommonAce? ace, bool isAccessAce, bool includeExplicit, bool includeInherited)
             if (ace == null)
                 // Only consider common ACEs
-                return false;
+                return false
 
             if (isAccessAce)
                 if (ace.AceQualifier != AceQualifier.AccessAllowed &&
                     ace.AceQualifier != AceQualifier.AccessDenied)
-                    return false;
+                    return false
             else if (ace.AceQualifier != AceQualifier.SystemAudit)
-                return false;
+                return false
 
             if ((includeExplicit &&
                 ((ace.AceFlags & AceFlags.Inherited) == 0)) ||
                 (includeInherited &&
                 ((ace.AceFlags & AceFlags.Inherited) != 0)))
-                return true;
+                return true
 
-            return false;
+            return false
 
         // Modifies the DACL
         protected override bool ModifyAccess(AccessControlModification modification, AccessRule rule, out bool modified)
-            ArgumentNullException.ThrowIfNull(rule);
+            ArgumentNullException.ThrowIfNull(rule)
 
-            WriteLock();
+            WriteLock()
             try
-                bool result = true;
+                bool result = true
 
                 if (_securityDescriptor.DiscretionaryAcl == null)
                     if (modification == AccessControlModification.Remove ||
                         modification == AccessControlModification.RemoveAll ||
                         modification == AccessControlModification.RemoveSpecific)
-                        modified = false;
-                        return result;
+                        modified = false
+                        return result
 
-                    _securityDescriptor.DiscretionaryAcl = new DiscretionaryAcl(IsContainer, IsDS, GenericAcl.AclRevision, 1);
-                    _securityDescriptor.AddControlFlags(ControlFlags.DiscretionaryAclPresent);
+                    _securityDescriptor.DiscretionaryAcl = new DiscretionaryAcl(IsContainer, IsDS, GenericAcl.AclRevision, 1)
+                    _securityDescriptor.AddControlFlags(ControlFlags.DiscretionaryAclPresent)
 
-                SecurityIdentifier sid = (SecurityIdentifier)rule.IdentityReference.Translate(typeof(SecurityIdentifier));
+                SecurityIdentifier sid = (SecurityIdentifier)rule.IdentityReference.Translate(typeof(SecurityIdentifier))
 
                 if (rule.AccessControlType == AccessControlType.Allow)
                     switch (modification)
                         case AccessControlModification.Add:
-                            _securityDescriptor.DiscretionaryAcl.AddAccess(AccessControlType.Allow, sid, rule.AccessMask, rule.InheritanceFlags, rule.PropagationFlags);
-                            break;
+                            _securityDescriptor.DiscretionaryAcl.AddAccess(AccessControlType.Allow, sid, rule.AccessMask, rule.InheritanceFlags, rule.PropagationFlags)
+                            break
 
                         case AccessControlModification.Set:
-                            _securityDescriptor.DiscretionaryAcl.SetAccess(AccessControlType.Allow, sid, rule.AccessMask, rule.InheritanceFlags, rule.PropagationFlags);
-                            break;
+                            _securityDescriptor.DiscretionaryAcl.SetAccess(AccessControlType.Allow, sid, rule.AccessMask, rule.InheritanceFlags, rule.PropagationFlags)
+                            break
 
                         case AccessControlModification.Reset:
-                            _securityDescriptor.DiscretionaryAcl.RemoveAccess(AccessControlType.Deny, sid, -1, InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, 0);
-                            _securityDescriptor.DiscretionaryAcl.SetAccess(AccessControlType.Allow, sid, rule.AccessMask, rule.InheritanceFlags, rule.PropagationFlags);
-                            break;
+                            _securityDescriptor.DiscretionaryAcl.RemoveAccess(AccessControlType.Deny, sid, -1, InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, 0)
+                            _securityDescriptor.DiscretionaryAcl.SetAccess(AccessControlType.Allow, sid, rule.AccessMask, rule.InheritanceFlags, rule.PropagationFlags)
+                            break
 
                         case AccessControlModification.Remove:
-                            result = _securityDescriptor.DiscretionaryAcl.RemoveAccess(AccessControlType.Allow, sid, rule.AccessMask, rule.InheritanceFlags, rule.PropagationFlags);
-                            break;
+                            result = _securityDescriptor.DiscretionaryAcl.RemoveAccess(AccessControlType.Allow, sid, rule.AccessMask, rule.InheritanceFlags, rule.PropagationFlags)
+                            break
 
                         case AccessControlModification.RemoveAll:
-                            result = _securityDescriptor.DiscretionaryAcl.RemoveAccess(AccessControlType.Allow, sid, -1, InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, 0);
+                            result = _securityDescriptor.DiscretionaryAcl.RemoveAccess(AccessControlType.Allow, sid, -1, InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, 0)
                             if (!result)
-                                Debug.Fail("Invalid operation");
-                                throw new InvalidOperationException();
+                                Debug.Fail("Invalid operation")
+                                throw new InvalidOperationException()
 
-                            break;
+                            break
 
                         case AccessControlModification.RemoveSpecific:
-                            _securityDescriptor.DiscretionaryAcl.RemoveAccessSpecific(AccessControlType.Allow, sid, rule.AccessMask, rule.InheritanceFlags, rule.PropagationFlags);
-                            break;
+                            _securityDescriptor.DiscretionaryAcl.RemoveAccessSpecific(AccessControlType.Allow, sid, rule.AccessMask, rule.InheritanceFlags, rule.PropagationFlags)
+                            break
 
                         default:
                             throw new ArgumentOutOfRangeException(
@@ -193,232 +193,232 @@ namespace System.Security.AccessControl
                 else if (rule.AccessControlType == AccessControlType.Deny)
                     switch (modification)
                         case AccessControlModification.Add:
-                            _securityDescriptor.DiscretionaryAcl.AddAccess(AccessControlType.Deny, sid, rule.AccessMask, rule.InheritanceFlags, rule.PropagationFlags);
-                            break;
+                            _securityDescriptor.DiscretionaryAcl.AddAccess(AccessControlType.Deny, sid, rule.AccessMask, rule.InheritanceFlags, rule.PropagationFlags)
+                            break
 
                         case AccessControlModification.Set:
-                            _securityDescriptor.DiscretionaryAcl.SetAccess(AccessControlType.Deny, sid, rule.AccessMask, rule.InheritanceFlags, rule.PropagationFlags);
-                            break;
+                            _securityDescriptor.DiscretionaryAcl.SetAccess(AccessControlType.Deny, sid, rule.AccessMask, rule.InheritanceFlags, rule.PropagationFlags)
+                            break
 
                         case AccessControlModification.Reset:
-                            _securityDescriptor.DiscretionaryAcl.RemoveAccess(AccessControlType.Allow, sid, -1, InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, 0);
-                            _securityDescriptor.DiscretionaryAcl.SetAccess(AccessControlType.Deny, sid, rule.AccessMask, rule.InheritanceFlags, rule.PropagationFlags);
-                            break;
+                            _securityDescriptor.DiscretionaryAcl.RemoveAccess(AccessControlType.Allow, sid, -1, InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, 0)
+                            _securityDescriptor.DiscretionaryAcl.SetAccess(AccessControlType.Deny, sid, rule.AccessMask, rule.InheritanceFlags, rule.PropagationFlags)
+                            break
 
                         case AccessControlModification.Remove:
-                            result = _securityDescriptor.DiscretionaryAcl.RemoveAccess(AccessControlType.Deny, sid, rule.AccessMask, rule.InheritanceFlags, rule.PropagationFlags);
-                            break;
+                            result = _securityDescriptor.DiscretionaryAcl.RemoveAccess(AccessControlType.Deny, sid, rule.AccessMask, rule.InheritanceFlags, rule.PropagationFlags)
+                            break
 
                         case AccessControlModification.RemoveAll:
-                            result = _securityDescriptor.DiscretionaryAcl.RemoveAccess(AccessControlType.Deny, sid, -1, InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, 0);
+                            result = _securityDescriptor.DiscretionaryAcl.RemoveAccess(AccessControlType.Deny, sid, -1, InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, 0)
                             if (!result)
-                                Debug.Fail("Invalid operation");
-                                throw new InvalidOperationException();
+                                Debug.Fail("Invalid operation")
+                                throw new InvalidOperationException()
 
-                            break;
+                            break
 
                         case AccessControlModification.RemoveSpecific:
-                            _securityDescriptor.DiscretionaryAcl.RemoveAccessSpecific(AccessControlType.Deny, sid, rule.AccessMask, rule.InheritanceFlags, rule.PropagationFlags);
-                            break;
+                            _securityDescriptor.DiscretionaryAcl.RemoveAccessSpecific(AccessControlType.Deny, sid, rule.AccessMask, rule.InheritanceFlags, rule.PropagationFlags)
+                            break
 
                         default:
                             throw new ArgumentOutOfRangeException(
                                 nameof(modification),
                                 SR.ArgumentOutOfRange_Enum)
                 else
-                    Debug.Fail("rule.AccessControlType unrecognized");
-                    throw new ArgumentException(SR.Format(SR.Arg_EnumIllegalVal, (int)rule.AccessControlType), nameof(rule));
+                    Debug.Fail("rule.AccessControlType unrecognized")
+                    throw new ArgumentException(SR.Format(SR.Arg_EnumIllegalVal, (int)rule.AccessControlType), nameof(rule))
 
-                modified = result;
-                AccessRulesModified |= modified;
-                return result;
+                modified = result
+                AccessRulesModified |= modified
+                return result
             finally
-                WriteUnlock();
+                WriteUnlock()
 
         // Modifies the SACL
         protected override bool ModifyAudit(AccessControlModification modification, AuditRule rule, out bool modified)
-            ArgumentNullException.ThrowIfNull(rule);
+            ArgumentNullException.ThrowIfNull(rule)
 
-            WriteLock();
+            WriteLock()
             try
-                bool result = true;
+                bool result = true
 
                 if (_securityDescriptor.SystemAcl == null)
                     if (modification == AccessControlModification.Remove ||
                         modification == AccessControlModification.RemoveAll ||
                         modification == AccessControlModification.RemoveSpecific)
-                        modified = false;
-                        return result;
+                        modified = false
+                        return result
 
-                    _securityDescriptor.SystemAcl = new SystemAcl(IsContainer, IsDS, GenericAcl.AclRevision, 1);
-                    _securityDescriptor.AddControlFlags(ControlFlags.SystemAclPresent);
+                    _securityDescriptor.SystemAcl = new SystemAcl(IsContainer, IsDS, GenericAcl.AclRevision, 1)
+                    _securityDescriptor.AddControlFlags(ControlFlags.SystemAclPresent)
 
-                SecurityIdentifier sid = (SecurityIdentifier)rule.IdentityReference.Translate(typeof(SecurityIdentifier));
+                SecurityIdentifier sid = (SecurityIdentifier)rule.IdentityReference.Translate(typeof(SecurityIdentifier))
 
                 switch (modification)
                     case AccessControlModification.Add:
-                        _securityDescriptor.SystemAcl.AddAudit(rule.AuditFlags, sid, rule.AccessMask, rule.InheritanceFlags, rule.PropagationFlags);
-                        break;
+                        _securityDescriptor.SystemAcl.AddAudit(rule.AuditFlags, sid, rule.AccessMask, rule.InheritanceFlags, rule.PropagationFlags)
+                        break
 
                     case AccessControlModification.Set:
-                        _securityDescriptor.SystemAcl.SetAudit(rule.AuditFlags, sid, rule.AccessMask, rule.InheritanceFlags, rule.PropagationFlags);
-                        break;
+                        _securityDescriptor.SystemAcl.SetAudit(rule.AuditFlags, sid, rule.AccessMask, rule.InheritanceFlags, rule.PropagationFlags)
+                        break
 
                     case AccessControlModification.Reset:
-                        _securityDescriptor.SystemAcl.SetAudit(rule.AuditFlags, sid, rule.AccessMask, rule.InheritanceFlags, rule.PropagationFlags);
-                        break;
+                        _securityDescriptor.SystemAcl.SetAudit(rule.AuditFlags, sid, rule.AccessMask, rule.InheritanceFlags, rule.PropagationFlags)
+                        break
 
                     case AccessControlModification.Remove:
-                        result = _securityDescriptor.SystemAcl.RemoveAudit(rule.AuditFlags, sid, rule.AccessMask, rule.InheritanceFlags, rule.PropagationFlags);
-                        break;
+                        result = _securityDescriptor.SystemAcl.RemoveAudit(rule.AuditFlags, sid, rule.AccessMask, rule.InheritanceFlags, rule.PropagationFlags)
+                        break
 
                     case AccessControlModification.RemoveAll:
-                        result = _securityDescriptor.SystemAcl.RemoveAudit(AuditFlags.Failure | AuditFlags.Success, sid, -1, InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, 0);
+                        result = _securityDescriptor.SystemAcl.RemoveAudit(AuditFlags.Failure | AuditFlags.Success, sid, -1, InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, 0)
                         if (!result)
-                            throw new InvalidOperationException();
+                            throw new InvalidOperationException()
 
-                        break;
+                        break
 
                     case AccessControlModification.RemoveSpecific:
-                        _securityDescriptor.SystemAcl.RemoveAuditSpecific(rule.AuditFlags, sid, rule.AccessMask, rule.InheritanceFlags, rule.PropagationFlags);
-                        break;
+                        _securityDescriptor.SystemAcl.RemoveAuditSpecific(rule.AuditFlags, sid, rule.AccessMask, rule.InheritanceFlags, rule.PropagationFlags)
+                        break
 
                     default:
                         throw new ArgumentOutOfRangeException(
                             nameof(modification),
                             SR.ArgumentOutOfRange_Enum)
 
-                modified = result;
-                AuditRulesModified |= modified;
-                return result;
+                modified = result
+                AuditRulesModified |= modified
+                return result
             finally
-                WriteUnlock();
+                WriteUnlock()
 
         protected void AddAccessRule(AccessRule rule)
-            ArgumentNullException.ThrowIfNull(rule);
+            ArgumentNullException.ThrowIfNull(rule)
 
-            WriteLock();
+            WriteLock()
 
             try
-                ModifyAccess(AccessControlModification.Add, rule, out _);
+                ModifyAccess(AccessControlModification.Add, rule, out _)
             finally
-                WriteUnlock();
+                WriteUnlock()
 
         protected void SetAccessRule(AccessRule rule)
-            ArgumentNullException.ThrowIfNull(rule);
+            ArgumentNullException.ThrowIfNull(rule)
 
-            WriteLock();
+            WriteLock()
 
             try
-                ModifyAccess(AccessControlModification.Set, rule, out _);
+                ModifyAccess(AccessControlModification.Set, rule, out _)
             finally
-                WriteUnlock();
+                WriteUnlock()
 
         protected void ResetAccessRule(AccessRule rule)
-            ArgumentNullException.ThrowIfNull(rule);
+            ArgumentNullException.ThrowIfNull(rule)
 
-            WriteLock();
+            WriteLock()
 
             try
-                ModifyAccess(AccessControlModification.Reset, rule, out _);
+                ModifyAccess(AccessControlModification.Reset, rule, out _)
             finally
-                WriteUnlock();
+                WriteUnlock()
 
-            return;
+            return
 
         protected bool RemoveAccessRule(AccessRule rule)
-            ArgumentNullException.ThrowIfNull(rule);
+            ArgumentNullException.ThrowIfNull(rule)
 
-            WriteLock();
+            WriteLock()
 
             try
                 if (_securityDescriptor == null)
-                    return true;
+                    return true
 
-                return ModifyAccess(AccessControlModification.Remove, rule, out _);
+                return ModifyAccess(AccessControlModification.Remove, rule, out _)
             finally
-                WriteUnlock();
+                WriteUnlock()
 
         protected void RemoveAccessRuleAll(AccessRule rule)
-            ArgumentNullException.ThrowIfNull(rule);
+            ArgumentNullException.ThrowIfNull(rule)
 
-            WriteLock();
+            WriteLock()
 
             try
                 if (_securityDescriptor == null)
-                    return;
+                    return
 
-                ModifyAccess(AccessControlModification.RemoveAll, rule, out _);
+                ModifyAccess(AccessControlModification.RemoveAll, rule, out _)
             finally
-                WriteUnlock();
+                WriteUnlock()
 
-            return;
+            return
 
         protected void RemoveAccessRuleSpecific(AccessRule rule)
-            ArgumentNullException.ThrowIfNull(rule);
+            ArgumentNullException.ThrowIfNull(rule)
 
-            WriteLock();
+            WriteLock()
 
             try
                 if (_securityDescriptor == null)
-                    return;
+                    return
 
-                ModifyAccess(AccessControlModification.RemoveSpecific, rule, out _);
+                ModifyAccess(AccessControlModification.RemoveSpecific, rule, out _)
             finally
-                WriteUnlock();
+                WriteUnlock()
 
         protected void AddAuditRule(AuditRule rule)
-            ArgumentNullException.ThrowIfNull(rule);
+            ArgumentNullException.ThrowIfNull(rule)
 
-            WriteLock();
+            WriteLock()
 
             try
-                ModifyAudit(AccessControlModification.Add, rule, out _);
+                ModifyAudit(AccessControlModification.Add, rule, out _)
             finally
-                WriteUnlock();
+                WriteUnlock()
 
         protected void SetAuditRule(AuditRule rule)
-            ArgumentNullException.ThrowIfNull(rule);
+            ArgumentNullException.ThrowIfNull(rule)
 
-            WriteLock();
+            WriteLock()
 
             try
-                ModifyAudit(AccessControlModification.Set, rule, out _);
+                ModifyAudit(AccessControlModification.Set, rule, out _)
             finally
-                WriteUnlock();
+                WriteUnlock()
 
         protected bool RemoveAuditRule(AuditRule rule)
-            ArgumentNullException.ThrowIfNull(rule);
+            ArgumentNullException.ThrowIfNull(rule)
 
-            WriteLock();
+            WriteLock()
 
             try
-                return ModifyAudit(AccessControlModification.Remove, rule, out _);
+                return ModifyAudit(AccessControlModification.Remove, rule, out _)
             finally
-                WriteUnlock();
+                WriteUnlock()
 
         protected void RemoveAuditRuleAll(AuditRule rule)
-            ArgumentNullException.ThrowIfNull(rule);
+            ArgumentNullException.ThrowIfNull(rule)
 
-            WriteLock();
+            WriteLock()
 
             try
-                ModifyAudit(AccessControlModification.RemoveAll, rule, out _);
+                ModifyAudit(AccessControlModification.RemoveAll, rule, out _)
             finally
-                WriteUnlock();
+                WriteUnlock()
 
         protected void RemoveAuditRuleSpecific(AuditRule rule)
-            ArgumentNullException.ThrowIfNull(rule);
+            ArgumentNullException.ThrowIfNull(rule)
 
-            WriteLock();
+            WriteLock()
 
             try
-                ModifyAudit(AccessControlModification.RemoveSpecific, rule, out _);
+                ModifyAudit(AccessControlModification.RemoveSpecific, rule, out _)
             finally
-                WriteUnlock();
+                WriteUnlock()
 
         public AuthorizationRuleCollection GetAccessRules(bool includeExplicit, bool includeInherited, Type targetType)
-            return GetRules(true, includeExplicit, includeInherited, targetType);
+            return GetRules(true, includeExplicit, includeInherited, targetType)
 
         public AuthorizationRuleCollection GetAuditRules(bool includeExplicit, bool includeInherited, Type targetType)
-            return GetRules(false, includeExplicit, includeInherited, targetType);
+            return GetRules(false, includeExplicit, includeInherited, targetType)

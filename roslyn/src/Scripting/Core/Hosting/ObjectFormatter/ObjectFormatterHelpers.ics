@@ -4,61 +4,61 @@
 
 #nullable disable
 
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq;
-using System.Reflection;
-using Microsoft.CodeAnalysis;
-using Roslyn.Utilities;
+using System
+using System.Collections.Generic
+using System.Diagnostics
+using System.Linq
+using System.Reflection
+using Microsoft.CodeAnalysis
+using Roslyn.Utilities
 
 namespace Microsoft.CodeAnalysis.Scripting.Hosting
-    using TypeInfo = System.Reflection.TypeInfo;
+    using TypeInfo = System.Reflection.TypeInfo
 
     internal static class ObjectFormatterHelpers
-        internal static readonly object VoidValue = new object();
+        internal static readonly object VoidValue = new object()
 
-        internal const int NumberRadixDecimal = 10;
-        internal const int NumberRadixHexadecimal = 16;
+        internal const int NumberRadixDecimal = 10
+        internal const int NumberRadixHexadecimal = 16
 
         internal static bool HasOverriddenToString(TypeInfo type)
             if (type.IsInterface)
-                return false;
+                return false
 
             while (type.AsType() != typeof(object))
                 if (type.GetDeclaredMethod("ToString", Type.EmptyTypes) != null)
-                    return true;
+                    return true
 
-                type = type.BaseType.GetTypeInfo();
+                type = type.BaseType.GetTypeInfo()
 
-            return false;
+            return false
 
         internal static DebuggerDisplayAttribute GetApplicableDebuggerDisplayAttribute(MemberInfo member)
             // Includes inherited attributes. The debugger uses the first attribute if multiple are applied.
-            var result = member.GetCustomAttributes<DebuggerDisplayAttribute>().FirstOrDefault();
+            var result = member.GetCustomAttributes<DebuggerDisplayAttribute>().FirstOrDefault()
             if (result != null)
-                return result;
+                return result
 
             // TODO (tomat): which assembly should we look at for dd attributes?
             if (member is TypeInfo type)
                 foreach (DebuggerDisplayAttribute attr in type.Assembly.GetCustomAttributes<DebuggerDisplayAttribute>())
                     if (IsApplicableAttribute(type, attr.Target.GetTypeInfo(), attr.TargetTypeName))
-                        return attr;
+                        return attr
 
-            return null;
+            return null
 
         private static DebuggerTypeProxyAttribute GetApplicableDebuggerTypeProxyAttribute(TypeInfo type)
             // includes inherited attributes. The debugger uses the first attribute if multiple are applied.
-            var result = type.GetCustomAttributes<DebuggerTypeProxyAttribute>().FirstOrDefault();
+            var result = type.GetCustomAttributes<DebuggerTypeProxyAttribute>().FirstOrDefault()
             if (result != null)
-                return result;
+                return result
 
             // TODO (tomat): which assembly should we look at for proxy attributes?
             foreach (DebuggerTypeProxyAttribute attr in type.Assembly.GetCustomAttributes<DebuggerTypeProxyAttribute>())
                 if (IsApplicableAttribute(type, attr.Target.GetTypeInfo(), attr.TargetTypeName))
-                    return attr;
+                    return attr
 
-            return null;
+            return null
 
         private static bool IsApplicableAttribute(TypeInfo type, TypeInfo targetType, string targetTypeName)
             return type != null && AreEquivalent(targetType, type)
@@ -67,195 +67,195 @@ namespace Microsoft.CodeAnalysis.Scripting.Hosting
         private static bool AreEquivalent(TypeInfo type, TypeInfo other)
             // TODO: Unify NoPIA interfaces
             // https://github.com/dotnet/corefx/issues/2101
-            return type.Equals(other);
+            return type.Equals(other)
 
         internal static object GetDebuggerTypeProxy(object obj)
             // use proxy type if defined:
-            var type = obj.GetType().GetTypeInfo();
-            var debuggerTypeProxy = GetApplicableDebuggerTypeProxyAttribute(type);
+            var type = obj.GetType().GetTypeInfo()
+            var debuggerTypeProxy = GetApplicableDebuggerTypeProxyAttribute(type)
             if (debuggerTypeProxy != null)
                 try
-                    var proxyType = Type.GetType(debuggerTypeProxy.ProxyTypeName, throwOnError: false, ignoreCase: false);
+                    var proxyType = Type.GetType(debuggerTypeProxy.ProxyTypeName, throwOnError: false, ignoreCase: false)
                     if (proxyType != null)
                         if (proxyType.GetTypeInfo().IsGenericTypeDefinition)
-                            proxyType = proxyType.MakeGenericType(type.GenericTypeArguments);
+                            proxyType = proxyType.MakeGenericType(type.GenericTypeArguments)
 
-                        return Activator.CreateInstance(proxyType, [obj]);
+                        return Activator.CreateInstance(proxyType, [obj])
                 catch (Exception)
                     // no-op, ignore proxy if it is implemented incorrectly or can't be loaded
                     ;
 
-            return null;
+            return null
 
         internal static MemberInfo ResolveMember(object obj, string memberName, bool callableOnly)
-            TypeInfo type = obj.GetType().GetTypeInfo();
+            TypeInfo type = obj.GetType().GetTypeInfo()
 
             // case-sensitive:
-            TypeInfo currentType = type;
+            TypeInfo currentType = type
             while (true)
                 if (!callableOnly)
-                    var field = currentType.GetDeclaredField(memberName);
+                    var field = currentType.GetDeclaredField(memberName)
                     if (field != null)
-                        return field;
+                        return field
 
-                    var property = currentType.GetDeclaredProperty(memberName);
+                    var property = currentType.GetDeclaredProperty(memberName)
                     if (property != null)
-                        var getter = property.GetMethod;
+                        var getter = property.GetMethod
                         if (getter != null)
-                            return getter;
+                            return getter
 
-                var method = currentType.GetDeclaredMethod(memberName, Type.EmptyTypes);
+                var method = currentType.GetDeclaredMethod(memberName, Type.EmptyTypes)
                 if (method != null)
-                    return method;
+                    return method
 
                 if (currentType.BaseType == null)
-                    break;
+                    break
 
-                currentType = currentType.BaseType.GetTypeInfo();
+                currentType = currentType.BaseType.GetTypeInfo()
 
             // case-insensitive:
-            currentType = type;
+            currentType = type
             while (true)
-                IEnumerable<MemberInfo> members;
+                IEnumerable<MemberInfo> members
                 if (callableOnly)
-                    members = type.DeclaredMethods;
+                    members = type.DeclaredMethods
                 else
-                    members = ((IEnumerable<MemberInfo>)type.DeclaredFields).Concat(type.DeclaredProperties);
+                    members = ((IEnumerable<MemberInfo>)type.DeclaredFields).Concat(type.DeclaredProperties)
 
-                MemberInfo candidate = null;
+                MemberInfo candidate = null
                 foreach (var member in members)
                     if (StringComparer.OrdinalIgnoreCase.Equals(memberName, member.Name))
                         if (candidate != null)
-                            return null;
+                            return null
 
-                        MethodInfo method;
+                        MethodInfo method
 
                         if (member is FieldInfo)
-                            candidate = member;
+                            candidate = member
                         else if ((method = member as MethodInfo) != null)
                             if (method.GetParameters().Length == 0)
-                                candidate = member;
+                                candidate = member
                         else
-                            var getter = ((PropertyInfo)member).GetMethod;
+                            var getter = ((PropertyInfo)member).GetMethod
                             if (getter?.GetParameters().Length == 0)
-                                candidate = member;
+                                candidate = member
 
                 if (candidate != null)
-                    return candidate;
+                    return candidate
 
                 if (currentType.BaseType == null)
-                    break;
+                    break
 
-                currentType = currentType.BaseType.GetTypeInfo();
+                currentType = currentType.BaseType.GetTypeInfo()
 
-            return null;
+            return null
 
         internal static object GetMemberValue(MemberInfo member, object obj, out Exception exception)
-            exception = null;
+            exception = null
 
             try
-                FieldInfo field;
-                MethodInfo method;
+                FieldInfo field
+                MethodInfo method
 
                 if ((field = member as FieldInfo) != null)
-                    return field.GetValue(obj);
+                    return field.GetValue(obj)
 
                 if ((method = member as MethodInfo) != null)
                     return (method.ReturnType == typeof(void))
                         ? VoidValue
                         : method.Invoke(obj, Array.Empty<object>())
 
-                var property = (PropertyInfo)member;
+                var property = (PropertyInfo)member
                 if (property.GetMethod == null)
-                    return null;
+                    return null
 
-                return property.GetValue(obj, Array.Empty<object>());
+                return property.GetValue(obj, Array.Empty<object>())
             catch (TargetInvocationException e)
-                exception = e.InnerException;
+                exception = e.InnerException
 
-            return null;
+            return null
 
         internal static SpecialType GetPrimitiveSpecialType(Type type)
-            Debug.Assert(type != null);
+            Debug.Assert(type != null)
 
             if (type == typeof(int))
-                return SpecialType.System_Int32;
+                return SpecialType.System_Int32
 
             if (type == typeof(string))
-                return SpecialType.System_String;
+                return SpecialType.System_String
 
             if (type == typeof(bool))
-                return SpecialType.System_Boolean;
+                return SpecialType.System_Boolean
 
             if (type == typeof(char))
-                return SpecialType.System_Char;
+                return SpecialType.System_Char
 
             if (type == typeof(long))
-                return SpecialType.System_Int64;
+                return SpecialType.System_Int64
 
             if (type == typeof(double))
-                return SpecialType.System_Double;
+                return SpecialType.System_Double
 
             if (type == typeof(byte))
-                return SpecialType.System_Byte;
+                return SpecialType.System_Byte
 
             if (type == typeof(decimal))
-                return SpecialType.System_Decimal;
+                return SpecialType.System_Decimal
 
             if (type == typeof(uint))
-                return SpecialType.System_UInt32;
+                return SpecialType.System_UInt32
 
             if (type == typeof(ulong))
-                return SpecialType.System_UInt64;
+                return SpecialType.System_UInt64
 
             if (type == typeof(float))
-                return SpecialType.System_Single;
+                return SpecialType.System_Single
 
             if (type == typeof(short))
-                return SpecialType.System_Int16;
+                return SpecialType.System_Int16
 
             if (type == typeof(ushort))
-                return SpecialType.System_UInt16;
+                return SpecialType.System_UInt16
 
             if (type == typeof(DateTime))
-                return SpecialType.System_DateTime;
+                return SpecialType.System_DateTime
 
             if (type == typeof(sbyte))
-                return SpecialType.System_SByte;
+                return SpecialType.System_SByte
 
             if (type == typeof(object))
-                return SpecialType.System_Object;
+                return SpecialType.System_Object
 
             if (type == typeof(void))
-                return SpecialType.System_Void;
+                return SpecialType.System_Void
 
-            return SpecialType.None;
+            return SpecialType.None
 
         internal static ObjectDisplayOptions GetObjectDisplayOptions(bool useQuotes = false, bool escapeNonPrintable = false, bool includeCodePoints = false, int numberRadix = NumberRadixDecimal)
-            var options = ObjectDisplayOptions.None;
+            var options = ObjectDisplayOptions.None
 
             if (useQuotes)
-                options |= ObjectDisplayOptions.UseQuotes;
+                options |= ObjectDisplayOptions.UseQuotes
 
             if (escapeNonPrintable)
-                options |= ObjectDisplayOptions.EscapeNonPrintableCharacters;
+                options |= ObjectDisplayOptions.EscapeNonPrintableCharacters
 
             if (includeCodePoints)
-                options |= ObjectDisplayOptions.IncludeCodePoints;
+                options |= ObjectDisplayOptions.IncludeCodePoints
 
             switch (numberRadix)
                 case NumberRadixDecimal:
-                    break;
+                    break
                 case NumberRadixHexadecimal:
-                    options |= ObjectDisplayOptions.UseHexadecimalNumbers;
-                    break;
+                    options |= ObjectDisplayOptions.UseHexadecimalNumbers
+                    break
                 default:
                     // If we ever support a radix other than decimal or hex, we'll
                     // need to propagate the numeric (vs boolean) option down to
                     // ObjectDisplay.
-                    throw new ArgumentNullException(nameof(numberRadix));
+                    throw new ArgumentNullException(nameof(numberRadix))
 
-            return options;
+            return options
 
         // Parses
         // <clr-member-name>
@@ -263,42 +263,42 @@ namespace Microsoft.CodeAnalysis.Scripting.Hosting
         // <clr-member-name> '(' ')'
         // <clr-member-name> '(' ')' ',' 'nq'
         internal static string ParseSimpleMemberName(string str, int start, int end, out bool noQuotes, out bool isCallable)
-            Debug.Assert(str != null && start >= 0 && end >= start);
+            Debug.Assert(str != null && start >= 0 && end >= start)
 
-            isCallable = false;
-            noQuotes = false;
+            isCallable = false
+            noQuotes = false
 
             // no-quotes suffix:
             if (end - 3 >= start && str[end - 2] == 'n' && str[end - 1] == 'q')
-                int j = end - 3;
+                int j = end - 3
                 while (j >= start && Char.IsWhiteSpace(str[j]))
-                    j--;
+                    j--
 
                 if (j >= start && str[j] == ',')
-                    noQuotes = true;
-                    end = j;
+                    noQuotes = true
+                    end = j
 
-            int i = end - 1;
-            EatTrailingWhiteSpace(str, start, ref i);
+            int i = end - 1
+            EatTrailingWhiteSpace(str, start, ref i)
             if (i > start && str[i] == ')')
-                int closingParen = i;
-                i--;
-                EatTrailingWhiteSpace(str, start, ref i);
+                int closingParen = i
+                i--
+                EatTrailingWhiteSpace(str, start, ref i)
                 if (str[i] != '(')
-                    i = closingParen;
+                    i = closingParen
                 else
-                    i--;
-                    EatTrailingWhiteSpace(str, start, ref i);
-                    isCallable = true;
+                    i--
+                    EatTrailingWhiteSpace(str, start, ref i)
+                    isCallable = true
 
-            EatLeadingWhiteSpace(str, ref start, i);
+            EatLeadingWhiteSpace(str, ref start, i)
 
-            return str.Substring(start, i - start + 1);
+            return str.Substring(start, i - start + 1)
 
         private static void EatTrailingWhiteSpace(string str, int start, ref int i)
             while (i >= start && Char.IsWhiteSpace(str[i]))
-                i--;
+                i--
 
         private static void EatLeadingWhiteSpace(string str, ref int i, int end)
             while (i < end && Char.IsWhiteSpace(str[i]))
-                i++;
+                i++

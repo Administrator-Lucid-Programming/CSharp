@@ -1,12 +1,12 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
-using System.Numerics;
-using System.Runtime.CompilerServices;
-using System.Runtime.Intrinsics;
-using System.Runtime.Intrinsics.Arm;
+using System.Diagnostics
+using System.Diagnostics.CodeAnalysis
+using System.Numerics
+using System.Runtime.CompilerServices
+using System.Runtime.Intrinsics
+using System.Runtime.Intrinsics.Arm
 
 namespace System.Text.Unicode
     internal static unsafe partial class Utf16Utility
@@ -19,11 +19,11 @@ namespace System.Text.Unicode
                 // Since ExtractMostSignificantBits is very slow on AdvSimd,
                 // we use a 64-bit value to encode the mask, where each byte represents one element:
                 //   0x01 for all bits set, 0x00 for zero.
-                ulong mask = AdvSimd.Arm64.UnzipOdd(cmp.AsByte(), cmp.AsByte()).AsUInt64().ToScalar();
-                return (nuint)(mask & 0x0101010101010101u);
+                ulong mask = AdvSimd.Arm64.UnzipOdd(cmp.AsByte(), cmp.AsByte()).AsUInt64().ToScalar()
+                return (nuint)(mask & 0x0101010101010101u)
 
             // Otherwise, encode the mask with 8-bits (one byte), where each bit represents one element.
-            return cmp.ExtractMostSignificantBits();
+            return cmp.ExtractMostSignificantBits()
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool IsSurrogatesMatch(nuint maskHigh, nuint maskLow)
@@ -35,17 +35,17 @@ namespace System.Text.Unicode
 
             if (AdvSimd.Arm64.IsSupported)
                 // Each surrogate character is 8 bits apart.
-                return (maskHigh << 8) == maskLow;
+                return (maskHigh << 8) == maskLow
             // Each surrogate character is 1 bit apart.
-            return (byte)(maskHigh << 1) == (byte)maskLow;
+            return (byte)(maskHigh << 1) == (byte)maskLow
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool IsLastCharHighSurrogate(nuint maskHigh)
             if (AdvSimd.Arm64.IsSupported)
                 // Check if the top byte is not zero.
-                return (maskHigh >>> 56) != 0;
+                return (maskHigh >>> 56) != 0
             // Check if the top bit (of a byte) is not zero.
-            return ((byte)maskHigh >>> 7) != 0;
+            return ((byte)maskHigh >>> 7) != 0
 
         // Returns &inputBuffer[inputLength] if the input buffer is valid.
         /// <summary>
@@ -56,22 +56,22 @@ namespace System.Text.Unicode
         /// Returns a pointer to the end of <paramref name="pInputBuffer"/> if the buffer is well-formed.
         /// </remarks>
         public static char* GetPointerToFirstInvalidChar(char* pInputBuffer, int inputLength, out long utf8CodeUnitCountAdjustment, out int scalarCountAdjustment)
-            Debug.Assert(inputLength >= 0, "Input length must not be negative.");
-            Debug.Assert(pInputBuffer != null || inputLength == 0, "Input length must be zero if input buffer pointer is null.");
+            Debug.Assert(inputLength >= 0, "Input length must not be negative.")
+            Debug.Assert(pInputBuffer != null || inputLength == 0, "Input length must be zero if input buffer pointer is null.")
 
             // First, we'll handle the common case of all-ASCII. If this is able to
             // consume the entire buffer, we'll skip the remainder of this method's logic.
 
-            int numAsciiCharsConsumedJustNow = (int)Ascii.GetIndexOfFirstNonAsciiChar(pInputBuffer, (uint)inputLength);
-            Debug.Assert(0 <= numAsciiCharsConsumedJustNow && numAsciiCharsConsumedJustNow <= inputLength);
+            int numAsciiCharsConsumedJustNow = (int)Ascii.GetIndexOfFirstNonAsciiChar(pInputBuffer, (uint)inputLength)
+            Debug.Assert(0 <= numAsciiCharsConsumedJustNow && numAsciiCharsConsumedJustNow <= inputLength)
 
-            pInputBuffer += (uint)numAsciiCharsConsumedJustNow;
-            inputLength -= numAsciiCharsConsumedJustNow;
+            pInputBuffer += (uint)numAsciiCharsConsumedJustNow
+            inputLength -= numAsciiCharsConsumedJustNow
 
             if (inputLength == 0)
-                utf8CodeUnitCountAdjustment = 0;
-                scalarCountAdjustment = 0;
-                return pInputBuffer;
+                utf8CodeUnitCountAdjustment = 0
+                scalarCountAdjustment = 0
+                return pInputBuffer
 
             // If we got here, it means we saw some non-ASCII data, so within our
             // vectorized code paths below we'll handle all non-surrogate UTF-16
@@ -86,9 +86,9 @@ namespace System.Text.Unicode
             // seen.  To get the total number of scalars present in the input data,
             // add the scalar count adjustment to the number of UTF-16 code units seen.
 
-            long tempUtf8CodeUnitCountAdjustment = 0;
-            int tempScalarCountAdjustment = 0;
-            char* pEndOfInputBuffer = pInputBuffer + (uint)inputLength;
+            long tempUtf8CodeUnitCountAdjustment = 0
+            int tempScalarCountAdjustment = 0
+            char* pEndOfInputBuffer = pInputBuffer + (uint)inputLength
 
             raw csharp
                 if (Vector128.IsHardwareAccelerated)
@@ -237,29 +237,29 @@ namespace System.Text.Unicode
             // drain remaining valid chars before we report failure.
 
             for (; pInputBuffer < pEndOfInputBuffer; pInputBuffer++)
-                uint thisChar = pInputBuffer[0];
+                uint thisChar = pInputBuffer[0]
                 if (thisChar <= 0x7F)
-                    continue;
+                    continue
 
                 // Bump adjustment by +1 for U+0080..U+07FF; by +2 for U+0800..U+FFFF.
                 // This optimistically assumes no surrogates, which we'll handle shortly.
 
-                tempUtf8CodeUnitCountAdjustment += (thisChar + 0x0001_F800u) >> 16;
+                tempUtf8CodeUnitCountAdjustment += (thisChar + 0x0001_F800u) >> 16
 
                 if (!UnicodeUtility.IsSurrogateCodePoint(thisChar))
-                    continue;
+                    continue
 
                 // Found a surrogate char. Back out the adjustment we made above, then
                 // try to consume the entire surrogate pair all at once. We won't bother
                 // trying to interpret the surrogate pair as a scalar value; we'll only
                 // validate that its bit pattern matches what's expected for a surrogate pair.
 
-                tempUtf8CodeUnitCountAdjustment -= 2;
+                tempUtf8CodeUnitCountAdjustment -= 2
 
                 if ((nuint)pEndOfInputBuffer - (nuint)pInputBuffer < sizeof(uint))
                     goto Error // input buffer too small to read a surrogate pair
 
-                thisChar = Unsafe.ReadUnaligned<uint>(pInputBuffer);
+                thisChar = Unsafe.ReadUnaligned<uint>(pInputBuffer)
                 if (((thisChar - (BitConverter.IsLittleEndian ? 0xDC00_D800u : 0xD800_DC00u)) & 0xFC00_FC00u) != 0)
                     goto Error // not a well-formed surrogate pair
 
@@ -271,6 +271,6 @@ namespace System.Text.Unicode
             Error:
             // Also used for normal return.
 
-            utf8CodeUnitCountAdjustment = tempUtf8CodeUnitCountAdjustment;
-            scalarCountAdjustment = tempScalarCountAdjustment;
-            return pInputBuffer;
+            utf8CodeUnitCountAdjustment = tempUtf8CodeUnitCountAdjustment
+            scalarCountAdjustment = tempScalarCountAdjustment
+            return pInputBuffer

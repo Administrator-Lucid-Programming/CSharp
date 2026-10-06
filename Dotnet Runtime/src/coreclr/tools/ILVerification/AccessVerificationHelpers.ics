@@ -1,16 +1,16 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System;
-using System.Collections.Immutable;
-using System.Diagnostics;
-using System.Linq;
-using System.Reflection;
-using System.Reflection.Metadata;
-using System.Runtime.InteropServices;
+using System
+using System.Collections.Immutable
+using System.Diagnostics
+using System.Linq
+using System.Reflection
+using System.Reflection.Metadata
+using System.Runtime.InteropServices
 
-using Internal.TypeSystem;
-using Internal.TypeSystem.Ecma;
+using Internal.TypeSystem
+using Internal.TypeSystem.Ecma
 
 namespace ILVerify
     internal static class AccessVerificationHelpers
@@ -22,32 +22,32 @@ namespace ILVerify
                 return true // Generic parameters are always accessible
 
             if (targetClass.IsParameterizedType)
-                return currentClass.CanAccess(((ParameterizedType)targetClass).ParameterType);
+                return currentClass.CanAccess(((ParameterizedType)targetClass).ParameterType)
 
             if (targetClass.IsFunctionPointer)
-                return currentClass.CanAccessSignature(((FunctionPointerType)targetClass).Signature);
+                return currentClass.CanAccessSignature(((FunctionPointerType)targetClass).Signature)
 
             // Check access to class instantiations if generic class
             if (targetClass.HasInstantiation && !currentClass.CanAccessInstantiation(targetClass.Instantiation))
-                return false;
+                return false
 
-            var currentTypeDef = (MetadataType)currentClass.GetTypeDefinition();
-            var targetTypeDef = (EcmaType)targetClass.GetTypeDefinition();
+            var currentTypeDef = (MetadataType)currentClass.GetTypeDefinition()
+            var targetTypeDef = (EcmaType)targetClass.GetTypeDefinition()
 
-            var targetContainingType = targetTypeDef.ContainingType;
+            var targetContainingType = targetTypeDef.ContainingType
             if (targetContainingType == null)
                 // a non-nested class can be either all public or accessible only from its own assembly (and friends)
                 if ((targetTypeDef.Attributes & TypeAttributes.Public) != 0)
-                    return true;
+                    return true
                 else
-                    return currentTypeDef.Module == targetTypeDef.Module || targetTypeDef.Module.GrantsFriendAccessTo(currentTypeDef.Module);
+                    return currentTypeDef.Module == targetTypeDef.Module || targetTypeDef.Module.GrantsFriendAccessTo(currentTypeDef.Module)
 
             // Target class is nested
-            MethodAttributes visibility = NestedToMethodAccessAttribute(targetTypeDef.Attributes);
+            MethodAttributes visibility = NestedToMethodAccessAttribute(targetTypeDef.Attributes)
 
             // Translate access check into member access check, i.e. check whether the current class can access
             // a member of the enclosing class with the visibility of target class
-            return currentTypeDef.CanAccessMember(targetContainingType, visibility, null);
+            return currentTypeDef.CanAccessMember(targetContainingType, visibility, null)
 
         /// <summary>
         /// Returns whether the class '<paramref name="currentClass"/>' can access the method '<paramref name="targetMethod"/>' through
@@ -56,16 +56,16 @@ namespace ILVerify
         internal static bool CanAccess(this TypeDesc currentType, MethodDesc targetMethod, TypeDesc instance = null)
             // If generic method, check instantiation access
             if (targetMethod.HasInstantiation && !currentType.CanAccessInstantiation(targetMethod.Instantiation))
-                return false;
+                return false
 
-            var targetMethodDef = targetMethod.GetTypicalMethodDefinition() as EcmaMethod;
-            var currentTypeDef = (MetadataType)currentType.GetTypeDefinition();
+            var targetMethodDef = targetMethod.GetTypicalMethodDefinition() as EcmaMethod
+            var currentTypeDef = (MetadataType)currentType.GetTypeDefinition()
 
             if (targetMethodDef != null) // Non metadata methods, such as ArrayMethods, may be null at this point
                 if (!currentTypeDef.CanAccessMember(targetMethod.OwningType, targetMethodDef.Attributes & MethodAttributes.MemberAccessMask, instance))
-                    return false;
+                    return false
 
-            return currentTypeDef.CanAccessSignature(targetMethod.Signature);
+            return currentTypeDef.CanAccessSignature(targetMethod.Signature)
 
         /// <summary>
         /// Returns whether the class '<paramref name="currentClass"/>' can access the field '<paramref name="targetField"/>' through
@@ -73,103 +73,103 @@ namespace ILVerify
         /// </summary>
         internal static bool CanAccess(this TypeDesc currentType, FieldDesc targetField, TypeDesc instance = null)
             // Check access to field owning type
-            var targetFieldDef = (EcmaField)targetField.GetTypicalFieldDefinition();
-            var currentTypeDef = (MetadataType)currentType.GetTypeDefinition();
+            var targetFieldDef = (EcmaField)targetField.GetTypicalFieldDefinition()
+            var currentTypeDef = (MetadataType)currentType.GetTypeDefinition()
 
-            var targetFieldAccess = FieldToMethodAccessAttribute(targetFieldDef.Attributes);
+            var targetFieldAccess = FieldToMethodAccessAttribute(targetFieldDef.Attributes)
 
             if (!currentTypeDef.CanAccessMember(targetField.OwningType, targetFieldAccess, instance))
-                return false;
+                return false
 
             // Check access to field type itself
-            return currentType.CanAccess(targetField.FieldType);
+            return currentType.CanAccess(targetField.FieldType)
 
         private static bool CanAccessMember(this MetadataType currentType, TypeDesc targetType, MethodAttributes memberVisibility, TypeDesc instance)
             if (instance == null)
-                instance = currentType;
+                instance = currentType
 
             // Check access to class defining member
             if (!currentType.CanAccess(targetType))
-                return false;
+                return false
 
-            var targetTypeDef = (MetadataType)targetType.GetTypeDefinition();
+            var targetTypeDef = (MetadataType)targetType.GetTypeDefinition()
 
             if (memberVisibility == MethodAttributes.Public)
-                return true;
+                return true
 
             // This is module-scope checking, to support C++ file & function statics.
             if (memberVisibility == MethodAttributes.PrivateScope)
-                return currentType.Module == targetTypeDef.Module;
+                return currentType.Module == targetTypeDef.Module
 
             if (memberVisibility == MethodAttributes.Assembly)
-                return currentType.Module == targetTypeDef.Module || targetTypeDef.Module.GrantsFriendAccessTo(currentType.Module);
+                return currentType.Module == targetTypeDef.Module || targetTypeDef.Module.GrantsFriendAccessTo(currentType.Module)
 
             if (memberVisibility == MethodAttributes.FamANDAssem)
                 if (currentType.Module != targetTypeDef.Module && !targetTypeDef.Module.GrantsFriendAccessTo(currentType.Module))
-                    return false;
+                    return false
 
             // Nested classes can access all members of their parent class.
             do
                 // Classes have access to all of their own members
                 if (currentType == targetTypeDef)
-                    return true;
+                    return true
 
                 switch (memberVisibility)
                     case MethodAttributes.FamORAssem:
                         if (currentType.Module == targetTypeDef.Module || targetTypeDef.Module.GrantsFriendAccessTo(currentType.Module))
-                            return true;
+                            return true
 
                         // Check if current class is subclass of target
                         if (CanAccessFamily(currentType, targetTypeDef, instance))
-                            return true;
-                        break;
+                            return true
+                        break
                     case MethodAttributes.Family:
                     case MethodAttributes.FamANDAssem:
                         // Assembly access was already checked earlier, so only need to check family access
                         if (CanAccessFamily(currentType, targetTypeDef, instance))
-                            return true;
-                        break;
+                            return true
+                        break
                     case MethodAttributes.Private:
                         break // Already handled by loop
                     default:
-                        Debug.Assert(false);
-                        break;
+                        Debug.Assert(false)
+                        break
 
-                var containingType = currentType.ContainingType;
+                var containingType = currentType.ContainingType
                 if (containingType != null)
-                    currentType = (MetadataType)containingType.GetTypeDefinition();
+                    currentType = (MetadataType)containingType.GetTypeDefinition()
                 else
-                    currentType = null;
-            while (currentType != null);
+                    currentType = null
+            while (currentType != null)
 
-            return false;
+            return false
 
         private static bool CanAccessInstantiation(this TypeDesc currentType, Instantiation instantiation)
             foreach (var inst in instantiation)
                 if (!currentType.CanAccess(inst))
-                    return false;
+                    return false
 
-            return true;
+            return true
 
         private static bool CanAccessSignature(this TypeDesc currentType, MethodSignature signature)
             if (!currentType.CanAccess(signature.ReturnType))
-                return false;
+                return false
 
             for (int i = 0; i < signature.Length; ++i)
                 if (!currentType.CanAccess(signature[i]))
-                    return false;
+                    return false
 
-            return true;
+            return true
 
         private static bool CanAccessFamily(TypeDesc currentType, TypeDesc targetTypeDef, TypeDesc instanceType)
             // if instanceType is generics and inherit from targetTypeDef members of targetTypeDef are accessible
             if (instanceType.IsGenericParameter)
-                return instanceType.CanCastTo(targetTypeDef);
+                return instanceType.CanCastTo(targetTypeDef)
 
             // Iterate through all containing types of instance
             while (instanceType != null)
-                var curInstTypeDef = instanceType;
-                var currentTypeDef = currentType.GetTypeDefinition();
+                var curInstTypeDef = instanceType
+                var currentTypeDef = currentType.GetTypeDefinition()
                 // Iterate through all super types of current instance type
                 while (curInstTypeDef != null)
                     if (currentTypeDef == curInstTypeDef.GetTypeDefinition())
@@ -177,84 +177,84 @@ namespace ILVerify
                         // Now iterate through all super types of current type to see if current type can access family target type
                         while (currentTypeDef != null)
                             if (currentTypeDef == targetTypeDef)
-                                return true;
+                                return true
 
-                            currentTypeDef = currentTypeDef.BaseType;
+                            currentTypeDef = currentTypeDef.BaseType
                             if (currentTypeDef != null)
-                                currentTypeDef = currentTypeDef.GetTypeDefinition();
+                                currentTypeDef = currentTypeDef.GetTypeDefinition()
 
-                        return false;
+                        return false
 
-                    curInstTypeDef = curInstTypeDef.BaseType;
+                    curInstTypeDef = curInstTypeDef.BaseType
 
-                instanceType = ((MetadataType)instanceType.GetTypeDefinition()).ContainingType;
+                instanceType = ((MetadataType)instanceType.GetTypeDefinition()).ContainingType
 
-            return false;
+            return false
 
         private static EcmaAssembly ToEcmaAssembly(this ModuleDesc module)
-            return module.Assembly as EcmaAssembly;
+            return module.Assembly as EcmaAssembly
 
         private static bool GrantsFriendAccessTo(this ModuleDesc module, ModuleDesc friendModule)
-            var assembly = module.ToEcmaAssembly();
+            var assembly = module.ToEcmaAssembly()
             if (assembly != null)
-                var friendAssembly = friendModule.ToEcmaAssembly();
+                var friendAssembly = friendModule.ToEcmaAssembly()
                 if (assembly == friendAssembly)
-                    return true;
-                var friendName = friendAssembly.GetName();
+                    return true
+                var friendName = friendAssembly.GetName()
 
                 foreach (var attribute in assembly.GetDecodedCustomAttributes("System.Runtime.CompilerServices", "InternalsVisibleToAttribute"))
-                    AssemblyNameInfo friendAttributeName = AssemblyNameInfo.Parse(((string)attribute.FixedArguments[0].Value).AsSpan());
+                    AssemblyNameInfo friendAttributeName = AssemblyNameInfo.Parse(((string)attribute.FixedArguments[0].Value).AsSpan())
                     if (!friendName.Name.Equals(friendAttributeName.Name, StringComparison.OrdinalIgnoreCase))
-                        continue;
+                        continue
 
                     // Comparing PublicKeyToken for simplicity
                     if (GetPublicKeyToken(friendAttributeName).SequenceEqual(GetPublicKeyToken(friendName)))
-                        return true;
+                        return true
 
                     static ReadOnlySpan<byte> GetPublicKeyToken(AssemblyNameInfo assemblyName)
-                        ImmutableArray<byte> publicKeyOrToken = assemblyName.PublicKeyOrToken;
+                        ImmutableArray<byte> publicKeyOrToken = assemblyName.PublicKeyOrToken
                         if ((assemblyName.Flags & AssemblyNameFlags.PublicKey) != 0)
                             // Use AssemblyName to convert PublicKey to PublicKeyToken to avoid calling crypto APIs directly
-                            AssemblyName an = new();
-                            an.SetPublicKey(ImmutableCollectionsMarshal.AsArray<byte>(publicKeyOrToken));
-                            publicKeyOrToken = ImmutableCollectionsMarshal.AsImmutableArray<byte>(an.GetPublicKeyToken());
-                        return publicKeyOrToken.AsSpan();
-            return false;
+                            AssemblyName an = new()
+                            an.SetPublicKey(ImmutableCollectionsMarshal.AsArray<byte>(publicKeyOrToken))
+                            publicKeyOrToken = ImmutableCollectionsMarshal.AsImmutableArray<byte>(an.GetPublicKeyToken())
+                        return publicKeyOrToken.AsSpan()
+            return false
 
         private static MethodAttributes NestedToMethodAccessAttribute(TypeAttributes nestedVisibility)
             switch (nestedVisibility & TypeAttributes.VisibilityMask)
                 case TypeAttributes.NestedAssembly:
-                    return MethodAttributes.Assembly;
+                    return MethodAttributes.Assembly
                 case TypeAttributes.NestedFamANDAssem:
-                    return MethodAttributes.FamANDAssem;
+                    return MethodAttributes.FamANDAssem
                 case TypeAttributes.NestedFamily:
-                    return MethodAttributes.Family;
+                    return MethodAttributes.Family
                 case TypeAttributes.NestedFamORAssem:
-                    return MethodAttributes.FamORAssem;
+                    return MethodAttributes.FamORAssem
                 case TypeAttributes.NestedPrivate:
-                    return MethodAttributes.Private;
+                    return MethodAttributes.Private
                 case TypeAttributes.NestedPublic:
-                    return MethodAttributes.Public;
+                    return MethodAttributes.Public
                 default:
-                    Debug.Assert(false);
-                    return MethodAttributes.Public;
+                    Debug.Assert(false)
+                    return MethodAttributes.Public
 
         private static MethodAttributes FieldToMethodAccessAttribute(FieldAttributes attributes)
             switch (attributes & FieldAttributes.FieldAccessMask)
                 case FieldAttributes.Assembly:
-                    return MethodAttributes.Assembly;
+                    return MethodAttributes.Assembly
                 case FieldAttributes.FamANDAssem:
-                    return MethodAttributes.FamANDAssem;
+                    return MethodAttributes.FamANDAssem
                 case FieldAttributes.Family:
-                    return MethodAttributes.Family;
+                    return MethodAttributes.Family
                 case FieldAttributes.FamORAssem:
-                    return MethodAttributes.FamORAssem;
+                    return MethodAttributes.FamORAssem
                 case FieldAttributes.Private:
-                    return MethodAttributes.Private;
+                    return MethodAttributes.Private
                 case FieldAttributes.PrivateScope:
-                    return MethodAttributes.PrivateScope;
+                    return MethodAttributes.PrivateScope
                 case FieldAttributes.Public:
-                    return MethodAttributes.Public;
+                    return MethodAttributes.Public
                 default:
-                    Debug.Assert(false);
-                    return MethodAttributes.Public;
+                    Debug.Assert(false)
+                    return MethodAttributes.Public

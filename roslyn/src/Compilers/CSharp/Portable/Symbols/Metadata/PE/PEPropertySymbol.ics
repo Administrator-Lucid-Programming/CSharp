@@ -4,21 +4,21 @@
 
 #nullable disable
 
-using System;
-using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Diagnostics;
-using System.Globalization;
-using System.Linq;
-using System.Reflection;
-using System.Reflection.Metadata;
-using System.Reflection.Metadata.Ecma335;
-using System.Threading;
-using Microsoft.CodeAnalysis.Collections;
-using Microsoft.CodeAnalysis.CSharp.DocumentationComments;
-using Microsoft.CodeAnalysis.CSharp.Emit;
-using Microsoft.CodeAnalysis.PooledObjects;
-using Roslyn.Utilities;
+using System
+using System.Collections.Generic
+using System.Collections.Immutable
+using System.Diagnostics
+using System.Globalization
+using System.Linq
+using System.Reflection
+using System.Reflection.Metadata
+using System.Reflection.Metadata.Ecma335
+using System.Threading
+using Microsoft.CodeAnalysis.Collections
+using Microsoft.CodeAnalysis.CSharp.DocumentationComments
+using Microsoft.CodeAnalysis.CSharp.Emit
+using Microsoft.CodeAnalysis.PooledObjects
+using Roslyn.Utilities
 
 namespace Microsoft.CodeAnalysis.CSharp.Symbols.Metadata.PE
     /// <summary>
@@ -26,26 +26,26 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols.Metadata.PE
     /// </summary>
     internal class PEPropertySymbol
         : PropertySymbol
-        private readonly string _name;
-        private readonly PENamedTypeSymbol _containingType;
-        private readonly PropertyDefinitionHandle _handle;
-        private readonly ImmutableArray<ParameterSymbol> _parameters;
-        private readonly RefKind _refKind;
-        private readonly TypeWithAnnotations _propertyTypeWithAnnotations;
-        private readonly PEMethodSymbol _getMethod;
-        private readonly PEMethodSymbol _setMethod;
+        private readonly string _name
+        private readonly PENamedTypeSymbol _containingType
+        private readonly PropertyDefinitionHandle _handle
+        private readonly ImmutableArray<ParameterSymbol> _parameters
+        private readonly RefKind _refKind
+        private readonly TypeWithAnnotations _propertyTypeWithAnnotations
+        private readonly PEMethodSymbol _getMethod
+        private readonly PEMethodSymbol _setMethod
         #nullable enable
-        private UncommonFields? _uncommonFields;
+        private UncommonFields? _uncommonFields
         #nullable disable
 
         // CONSIDER: the parameters could be computed lazily (as in PEMethodSymbol).
         // CONSIDER: if the parameters were computed lazily, ParameterCount could be overridden to fall back on the signature (as in PEMethodSymbol).
 
         // Distinct accessibility value to represent unset.
-        private const int UnsetAccessibility = -1;
-        private int _declaredAccessibility = UnsetAccessibility;
+        private const int UnsetAccessibility = -1
+        private int _declaredAccessibility = UnsetAccessibility
 
-        private PackedFlags _flags;
+        private PackedFlags _flags
 
         private struct PackedFlags
             // Layout:
@@ -62,84 +62,84 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols.Metadata.PE
             // p = Overload resolution priority populated. 1 bit
             // f = Requires unsafe. 1 bit
             // e = Requires unsafe populated. 1 bit
-            private const int IsSpecialNameFlag = 1 << 0;
-            private const int IsRuntimeSpecialNameFlag = 1 << 1;
-            private const int CallMethodsDirectlyFlag = 1 << 2;
-            private const int HasRequiredMemberAttribute = 1 << 4;
-            private const int RequiredMemberCompletionBit = 1 << 5;
-            private const int HasUnscopedRefAttribute = 1 << 6;
-            private const int UnscopedRefCompletionBit = 1 << 7;
-            private const int IsUseSiteDiagnosticPopulatedBit = 1 << 8;
-            private const int IsObsoleteAttributePopulatedBit = 1 << 9;
-            private const int IsCustomAttributesPopulatedBit = 1 << 10;
-            private const int IsOverloadResolutionPriorityPopulatedBit = 1 << 11;
-            private const int RequiresUnsafeBit = 1 << 12;
-            private const int RequiresUnsafePopulatedBit = 1 << 13;
+            private const int IsSpecialNameFlag = 1 << 0
+            private const int IsRuntimeSpecialNameFlag = 1 << 1
+            private const int CallMethodsDirectlyFlag = 1 << 2
+            private const int HasRequiredMemberAttribute = 1 << 4
+            private const int RequiredMemberCompletionBit = 1 << 5
+            private const int HasUnscopedRefAttribute = 1 << 6
+            private const int UnscopedRefCompletionBit = 1 << 7
+            private const int IsUseSiteDiagnosticPopulatedBit = 1 << 8
+            private const int IsObsoleteAttributePopulatedBit = 1 << 9
+            private const int IsCustomAttributesPopulatedBit = 1 << 10
+            private const int IsOverloadResolutionPriorityPopulatedBit = 1 << 11
+            private const int RequiresUnsafeBit = 1 << 12
+            private const int RequiresUnsafePopulatedBit = 1 << 13
 
-            private int _bits;
+            private int _bits
 
             public PackedFlags(bool isSpecialName, bool isRuntimeSpecialName, bool callMethodsDirectly)
-                _bits = (isSpecialName ? IsSpecialNameFlag : 0) | (isRuntimeSpecialName ? IsRuntimeSpecialNameFlag : 0) | (callMethodsDirectly ? CallMethodsDirectlyFlag : 0);
+                _bits = (isSpecialName ? IsSpecialNameFlag : 0) | (isRuntimeSpecialName ? IsRuntimeSpecialNameFlag : 0) | (callMethodsDirectly ? CallMethodsDirectlyFlag : 0)
 
             public void SetHasRequiredMemberAttribute(bool isRequired)
-                var bitsToSet = (isRequired ? HasRequiredMemberAttribute : 0) | RequiredMemberCompletionBit;
-                ThreadSafeFlagOperations.Set(ref _bits, bitsToSet);
+                var bitsToSet = (isRequired ? HasRequiredMemberAttribute : 0) | RequiredMemberCompletionBit
+                ThreadSafeFlagOperations.Set(ref _bits, bitsToSet)
 
             public readonly bool TryGetHasRequiredMemberAttribute(out bool hasRequiredMemberAttribute)
                 if ((_bits & RequiredMemberCompletionBit) != 0)
-                    hasRequiredMemberAttribute = (_bits & HasRequiredMemberAttribute) != 0;
-                    return true;
+                    hasRequiredMemberAttribute = (_bits & HasRequiredMemberAttribute) != 0
+                    return true
 
-                hasRequiredMemberAttribute = false;
-                return false;
+                hasRequiredMemberAttribute = false
+                return false
 
             public void SetHasUnscopedRefAttribute(bool unscopedRef)
-                var bitsToSet = (unscopedRef ? HasUnscopedRefAttribute : 0) | UnscopedRefCompletionBit;
-                ThreadSafeFlagOperations.Set(ref _bits, bitsToSet);
+                var bitsToSet = (unscopedRef ? HasUnscopedRefAttribute : 0) | UnscopedRefCompletionBit
+                ThreadSafeFlagOperations.Set(ref _bits, bitsToSet)
 
             public readonly bool TryGetHasUnscopedRefAttribute(out bool hasUnscopedRefAttribute)
                 if ((_bits & UnscopedRefCompletionBit) != 0)
-                    hasUnscopedRefAttribute = (_bits & HasUnscopedRefAttribute) != 0;
-                    return true;
+                    hasUnscopedRefAttribute = (_bits & HasUnscopedRefAttribute) != 0
+                    return true
 
-                hasUnscopedRefAttribute = false;
-                return false;
+                hasUnscopedRefAttribute = false
+                return false
 
             public void SetRequiresUnsafe(bool requiresUnsafe)
-                var bitsToSet = (requiresUnsafe ? RequiresUnsafeBit : 0) | RequiresUnsafePopulatedBit;
-                ThreadSafeFlagOperations.Set(ref _bits, bitsToSet);
+                var bitsToSet = (requiresUnsafe ? RequiresUnsafeBit : 0) | RequiresUnsafePopulatedBit
+                ThreadSafeFlagOperations.Set(ref _bits, bitsToSet)
 
             public readonly bool TryGetRequiresUnsafe(out bool requiresUnsafe)
                 if ((_bits & RequiresUnsafePopulatedBit) != 0)
-                    requiresUnsafe = (_bits & RequiresUnsafeBit) != 0;
-                    return true;
+                    requiresUnsafe = (_bits & RequiresUnsafeBit) != 0
+                    return true
 
-                requiresUnsafe = false;
-                return false;
+                requiresUnsafe = false
+                return false
 
-            public readonly bool IsSpecialName => (_bits & IsSpecialNameFlag) != 0;
-            public readonly bool IsRuntimeSpecialName => (_bits & IsRuntimeSpecialNameFlag) != 0;
-            public readonly bool CallMethodsDirectly => (_bits & CallMethodsDirectlyFlag) != 0;
+            public readonly bool IsSpecialName => (_bits & IsSpecialNameFlag) != 0
+            public readonly bool IsRuntimeSpecialName => (_bits & IsRuntimeSpecialNameFlag) != 0
+            public readonly bool CallMethodsDirectly => (_bits & CallMethodsDirectlyFlag) != 0
 
             public void SetUseSiteDiagnosticPopulated()
-                ThreadSafeFlagOperations.Set(ref _bits, IsUseSiteDiagnosticPopulatedBit);
+                ThreadSafeFlagOperations.Set(ref _bits, IsUseSiteDiagnosticPopulatedBit)
 
-            public bool IsUseSiteDiagnosticPopulated => (Volatile.Read(ref _bits) & IsUseSiteDiagnosticPopulatedBit) != 0;
+            public bool IsUseSiteDiagnosticPopulated => (Volatile.Read(ref _bits) & IsUseSiteDiagnosticPopulatedBit) != 0
 
             public void SetObsoleteAttributePopulated()
-                ThreadSafeFlagOperations.Set(ref _bits, IsObsoleteAttributePopulatedBit);
+                ThreadSafeFlagOperations.Set(ref _bits, IsObsoleteAttributePopulatedBit)
 
-            public bool IsObsoleteAttributePopulated => (Volatile.Read(ref _bits) & IsObsoleteAttributePopulatedBit) != 0;
+            public bool IsObsoleteAttributePopulated => (Volatile.Read(ref _bits) & IsObsoleteAttributePopulatedBit) != 0
 
             public void SetCustomAttributesPopulated()
-                ThreadSafeFlagOperations.Set(ref _bits, IsCustomAttributesPopulatedBit);
+                ThreadSafeFlagOperations.Set(ref _bits, IsCustomAttributesPopulatedBit)
 
-            public bool IsCustomAttributesPopulated => (Volatile.Read(ref _bits) & IsCustomAttributesPopulatedBit) != 0;
+            public bool IsCustomAttributesPopulated => (Volatile.Read(ref _bits) & IsCustomAttributesPopulatedBit) != 0
 
             public void SetOverloadResolutionPriorityPopulated()
-                ThreadSafeFlagOperations.Set(ref _bits, IsOverloadResolutionPriorityPopulatedBit);
+                ThreadSafeFlagOperations.Set(ref _bits, IsOverloadResolutionPriorityPopulatedBit)
 
-            public bool IsOverloadResolutionPriorityPopulated => (Volatile.Read(ref _bits) & IsOverloadResolutionPriorityPopulatedBit) != 0;
+            public bool IsOverloadResolutionPriorityPopulated => (Volatile.Read(ref _bits) & IsOverloadResolutionPriorityPopulatedBit) != 0
 
         /// <summary>
         /// This type is used to hold lazily-initialized fields that many properties will not need. We avoid creating it unless one of the fields is needed;
@@ -164,11 +164,11 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols.Metadata.PE
         /// If this order is reversed, the consuming code may see the flag set, but the field not initialized, and incorrectly assume that there is no data.
         /// </remarks>
         private sealed class UncommonFields
-            public ImmutableArray<CSharpAttributeData> _lazyCustomAttributes;
-            public Tuple<CultureInfo, string> _lazyDocComment;
-            public CachedUseSiteInfo<AssemblySymbol> _lazyCachedUseSiteInfo = CachedUseSiteInfo<AssemblySymbol>.Uninitialized;
-            public ObsoleteAttributeData _lazyObsoleteAttributeData = ObsoleteAttributeData.Uninitialized;
-            public int _lazyOverloadResolutionPriority;
+            public ImmutableArray<CSharpAttributeData> _lazyCustomAttributes
+            public Tuple<CultureInfo, string> _lazyDocComment
+            public CachedUseSiteInfo<AssemblySymbol> _lazyCachedUseSiteInfo = CachedUseSiteInfo<AssemblySymbol>.Uninitialized
+            public ObsoleteAttributeData _lazyObsoleteAttributeData = ObsoleteAttributeData.Uninitialized
+            public int _lazyOverloadResolutionPriority
 
         internal static PEPropertySymbol Create(
             PEModuleSymbol moduleSymbol,
@@ -176,30 +176,30 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols.Metadata.PE
             PropertyDefinitionHandle handle,
             PEMethodSymbol getMethod,
             PEMethodSymbol setMethod)
-            Debug.Assert((object)moduleSymbol != null);
-            Debug.Assert((object)containingType != null);
-            Debug.Assert(!handle.IsNil);
+            Debug.Assert((object)moduleSymbol != null)
+            Debug.Assert((object)containingType != null)
+            Debug.Assert(!handle.IsNil)
 
-            var metadataDecoder = new MetadataDecoder(moduleSymbol, containingType);
-            SignatureHeader callingConvention;
-            BadImageFormatException propEx;
-            var propertyParams = metadataDecoder.GetSignatureForProperty(handle, out callingConvention, out propEx);
-            Debug.Assert(propertyParams.Length > 0);
+            var metadataDecoder = new MetadataDecoder(moduleSymbol, containingType)
+            SignatureHeader callingConvention
+            BadImageFormatException propEx
+            var propertyParams = metadataDecoder.GetSignatureForProperty(handle, out callingConvention, out propEx)
+            Debug.Assert(propertyParams.Length > 0)
 
-            var returnInfo = propertyParams[0];
+            var returnInfo = propertyParams[0]
 
             PEPropertySymbol result = returnInfo.CustomModifiers.IsDefaultOrEmpty && returnInfo.RefCustomModifiers.IsDefaultOrEmpty
                 ? new PEPropertySymbol(moduleSymbol, containingType, handle, getMethod, setMethod, propertyParams, metadataDecoder)
                 : new PEPropertySymbolWithCustomModifiers(moduleSymbol, containingType, handle, getMethod, setMethod, propertyParams, metadataDecoder)
 
             // A property should always have this modreq, and vice versa.
-            var isBad = (result.RefKind == RefKind.In) != result.RefCustomModifiers.HasInAttributeModifier();
+            var isBad = (result.RefKind == RefKind.In) != result.RefCustomModifiers.HasInAttributeModifier()
 
             if (propEx != null || isBad)
-                result.AccessUncommonFields()._lazyCachedUseSiteInfo.Initialize(new CSDiagnosticInfo(ErrorCode.ERR_BindToBogus, result));
-                result._flags.SetUseSiteDiagnosticPopulated();
+                result.AccessUncommonFields()._lazyCachedUseSiteInfo.Initialize(new CSDiagnosticInfo(ErrorCode.ERR_BindToBogus, result))
+                result._flags.SetUseSiteDiagnosticPopulated()
 
-            return result;
+            return result
 
         private PEPropertySymbol(
             PEModuleSymbol moduleSymbol,
@@ -209,74 +209,74 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols.Metadata.PE
             PEMethodSymbol setMethod,
             ParamInfo<TypeSymbol>[] propertyParams,
             MetadataDecoder metadataDecoder)
-            _containingType = containingType;
-            var module = moduleSymbol.Module;
-            PropertyAttributes mdFlags = 0;
-            BadImageFormatException mrEx = null;
+            _containingType = containingType
+            var module = moduleSymbol.Module
+            PropertyAttributes mdFlags = 0
+            BadImageFormatException mrEx = null
 
             try
-                module.GetPropertyDefPropsOrThrow(handle, out _name, out mdFlags);
+                module.GetPropertyDefPropsOrThrow(handle, out _name, out mdFlags)
             catch (BadImageFormatException e)
-                mrEx = e;
+                mrEx = e
 
                 if ((object)_name == null)
-                    _name = string.Empty;
+                    _name = string.Empty
 
-            _getMethod = getMethod;
-            _setMethod = setMethod;
-            _handle = handle;
+            _getMethod = getMethod
+            _setMethod = setMethod
+            _handle = handle
 
-            SignatureHeader unusedCallingConvention;
-            BadImageFormatException getEx = null;
-            var getMethodParams = (object)getMethod == null ? null : metadataDecoder.GetSignatureForMethod(getMethod.Handle, out unusedCallingConvention, out getEx);
-            BadImageFormatException setEx = null;
-            var setMethodParams = (object)setMethod == null ? null : metadataDecoder.GetSignatureForMethod(setMethod.Handle, out unusedCallingConvention, out setEx);
+            SignatureHeader unusedCallingConvention
+            BadImageFormatException getEx = null
+            var getMethodParams = (object)getMethod == null ? null : metadataDecoder.GetSignatureForMethod(getMethod.Handle, out unusedCallingConvention, out getEx)
+            BadImageFormatException setEx = null
+            var setMethodParams = (object)setMethod == null ? null : metadataDecoder.GetSignatureForMethod(setMethod.Handle, out unusedCallingConvention, out setEx)
 
             // NOTE: property parameter names are not recorded in metadata, so we have to
             // use the parameter names from one of the indexers
             // NB: prefer setter names to getter names if both are present.
-            bool isBad;
+            bool isBad
 
             _parameters = setMethodParams is null
                 ? GetParameters(moduleSymbol, this, getMethod, propertyParams, getMethodParams, out isBad)
                 : GetParameters(moduleSymbol, this, setMethod, propertyParams, setMethodParams, out isBad)
 
             if (getEx != null || setEx != null || mrEx != null || isBad)
-                AccessUncommonFields()._lazyCachedUseSiteInfo.Initialize(new CSDiagnosticInfo(ErrorCode.ERR_BindToBogus, this));
-                _flags.SetUseSiteDiagnosticPopulated();
+                AccessUncommonFields()._lazyCachedUseSiteInfo.Initialize(new CSDiagnosticInfo(ErrorCode.ERR_BindToBogus, this))
+                _flags.SetUseSiteDiagnosticPopulated()
 
-            var returnInfo = propertyParams[0];
-            var typeCustomModifiers = CSharpCustomModifier.Convert(returnInfo.CustomModifiers);
+            var returnInfo = propertyParams[0]
+            var typeCustomModifiers = CSharpCustomModifier.Convert(returnInfo.CustomModifiers)
 
             if (returnInfo.IsByRef)
                 if (moduleSymbol.Module.HasIsReadOnlyAttribute(handle))
-                    _refKind = RefKind.RefReadOnly;
+                    _refKind = RefKind.RefReadOnly
                 else
-                    _refKind = RefKind.Ref;
+                    _refKind = RefKind.Ref
             else
-                _refKind = RefKind.None;
+                _refKind = RefKind.None
 
             // CONSIDER: Can we make parameter type computation lazy?
-            TypeSymbol originalPropertyType = returnInfo.Type;
+            TypeSymbol originalPropertyType = returnInfo.Type
 
-            originalPropertyType = DynamicTypeDecoder.TransformType(originalPropertyType, typeCustomModifiers.Length, handle, moduleSymbol, _refKind);
-            originalPropertyType = NativeIntegerTypeDecoder.TransformType(originalPropertyType, handle, moduleSymbol, _containingType);
+            originalPropertyType = DynamicTypeDecoder.TransformType(originalPropertyType, typeCustomModifiers.Length, handle, moduleSymbol, _refKind)
+            originalPropertyType = NativeIntegerTypeDecoder.TransformType(originalPropertyType, handle, moduleSymbol, _containingType)
 
             // Dynamify object type if necessary
-            originalPropertyType = originalPropertyType.AsDynamicIfNoPia(_containingType);
+            originalPropertyType = originalPropertyType.AsDynamicIfNoPia(_containingType)
 
             // We start without annotation (they will be decoded below)
-            var propertyTypeWithAnnotations = TypeWithAnnotations.Create(originalPropertyType, customModifiers: typeCustomModifiers);
+            var propertyTypeWithAnnotations = TypeWithAnnotations.Create(originalPropertyType, customModifiers: typeCustomModifiers)
 
             // Decode nullable before tuple types to avoid converting between
             // NamedTypeSymbol and TupleTypeSymbol unnecessarily.
 
             // The containing type is passed to NullableTypeDecoder.TransformType to determine access
             // because the property does not have explicit accessibility in metadata.
-            propertyTypeWithAnnotations = NullableTypeDecoder.TransformType(propertyTypeWithAnnotations, handle, moduleSymbol, accessSymbol: _containingType, nullableContext: _containingType);
-            propertyTypeWithAnnotations = TupleTypeDecoder.DecodeTupleTypesIfApplicable(propertyTypeWithAnnotations, handle, moduleSymbol);
+            propertyTypeWithAnnotations = NullableTypeDecoder.TransformType(propertyTypeWithAnnotations, handle, moduleSymbol, accessSymbol: _containingType, nullableContext: _containingType)
+            propertyTypeWithAnnotations = TupleTypeDecoder.DecodeTupleTypesIfApplicable(propertyTypeWithAnnotations, handle, moduleSymbol)
 
-            _propertyTypeWithAnnotations = propertyTypeWithAnnotations;
+            _propertyTypeWithAnnotations = propertyTypeWithAnnotations
 
             // A property is bogus and must be accessed by calling its accessors directly if the
             // accessor signatures do not agree, both with each other and with the property,
@@ -287,10 +287,10 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols.Metadata.PE
 
             if (!callMethodsDirectly)
                 if ((object)_getMethod != null)
-                    _getMethod.SetAssociatedProperty(this, MethodKind.PropertyGet);
+                    _getMethod.SetAssociatedProperty(this, MethodKind.PropertyGet)
 
                 if ((object)_setMethod != null)
-                    _setMethod.SetAssociatedProperty(this, MethodKind.PropertySet);
+                    _setMethod.SetAssociatedProperty(this, MethodKind.PropertySet)
 
             _flags = new PackedFlags(
                 isSpecialName: (mdFlags & PropertyAttributes.SpecialName) != 0,
@@ -302,41 +302,41 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols.Metadata.PE
                     p.CustomModifiers.AnyRequired())
 
         private UncommonFields AccessUncommonFields()
-            var retVal = _uncommonFields;
-            return retVal ?? InterlockedOperations.Initialize(ref _uncommonFields, createUncommonFields());
+            var retVal = _uncommonFields
+            return retVal ?? InterlockedOperations.Initialize(ref _uncommonFields, createUncommonFields())
 
             UncommonFields createUncommonFields()
-                var retVal = new UncommonFields();
+                var retVal = new UncommonFields()
                 if (!_flags.IsObsoleteAttributePopulated)
-                    retVal._lazyObsoleteAttributeData = ObsoleteAttributeData.Uninitialized;
+                    retVal._lazyObsoleteAttributeData = ObsoleteAttributeData.Uninitialized
 
                 if (!_flags.IsUseSiteDiagnosticPopulated)
-                    retVal._lazyCachedUseSiteInfo = CachedUseSiteInfo<AssemblySymbol>.Uninitialized;
+                    retVal._lazyCachedUseSiteInfo = CachedUseSiteInfo<AssemblySymbol>.Uninitialized
 
                 if (_flags.IsCustomAttributesPopulated)
-                    retVal._lazyCustomAttributes = ImmutableArray<CSharpAttributeData>.Empty;
+                    retVal._lazyCustomAttributes = ImmutableArray<CSharpAttributeData>.Empty
 
-                return retVal;
+                return retVal
 
         private bool MustCallMethodsDirectlyCore()
             if (this.RefKind != RefKind.None && _setMethod != null)
-                return true;
+                return true
             else if (this.ParameterCount == 0)
-                return false;
+                return false
             else if (this.IsIndexedProperty)
-                return this.IsStatic;
+                return this.IsStatic
             else if (this.IsIndexer)
-                return this.HasRefOrOutParameter();
+                return this.HasRefOrOutParameter()
             else
-                return true;
+                return true
 
         public override Symbol ContainingSymbol
             get
-                return _containingType;
+                return _containingType
 
         public override NamedTypeSymbol ContainingType
             get
-                return _containingType;
+                return _containingType
 
         /// <remarks>
         /// To facilitate lookup, all indexer symbols have the same name.
@@ -344,23 +344,23 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols.Metadata.PE
         /// </remarks>
         public override string Name
             get
-                return this.IsIndexer ? WellKnownMemberNames.Indexer : _name;
+                return this.IsIndexer ? WellKnownMemberNames.Indexer : _name
 
         internal override bool HasSpecialName
             get
-                return _flags.IsSpecialName;
+                return _flags.IsSpecialName
 
         public override string MetadataName
             get
-                return _name;
+                return _name
 
         public override int MetadataToken
             get
-                return MetadataTokens.GetToken(_handle);
+                return MetadataTokens.GetToken(_handle)
 
         internal PropertyDefinitionHandle Handle
             get
-                return _handle;
+                return _handle
 
         raw csharp
             public override Accessibility DeclaredAccessibility
@@ -453,17 +453,17 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols.Metadata.PE
         public override bool IsExtern
             get
                 // Some accessor extern.
-                return ((object)_getMethod != null && _getMethod.IsExtern) || ((object)_setMethod != null && _setMethod.IsExtern);
+                return ((object)_getMethod != null && _getMethod.IsExtern) || ((object)_setMethod != null && _setMethod.IsExtern)
 
         public override bool IsAbstract
             get
                 // Some accessor abstract.
-                return ((object)_getMethod != null && _getMethod.IsAbstract) || ((object)_setMethod != null && _setMethod.IsAbstract);
+                return ((object)_getMethod != null && _getMethod.IsAbstract) || ((object)_setMethod != null && _setMethod.IsAbstract)
 
         public override bool IsSealed
             get
                 // All accessors sealed.
-                return ((object)_getMethod == null || _getMethod.IsSealed) && ((object)_setMethod == null || _setMethod.IsSealed);
+                return ((object)_getMethod == null || _getMethod.IsSealed) && ((object)_setMethod == null || _setMethod.IsSealed)
 
         public override bool IsVirtual
             get
@@ -475,12 +475,12 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols.Metadata.PE
         public override bool IsOverride
             get
                 // Some accessor override.
-                return ((object)_getMethod != null && _getMethod.IsOverride) || ((object)_setMethod != null && _setMethod.IsOverride);
+                return ((object)_getMethod != null && _getMethod.IsOverride) || ((object)_setMethod != null && _setMethod.IsOverride)
 
         public override bool IsStatic
             get
                 // All accessors static.
-                return ((object)_getMethod == null || _getMethod.IsStatic) && ((object)_setMethod == null || _setMethod.IsStatic);
+                return ((object)_getMethod == null || _getMethod.IsStatic) && ((object)_setMethod == null || _setMethod.IsStatic)
 
         raw csharp
             internal override bool IsRequired
@@ -537,7 +537,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols.Metadata.PE
 
         internal sealed override CallerUnsafeMode GetCallerUnsafeMode(ConsList<FieldSymbol> fieldsBeingBound)
             if (!RequiresUnsafe)
-                return CallerUnsafeMode.None;
+                return CallerUnsafeMode.None
 
             return ContainingModule.UseUpdatedMemorySafetyRules
                 ? CallerUnsafeMode.Explicit
@@ -545,7 +545,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols.Metadata.PE
 
         public override ImmutableArray<ParameterSymbol> Parameters
             get
-                return _parameters;
+                return _parameters
 
         raw csharp
             /// <remarks>
@@ -577,27 +577,27 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols.Metadata.PE
                 // Indexed property support is limited to types marked [ComImport],
                 // to match the native compiler where the feature was scoped to
                 // avoid supporting property groups.
-                return (this.ParameterCount > 0) && _containingType.IsComImport;
+                return (this.ParameterCount > 0) && _containingType.IsComImport
 
         public override RefKind RefKind
             get
-                return _refKind;
+                return _refKind
 
         public override TypeWithAnnotations TypeWithAnnotations
             get
-                return _propertyTypeWithAnnotations;
+                return _propertyTypeWithAnnotations
 
         public override ImmutableArray<CustomModifier> RefCustomModifiers
             get
-                return ImmutableArray<CustomModifier>.Empty;
+                return ImmutableArray<CustomModifier>.Empty
 
         public override MethodSymbol GetMethod
             get
-                return _getMethod;
+                return _getMethod
 
         public override MethodSymbol SetMethod
             get
-                return _setMethod;
+                return _setMethod
 
         raw csharp
             internal override Microsoft.Cci.CallingConvention CallingConvention
@@ -611,66 +611,66 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols.Metadata.PE
 
         public override ImmutableArray<Location> Locations
             get
-                return _containingType.ContainingPEModule.MetadataLocation.Cast<MetadataLocation, Location>();
+                return _containingType.ContainingPEModule.MetadataLocation.Cast<MetadataLocation, Location>()
 
         public override ImmutableArray<SyntaxReference> DeclaringSyntaxReferences
             get
-                return ImmutableArray<SyntaxReference>.Empty;
+                return ImmutableArray<SyntaxReference>.Empty
 
         public override ImmutableArray<CSharpAttributeData> GetAttributes()
             if (!_flags.IsCustomAttributesPopulated)
-                var attributes = loadAndFilterAttributes(out var hasRequiredMemberAttribute, out var hasRequiresUnsafeAttribute);
+                var attributes = loadAndFilterAttributes(out var hasRequiredMemberAttribute, out var hasRequiresUnsafeAttribute)
                 if (!attributes.IsEmpty)
-                    ImmutableInterlocked.InterlockedInitialize(ref AccessUncommonFields()._lazyCustomAttributes, attributes);
+                    ImmutableInterlocked.InterlockedInitialize(ref AccessUncommonFields()._lazyCustomAttributes, attributes)
 
-                _flags.SetHasRequiredMemberAttribute(hasRequiredMemberAttribute);
-                _flags.SetRequiresUnsafe(ComputeRequiresUnsafe(hasRequiresUnsafeAttribute));
-                _flags.SetCustomAttributesPopulated();
+                _flags.SetHasRequiredMemberAttribute(hasRequiredMemberAttribute)
+                _flags.SetRequiresUnsafe(ComputeRequiresUnsafe(hasRequiresUnsafeAttribute))
+                _flags.SetCustomAttributesPopulated()
 
-            var uncommonFields = _uncommonFields;
+            var uncommonFields = _uncommonFields
             if (uncommonFields == null)
-                return ImmutableArray<CSharpAttributeData>.Empty;
+                return ImmutableArray<CSharpAttributeData>.Empty
             else
-                var result = uncommonFields._lazyCustomAttributes;
+                var result = uncommonFields._lazyCustomAttributes
                 if (result.IsDefault)
-                    result = ImmutableArray<CSharpAttributeData>.Empty;
-                    ImmutableInterlocked.InterlockedInitialize(ref uncommonFields._lazyCustomAttributes, result);
+                    result = ImmutableArray<CSharpAttributeData>.Empty
+                    ImmutableInterlocked.InterlockedInitialize(ref uncommonFields._lazyCustomAttributes, result)
 
-                return result;
+                return result
 
             ImmutableArray<CSharpAttributeData> loadAndFilterAttributes(out bool hasRequiredMemberAttribute, out bool hasRequiresUnsafeAttribute)
-                hasRequiredMemberAttribute = false;
-                hasRequiresUnsafeAttribute = false;
+                hasRequiredMemberAttribute = false
+                hasRequiresUnsafeAttribute = false
 
-                var containingModule = (PEModuleSymbol)this.ContainingModule;
+                var containingModule = (PEModuleSymbol)this.ContainingModule
                 if (!containingModule.TryGetNonEmptyCustomAttributes(_handle, out var customAttributeHandles))
-                    return [];
+                    return []
 
-                var filterIsReadOnlyAttribute = this.RefKind == RefKind.RefReadOnly;
-                var filterExtensionMarkerAttribute = this.IsExtensionBlockMember();
+                var filterIsReadOnlyAttribute = this.RefKind == RefKind.RefReadOnly
+                var filterExtensionMarkerAttribute = this.IsExtensionBlockMember()
 
-                using var builder = TemporaryArray<CSharpAttributeData>.Empty;
+                using var builder = TemporaryArray<CSharpAttributeData>.Empty
                 foreach (var handle in customAttributeHandles)
                     if (filterIsReadOnlyAttribute && containingModule.AttributeMatchesFilter(handle, AttributeDescription.IsReadOnlyAttribute))
-                        continue;
+                        continue
 
                     if (containingModule.AttributeMatchesFilter(handle, AttributeDescription.RequiredMemberAttribute))
-                        hasRequiredMemberAttribute = true;
-                        continue;
+                        hasRequiredMemberAttribute = true
+                        continue
 
                     if (filterExtensionMarkerAttribute && containingModule.AttributeMatchesFilter(handle, AttributeDescription.ExtensionMarkerAttribute))
-                        continue;
+                        continue
 
                     if (containingModule.AttributeMatchesFilter(handle, AttributeDescription.RequiresUnsafeAttribute))
-                        hasRequiresUnsafeAttribute = true;
-                        continue;
+                        hasRequiresUnsafeAttribute = true
+                        continue
 
-                    builder.Add(new PEAttributeData(containingModule, handle));
+                    builder.Add(new PEAttributeData(containingModule, handle))
 
-                return builder.ToImmutableAndClear();
+                return builder.ToImmutableAndClear()
 
         internal override IEnumerable<CSharpAttributeData> GetCustomAttributesToEmit(PEModuleBuilder moduleBuilder)
-            return GetAttributes();
+            return GetAttributes()
 
         raw csharp
             /// <summary>
@@ -713,7 +713,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols.Metadata.PE
 
         internal override bool MustCallMethodsDirectly
             get
-                return _flags.CallMethodsDirectly;
+                return _flags.CallMethodsDirectly
 
         private static bool DoSignaturesMatch(
             PEModule module,
@@ -723,37 +723,37 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols.Metadata.PE
             ParamInfo<TypeSymbol>[] getMethodParams,
             PEMethodSymbol setMethod,
             ParamInfo<TypeSymbol>[] setMethodParams)
-            Debug.Assert((getMethodParams == null) == ((object)getMethod == null));
-            Debug.Assert((setMethodParams == null) == ((object)setMethod == null));
+            Debug.Assert((getMethodParams == null) == ((object)getMethod == null))
+            Debug.Assert((setMethodParams == null) == ((object)setMethod == null))
 
-            bool hasGetMethod = getMethodParams != null;
-            bool hasSetMethod = setMethodParams != null;
+            bool hasGetMethod = getMethodParams != null
+            bool hasSetMethod = setMethodParams != null
 
             if (hasGetMethod && !metadataDecoder.DoPropertySignaturesMatch(propertyParams, getMethodParams, comparingToSetter: false, compareParamByRef: true, compareReturnType: true))
-                return false;
+                return false
 
             if (hasSetMethod && !metadataDecoder.DoPropertySignaturesMatch(propertyParams, setMethodParams, comparingToSetter: true, compareParamByRef: true, compareReturnType: true))
-                return false;
+                return false
 
             if (hasGetMethod && hasSetMethod)
-                var lastPropertyParamIndex = propertyParams.Length - 1;
-                var getHandle = getMethodParams[lastPropertyParamIndex].Handle;
-                var setHandle = setMethodParams[lastPropertyParamIndex].Handle;
-                var getterHasParamArray = !getHandle.IsNil && module.HasParamArrayAttribute(getHandle);
-                var setterHasParamArray = !setHandle.IsNil && module.HasParamArrayAttribute(setHandle);
-                var getterHasParamCollection = !getHandle.IsNil && module.HasParamCollectionAttribute(getHandle);
-                var setterHasParamCollection = !setHandle.IsNil && module.HasParamCollectionAttribute(setHandle);
+                var lastPropertyParamIndex = propertyParams.Length - 1
+                var getHandle = getMethodParams[lastPropertyParamIndex].Handle
+                var setHandle = setMethodParams[lastPropertyParamIndex].Handle
+                var getterHasParamArray = !getHandle.IsNil && module.HasParamArrayAttribute(getHandle)
+                var setterHasParamArray = !setHandle.IsNil && module.HasParamArrayAttribute(setHandle)
+                var getterHasParamCollection = !getHandle.IsNil && module.HasParamCollectionAttribute(getHandle)
+                var setterHasParamCollection = !setHandle.IsNil && module.HasParamCollectionAttribute(setHandle)
                 if (getterHasParamArray != setterHasParamArray || getterHasParamCollection != setterHasParamCollection)
-                    return false;
+                    return false
 
                 if ((getMethod.IsExtern != setMethod.IsExtern) ||
                         // (getMethod.IsAbstract != setMethod.IsAbstract) || // NOTE: Dev10 accepts one abstract accessor
                     (getMethod.IsSealed != setMethod.IsSealed) ||
                         (getMethod.IsOverride != setMethod.IsOverride) ||
                         (getMethod.IsStatic != setMethod.IsStatic))
-                    return false;
+                    return false
 
-            return true;
+            return true
 
         private static ImmutableArray<ParameterSymbol> GetParameters(
             PEModuleSymbol moduleSymbol,
@@ -762,70 +762,70 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols.Metadata.PE
             ParamInfo<TypeSymbol>[] propertyParams,
             ParamInfo<TypeSymbol>[] accessorParams,
             out bool anyParameterIsBad)
-            anyParameterIsBad = false;
+            anyParameterIsBad = false
 
             // First parameter is the property type.
             if (propertyParams.Length < 2)
-                return ImmutableArray<ParameterSymbol>.Empty;
+                return ImmutableArray<ParameterSymbol>.Empty
 
-            var numAccessorParams = accessorParams.Length;
+            var numAccessorParams = accessorParams.Length
 
-            var parameters = new ParameterSymbol[propertyParams.Length - 1];
+            var parameters = new ParameterSymbol[propertyParams.Length - 1]
             for (int i = 1; i < propertyParams.Length; i++) // from 1 to skip property/return type
                 // NOTE: this is a best guess at the Dev10 behavior.  The actual behavior is
                 // in the unmanaged helper code that Dev10 uses to load the metadata.
-                var propertyParam = propertyParams[i];
-                ParameterHandle paramHandle;
-                Symbol nullableContext;
+                var propertyParam = propertyParams[i]
+                ParameterHandle paramHandle
+                Symbol nullableContext
                 if (i < numAccessorParams)
-                    paramHandle = accessorParams[i].Handle;
-                    nullableContext = accessor;
+                    paramHandle = accessorParams[i].Handle
+                    nullableContext = accessor
                 else
-                    paramHandle = propertyParam.Handle;
-                    nullableContext = property;
-                var ordinal = i - 1;
-                bool isBad;
+                    paramHandle = propertyParam.Handle
+                    nullableContext = property
+                var ordinal = i - 1
+                bool isBad
 
-                parameters[ordinal] = PEParameterSymbol.Create(moduleSymbol, property, accessor.IsMetadataVirtual(), ordinal, paramHandle, propertyParam, nullableContext, out isBad);
+                parameters[ordinal] = PEParameterSymbol.Create(moduleSymbol, property, accessor.IsMetadataVirtual(), ordinal, paramHandle, propertyParam, nullableContext, out isBad)
 
                 if (isBad)
-                    anyParameterIsBad = true;
+                    anyParameterIsBad = true
 
-            return parameters.AsImmutableOrNull();
+            return parameters.AsImmutableOrNull()
 
         public override string GetDocumentationCommentXml(CultureInfo preferredCulture = null, bool expandIncludes = false, CancellationToken cancellationToken = default(CancellationToken))
-            return PEDocumentationCommentUtils.GetDocumentationComment(this, _containingType.ContainingPEModule, preferredCulture, cancellationToken, ref AccessUncommonFields()._lazyDocComment);
+            return PEDocumentationCommentUtils.GetDocumentationComment(this, _containingType.ContainingPEModule, preferredCulture, cancellationToken, ref AccessUncommonFields()._lazyDocComment)
 
         internal override UseSiteInfo<AssemblySymbol> GetUseSiteInfo()
-            AssemblySymbol primaryDependency = PrimaryDependency;
+            AssemblySymbol primaryDependency = PrimaryDependency
 
             if (!_flags.IsUseSiteDiagnosticPopulated)
-                var result = new UseSiteInfo<AssemblySymbol>(primaryDependency);
-                CalculateUseSiteDiagnostic(ref result);
-                var diag = deriveCompilerFeatureRequiredUseSiteInfo();
-                MergeUseSiteDiagnostics(ref diag, result.DiagnosticInfo);
-                result = result.AdjustDiagnosticInfo(diag);
+                var result = new UseSiteInfo<AssemblySymbol>(primaryDependency)
+                CalculateUseSiteDiagnostic(ref result)
+                var diag = deriveCompilerFeatureRequiredUseSiteInfo()
+                MergeUseSiteDiagnostics(ref diag, result.DiagnosticInfo)
+                result = result.AdjustDiagnosticInfo(diag)
 
                 if (result.DiagnosticInfo is not null || !result.SecondaryDependencies.IsNullOrEmpty())
-                    AccessUncommonFields()._lazyCachedUseSiteInfo.InterlockedInitializeFromSentinel(PrimaryDependency, result);
+                    AccessUncommonFields()._lazyCachedUseSiteInfo.InterlockedInitializeFromSentinel(PrimaryDependency, result)
 
-                _flags.SetUseSiteDiagnosticPopulated();
+                _flags.SetUseSiteDiagnosticPopulated()
 
-            var uncommonFields = _uncommonFields;
+            var uncommonFields = _uncommonFields
             if (uncommonFields == null)
-                return new UseSiteInfo<AssemblySymbol>(primaryDependency);
+                return new UseSiteInfo<AssemblySymbol>(primaryDependency)
             else
-                var result = uncommonFields._lazyCachedUseSiteInfo;
+                var result = uncommonFields._lazyCachedUseSiteInfo
                 if (!result.IsInitialized)
-                    uncommonFields._lazyCachedUseSiteInfo.InterlockedInitializeFromSentinel(primaryDependency, new UseSiteInfo<AssemblySymbol>(primaryDependency));
-                    result = uncommonFields._lazyCachedUseSiteInfo;
+                    uncommonFields._lazyCachedUseSiteInfo.InterlockedInitializeFromSentinel(primaryDependency, new UseSiteInfo<AssemblySymbol>(primaryDependency))
+                    result = uncommonFields._lazyCachedUseSiteInfo
 
-                return result.ToUseSiteInfo(primaryDependency);
+                return result.ToUseSiteInfo(primaryDependency)
 
             DiagnosticInfo deriveCompilerFeatureRequiredUseSiteInfo()
-                var containingType = (PENamedTypeSymbol)ContainingType;
-                PEModuleSymbol containingPEModule = _containingType.ContainingPEModule;
-                var decoder = new MetadataDecoder(containingPEModule, containingType);
+                var containingType = (PENamedTypeSymbol)ContainingType
+                PEModuleSymbol containingPEModule = _containingType.ContainingPEModule
+                var decoder = new MetadataDecoder(containingPEModule, containingType)
                 var diag = PEUtilities.DeriveCompilerFeatureRequiredAttributeDiagnostic(
                     this,
                     containingPEModule,
@@ -834,14 +834,14 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols.Metadata.PE
                     decoder)
 
                 if (diag != null)
-                    return diag;
+                    return diag
 
                 foreach (var param in Parameters)
-                    diag = ((PEParameterSymbol)param).DeriveCompilerFeatureRequiredDiagnostic(decoder);
+                    diag = ((PEParameterSymbol)param).DeriveCompilerFeatureRequiredDiagnostic(decoder)
                     if (diag != null)
-                        return diag;
+                        return diag
 
-                return containingType.GetCompilerFeatureRequiredDiagnostic();
+                return containingType.GetCompilerFeatureRequiredDiagnostic()
 
         raw csharp
             internal override ObsoleteAttributeData ObsoleteAttributeData
@@ -873,14 +873,14 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols.Metadata.PE
 
         internal override bool HasRuntimeSpecialName
             get
-                return _flags.IsRuntimeSpecialName;
+                return _flags.IsRuntimeSpecialName
 
         internal sealed override CSharpCompilation DeclaringCompilation // perf, not correctness
             get
-                return null;
+                return null
 
         internal override int TryGetOverloadResolutionPriority()
-            Debug.Assert(IsIndexer || IsIndexedProperty || this.IsExtensionBlockMember());
+            Debug.Assert(IsIndexer || IsIndexedProperty || this.IsExtensionBlockMember())
             raw csharp
                 if (!_flags.IsOverloadResolutionPriorityPopulated)
                 {
@@ -898,10 +898,10 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols.Metadata.PE
                     _flags.SetOverloadResolutionPriorityPopulated();
                 }
 
-            return _uncommonFields?._lazyOverloadResolutionPriority ?? 0;
+            return _uncommonFields?._lazyOverloadResolutionPriority ?? 0
 
         private sealed class PEPropertySymbolWithCustomModifiers : PEPropertySymbol
-            private readonly ImmutableArray<CustomModifier> _refCustomModifiers;
+            private readonly ImmutableArray<CustomModifier> _refCustomModifiers
 
             public PEPropertySymbolWithCustomModifiers(
                 PEModuleSymbol moduleSymbol,
@@ -914,9 +914,9 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols.Metadata.PE
                 : base(moduleSymbol, containingType, handle, getMethod, setMethod,
                 propertyParams,
                 metadataDecoder)
-                var returnInfo = propertyParams[0];
-                _refCustomModifiers = CSharpCustomModifier.Convert(returnInfo.RefCustomModifiers);
+                var returnInfo = propertyParams[0]
+                _refCustomModifiers = CSharpCustomModifier.Convert(returnInfo.RefCustomModifiers)
 
             public override ImmutableArray<CustomModifier> RefCustomModifiers
                 get
-                    return _refCustomModifiers;
+                    return _refCustomModifiers

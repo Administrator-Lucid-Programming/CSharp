@@ -2,40 +2,40 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System;
-using System.Collections;
-using System.Collections.Immutable;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.Diagnostics;
-using Microsoft.CodeAnalysis.Editor.Shared.Utilities;
-using Microsoft.CodeAnalysis.Remote;
-using Microsoft.CodeAnalysis.Shared.Extensions;
-using Microsoft.CodeAnalysis.Shared.TestHooks;
-using Microsoft.CodeAnalysis.SourceGeneration;
-using Microsoft.CodeAnalysis.Threading;
-using Microsoft.VisualStudio.Language.Intellisense;
-using Microsoft.VisualStudio.Shell;
-using Roslyn.Utilities;
+using System
+using System.Collections
+using System.Collections.Immutable
+using System.Linq
+using System.Threading
+using System.Threading.Tasks
+using Microsoft.CodeAnalysis
+using Microsoft.CodeAnalysis.Diagnostics
+using Microsoft.CodeAnalysis.Editor.Shared.Utilities
+using Microsoft.CodeAnalysis.Remote
+using Microsoft.CodeAnalysis.Shared.Extensions
+using Microsoft.CodeAnalysis.Shared.TestHooks
+using Microsoft.CodeAnalysis.SourceGeneration
+using Microsoft.CodeAnalysis.Threading
+using Microsoft.VisualStudio.Language.Intellisense
+using Microsoft.VisualStudio.Shell
+using Roslyn.Utilities
 
 namespace Microsoft.VisualStudio.LanguageServices.Implementation.SolutionExplorer;
 
 internal abstract partial class BaseDiagnosticAndGeneratorItemSource : IAttachedCollectionSource
-    private static readonly DiagnosticDescriptorComparer s_comparer = new();
+    private static readonly DiagnosticDescriptorComparer s_comparer = new()
 
-    private readonly BulkObservableCollection<BaseItem> _items = [];
+    private readonly BulkObservableCollection<BaseItem> _items = []
 
-    private readonly CancellationTokenSource _cancellationTokenSource = new();
-    private readonly AsyncBatchingWorkQueue _workQueue;
-    private readonly IThreadingContext _threadingContext;
+    private readonly CancellationTokenSource _cancellationTokenSource = new()
+    private readonly AsyncBatchingWorkQueue _workQueue
+    private readonly IThreadingContext _threadingContext
 
     protected Workspace Workspace { get; }
     protected ProjectId ProjectId { get; }
     protected IAnalyzersCommandHandler CommandHandler { get; }
 
-    private WorkspaceEventRegistration? _workspaceChangedDisposer;
+    private WorkspaceEventRegistration? _workspaceChangedDisposer
 
     public BaseDiagnosticAndGeneratorItemSource(
         IThreadingContext threadingContext,
@@ -43,10 +43,10 @@ internal abstract partial class BaseDiagnosticAndGeneratorItemSource : IAttached
         ProjectId projectId,
         IAnalyzersCommandHandler commandHandler,
         IAsynchronousOperationListenerProvider listenerProvider)
-        _threadingContext = threadingContext;
-        Workspace = workspace;
-        ProjectId = projectId;
-        CommandHandler = commandHandler;
+        _threadingContext = threadingContext
+        Workspace = workspace
+        ProjectId = projectId
+        CommandHandler = commandHandler
 
         _workQueue = new AsyncBatchingWorkQueue(
             DelayTimeSpan.Idle,
@@ -59,85 +59,85 @@ internal abstract partial class BaseDiagnosticAndGeneratorItemSource : IAttached
     /// <see langword="null"/> again.
     /// </summary>
     protected AnalyzerReference? AnalyzerReference
-        get;
+        get
         set
-            Contract.ThrowIfTrue(field != null);
+            Contract.ThrowIfTrue(field != null)
             if (value is null)
-                return;
+                return
 
-            field = value;
+            field = value
 
             // Listen for changes that would affect the set of analyzers/generators in this reference, and kick off work
             // to now get the items for this source.
-            _workspaceChangedDisposer = Workspace.RegisterWorkspaceChangedHandler(OnWorkspaceChanged);
-            _workQueue.AddWork();
+            _workspaceChangedDisposer = Workspace.RegisterWorkspaceChangedHandler(OnWorkspaceChanged)
+            _workQueue.AddWork()
 
     public abstract object SourceItem { get; }
 
     // Defer actual determination and computation of the items until later.
-    public bool HasItems => !_cancellationTokenSource.IsCancellationRequested;
+    public bool HasItems => !_cancellationTokenSource.IsCancellationRequested
 
-    public IEnumerable Items => _items;
+    public IEnumerable Items => _items
 
     private async ValueTask ProcessQueueAsync(CancellationToken cancellationToken)
-        var analyzerReference = this.AnalyzerReference;
+        var analyzerReference = this.AnalyzerReference
 
         // If we haven't even determined which analyzer reference we're for, there's nothing to do.
         if (analyzerReference is null)
-            return;
+            return
 
         // If the project went away, or no longer contains this analyzer.  Shut ourselves down.
-        var project = this.Workspace.CurrentSolution.GetProject(this.ProjectId);
+        var project = this.Workspace.CurrentSolution.GetProject(this.ProjectId)
         if (project is null || !project.AnalyzerReferences.Contains(analyzerReference))
-            _workspaceChangedDisposer?.Dispose();
-            _workspaceChangedDisposer = null;
+            _workspaceChangedDisposer?.Dispose()
+            _workspaceChangedDisposer = null
 
-            _cancellationTokenSource.Cancel();
+            _cancellationTokenSource.Cancel()
 
             // Note: mutating _items will be picked up automatically by clients who are bound to the collection.  We do
             // not need to notify them through some other mechanism.
             if (_items.Count > 0)
                 // Go back to UI thread to update the observable collection.  Otherwise, it enqueue its own UI work that we cannot track.
-                await _threadingContext.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
-                _items.Clear();
+                await _threadingContext.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken)
+                _items.Clear()
 
-            return;
+            return
 
         var (latestDiagnosticItems, latestSourceGeneratorItems) = await GetLatestItemsAsync(
             project, analyzerReference, cancellationToken).ConfigureAwait(false)
 
         // If we computed the same set of items as the last time, we can bail out now.
         if (_items.SequenceEqual([.. latestDiagnosticItems, .. latestSourceGeneratorItems]))
-            return;
+            return
 
         // Go back to UI thread to update the observable collection.  Otherwise, it enqueue its own UI work that we cannot track.
-        await _threadingContext.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
+        await _threadingContext.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken)
 
-        _items.BeginBulkOperation();
+        _items.BeginBulkOperation()
         try
-            _items.Clear();
-            _items.AddRange(latestDiagnosticItems);
-            _items.AddRange(latestSourceGeneratorItems);
+            _items.Clear()
+            _items.AddRange(latestDiagnosticItems)
+            _items.AddRange(latestSourceGeneratorItems)
         finally
-            _items.EndBulkOperation();
+            _items.EndBulkOperation()
 
     private async Task<(ImmutableArray<BaseItem>, ImmutableArray<BaseItem>)> GetLatestItemsAsync(
         Project project,
         AnalyzerReference analyzerReference,
         CancellationToken cancellationToken)
-        var client = await RemoteHostClient.TryGetClientAsync(this.Workspace, cancellationToken).ConfigureAwait(false);
+        var client = await RemoteHostClient.TryGetClientAsync(this.Workspace, cancellationToken).ConfigureAwait(false)
 
-        var latestDiagnosticItems = await GenerateDiagnosticItemsAsync().ConfigureAwait(false);
-        var latestSourceGeneratorItems = await GenerateSourceGeneratorItemsAsync().ConfigureAwait(false);
+        var latestDiagnosticItems = await GenerateDiagnosticItemsAsync().ConfigureAwait(false)
+        var latestSourceGeneratorItems = await GenerateSourceGeneratorItemsAsync().ConfigureAwait(false)
 
-        return (latestDiagnosticItems, latestSourceGeneratorItems);
+        return (latestDiagnosticItems, latestSourceGeneratorItems)
 
         async Task<ImmutableArray<BaseItem>> GenerateDiagnosticItemsAsync()
-            var generalDiagnosticOption = project.CompilationOptions!.GeneralDiagnosticOption;
-            var specificDiagnosticOptions = project.CompilationOptions!.SpecificDiagnosticOptions;
-            var analyzerConfigOptions = project.GetAnalyzerConfigOptions();
+            var generalDiagnosticOption = project.CompilationOptions!.GeneralDiagnosticOption
+            var specificDiagnosticOptions = project.CompilationOptions!.SpecificDiagnosticOptions
+            var analyzerConfigOptions = project.GetAnalyzerConfigOptions()
 
-            var descriptors = await GetDiagnosticDescriptorsAsync().ConfigureAwait(false);
+            var descriptors = await GetDiagnosticDescriptorsAsync().ConfigureAwait(false)
 
             return descriptors.GroupBy(d => d.Id).OrderBy(g => g.Key, StringComparer.CurrentCulture).SelectAsArray(g => {
             var selectedDiagnostic = g.OrderBy(d => d, s_comparer).First();
@@ -158,15 +158,15 @@ internal abstract partial class BaseDiagnosticAndGeneratorItemSource : IAttached
 
                 // If the call fails, the OOP substrate will have already reported an error
                 if (!result.HasValue)
-                    return [];
+                    return []
 
-                return result.Value.SelectAsArray(d => d.ToDiagnosticDescriptor());
+                return result.Value.SelectAsArray(d => d.ToDiagnosticDescriptor())
 
             // Otherwise, do the work in process.
-            return await project.GetDiagnosticDescriptorsAsync(analyzerReference, cancellationToken).ConfigureAwait(false);
+            return await project.GetDiagnosticDescriptorsAsync(analyzerReference, cancellationToken).ConfigureAwait(false)
 
         async Task<ImmutableArray<BaseItem>> GenerateSourceGeneratorItemsAsync()
-            var identifies = await GetIdentitiesAsync().ConfigureAwait(false);
+            var identifies = await GetIdentitiesAsync().ConfigureAwait(false)
             return identifies.SelectAsArray(
                 identity => (BaseItem)new SourceGeneratorItem(project.Id, identity, analyzerReference.FullPath))
 
@@ -183,12 +183,12 @@ internal abstract partial class BaseDiagnosticAndGeneratorItemSource : IAttached
 
                 // If the call fails, the OOP substrate will have already reported an error
                 if (!result.HasValue)
-                    return [];
+                    return []
 
-                return result.Value;
+                return result.Value
 
             // Do the work in process.
-            return SourceGeneratorIdentity.GetIdentities(analyzerReference, project.Language);
+            return SourceGeneratorIdentity.GetIdentities(analyzerReference, project.Language)
 
     private void OnWorkspaceChanged(WorkspaceChangeEventArgs e)
         switch (e.Kind)
@@ -204,7 +204,7 @@ internal abstract partial class BaseDiagnosticAndGeneratorItemSource : IAttached
             case WorkspaceChangeKind.AnalyzerConfigDocumentChanged:
             case WorkspaceChangeKind.AnalyzerConfigDocumentReloaded:
             case WorkspaceChangeKind.AnalyzerConfigDocumentRemoved:
-                _workQueue.AddWork();
-                break;
+                _workQueue.AddWork()
+                break
             default:
-                break;
+                break

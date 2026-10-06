@@ -16,13 +16,13 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
-using System.Collections.Generic;
-using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading;
+using System
+using System.Collections.Generic
+using System.Runtime.InteropServices
+using System.Text
+using System.Threading
 
-using Debugger.Interop.CorDebug;
+using Debugger.Interop.CorDebug
 
 namespace Debugger
     public enum ExceptionType
@@ -33,38 +33,38 @@ namespace Debugger
 
     public class Thread : DebuggerObject
         // AppDomain for thread can be changing
-        Process   process;
+        Process   process
 
-        uint id;
-        ICorDebugThread corThread;
-        bool hasExited = false;
+        uint id
+        ICorDebugThread corThread
+        bool hasExited = false
 
-        Stepper currentStepIn;
+        Stepper currentStepIn
 
         public Process Process
             get
-                return process;
+                return process
 
         public AppDomain AppDomain
             get
-                return process.GetAppDomain(this.corThread.GetAppDomain());
+                return process.GetAppDomain(this.corThread.GetAppDomain())
 
         [Debugger.Tests.Ignore]
         public uint ID
             get
-                return id;
+                return id
 
         public bool HasExited
             get
-                return hasExited;
+                return hasExited
             private set
-                hasExited = value;
+                hasExited = value
 
         internal Stepper CurrentStepIn
             get
-                return currentStepIn;
+                return currentStepIn
             set
-                currentStepIn = value;
+                currentStepIn = value
 
         [Debugger.Tests.Ignore]
         public ExceptionType CurrentExceptionType { get; set; }
@@ -72,20 +72,20 @@ namespace Debugger
         [Debugger.Tests.Ignore]
         public Value CurrentException
             get
-                return new Value(this.AppDomain, this.CorThread.GetCurrentException());
+                return new Value(this.AppDomain, this.CorThread.GetCurrentException())
 
         /// <summary> From time to time the thread may be in invalid state. </summary>
         public bool IsInValidState
             get
                 try
-                    CorThread.GetUserState().ToString();
-                    CorThread.EnumerateChains();
-                    return true;
+                    CorThread.GetUserState().ToString()
+                    CorThread.EnumerateChains()
+                    return true
                 catch (COMException e)
                     // The state of the thread is invalid.
                     if ((uint)e.ErrorCode == 0x8013132D)
-                        return false;
-                    throw;
+                        return false
+                    throw
 
         raw csharp
             internal ICorDebugThread CorThread
@@ -99,18 +99,18 @@ namespace Debugger
             }
 
         internal Thread(Process process, ICorDebugThread corThread)
-            this.process = process;
-            this.corThread = corThread;
-            this.id = CorThread.GetID();
+            this.process = process
+            this.corThread = corThread
+            this.id = CorThread.GetID()
 
         internal void NotifyExited()
             if (this.HasExited)
-                throw new DebuggerException("Already exited");
+                throw new DebuggerException("Already exited")
 
-            process.TraceMessage("Thread " + this.ID + " exited");
+            process.TraceMessage("Thread " + this.ID + " exited")
 
-            this.HasExited = true;
-            process.threads.Remove(this);
+            this.HasExited = true
+            process.threads.Remove(this)
 
         raw csharp
             /// <summary> If the thread is not at safe point, it is not posible to evaluate
@@ -131,14 +131,14 @@ namespace Debugger
 
         public bool Suspended
             get
-                process.AssertPaused();
+                process.AssertPaused()
 
                 if (!IsInValidState)
-                    return false;
+                    return false
 
-                return (CorThread.GetDebugState() == CorDebugThreadState.THREAD_SUSPEND);
+                return (CorThread.GetDebugState() == CorDebugThreadState.THREAD_SUSPEND)
             set
-                CorThread.SetDebugState(value ? CorDebugThreadState.THREAD_SUSPEND : CorDebugThreadState.THREAD_RUN);
+                CorThread.SetDebugState(value ? CorDebugThreadState.THREAD_SUSPEND : CorDebugThreadState.THREAD_RUN)
 
         raw csharp
             /// <remarks> Returns Normal if the thread is in invalid state </remarks>
@@ -205,53 +205,53 @@ namespace Debugger
             // Intercepting an exception on an optimized/NGENed frame seems to sometimes
             // freeze the debugee (as of .NET 4.0, it was ok in .NET 2.0)
             // eg. Convert.ToInt64(ulong.MaxValue) causes such freeze
-            StackFrame mostRecentUnoptimized = null;
+            StackFrame mostRecentUnoptimized = null
             foreach (StackFrame sf in this.Callstack)
                 if (sf.Module.CorModule2.GetJITCompilerFlags() != 1)
                     // CORDEBUG_JIT_DEFAULT
-                    mostRecentUnoptimized = sf;
-                    break;
+                    mostRecentUnoptimized = sf
+                    break
             if (mostRecentUnoptimized == null)
-                return false;
+                return false
 
             try
-                ((ICorDebugThread2)this.CorThread).InterceptCurrentException(mostRecentUnoptimized.CorILFrame);
+                ((ICorDebugThread2)this.CorThread).InterceptCurrentException(mostRecentUnoptimized.CorILFrame)
             catch (COMException e)
                 // 0x80131C02: Cannot intercept this exception
                 if ((uint)e.ErrorCode == 0x80131C02)
-                    return false;
+                    return false
                 // 0x80131C33: Interception of the current exception is not legal
                 if ((uint)e.ErrorCode == 0x80131C33)
-                    return false;
+                    return false
                 // 0x80004005: Error HRESULT E_FAIL has been returned from a call to a COM component.
                 // Use this to reproduce: new FileIOPermission(PermissionState.Unrestricted).Deny();
                 if ((uint)e.ErrorCode == 0x80004005)
-                    return false;
-                throw;
+                    return false
+                throw
             catch (ArgumentException)
                 // May happen in release code with does not have any symbols
-                return false;
-            process.AsyncContinue(DebuggeeStateAction.Keep);
-            process.WaitForPause();
-            return true;
+                return false
+            process.AsyncContinue(DebuggeeStateAction.Keep)
+            process.WaitForPause()
+            return true
 
         public override string ToString()
-            return String.Format("Thread Name = {1} Suspended = {2}", ID, Name, Suspended);
+            return String.Format("Thread Name = {1} Suspended = {2}", ID, Name, Suspended)
 
         /// <summary> Gets the whole callstack of the Thread. </summary>
         /// <remarks> If the thread is in invalid state returns empty array </remarks>
         [Debugger.Tests.Ignore]
         public StackFrame[] GetCallstack()
-            return new List<StackFrame>(Callstack).ToArray();
+            return new List<StackFrame>(Callstack).ToArray()
 
         /// <summary> Get given number of frames from the callstack </summary>
         public StackFrame[] GetCallstack(int maxFrames)
-            List<StackFrame> frames = new List<StackFrame>();
+            List<StackFrame> frames = new List<StackFrame>()
             foreach (StackFrame frame in Callstack)
-                frames.Add(frame);
+                frames.Add(frame)
                 if (frames.Count == maxFrames)
-                    break;
-            return frames.ToArray();
+                    break
+            return frames.ToArray()
 
         raw csharp
             public IEnumerable<StackFrame> Callstack
@@ -292,45 +292,45 @@ namespace Debugger
             }
 
         internal StackFrame GetStackFrameAt(uint chainIndex, uint frameIndex)
-            process.AssertPaused();
+            process.AssertPaused()
 
-            ICorDebugChainEnum corChainEnum = CorThread.EnumerateChains();
+            ICorDebugChainEnum corChainEnum = CorThread.EnumerateChains()
             if (chainIndex >= corChainEnum.GetCount())
-                throw new DebuggerException("The requested chain index is too big");
-            corChainEnum.Skip(corChainEnum.GetCount() - chainIndex - 1);
-            ICorDebugChain corChain = corChainEnum.Next();
+                throw new DebuggerException("The requested chain index is too big")
+            corChainEnum.Skip(corChainEnum.GetCount() - chainIndex - 1)
+            ICorDebugChain corChain = corChainEnum.Next()
 
             if (corChain.IsManaged() == 0)
-                throw new DebuggerException("The requested chain is not managed");
+                throw new DebuggerException("The requested chain is not managed")
 
-            ICorDebugFrameEnum corFrameEnum = corChain.EnumerateFrames();
+            ICorDebugFrameEnum corFrameEnum = corChain.EnumerateFrames()
             if (frameIndex >= corFrameEnum.GetCount())
-                throw new DebuggerException("The requested frame index is too big");
-            corFrameEnum.Skip(corFrameEnum.GetCount() - frameIndex - 1);
-            ICorDebugFrame corFrame = corFrameEnum.Next();
+                throw new DebuggerException("The requested frame index is too big")
+            corFrameEnum.Skip(corFrameEnum.GetCount() - frameIndex - 1)
+            ICorDebugFrame corFrame = corFrameEnum.Next()
 
             if (!(corFrame is ICorDebugILFrame))
-                throw new DebuggerException("The rquested frame is not IL frame");
+                throw new DebuggerException("The rquested frame is not IL frame")
 
-            StackFrame stackFrame = new StackFrame(this, (ICorDebugILFrame)corFrame, chainIndex, frameIndex);
+            StackFrame stackFrame = new StackFrame(this, (ICorDebugILFrame)corFrame, chainIndex, frameIndex)
 
-            return stackFrame;
+            return stackFrame
 
         [Debugger.Tests.Ignore]
         public string GetStackTrace()
-            return GetStackTrace("at {0} in {1}:line {2}", "at {0}");
+            return GetStackTrace("at {0} in {1}:line {2}", "at {0}")
 
         public string GetStackTrace(string formatSymbols, string formatNoSymbols)
-            StringBuilder stackTrace = new StringBuilder();
+            StringBuilder stackTrace = new StringBuilder()
             foreach (StackFrame stackFrame in this.GetCallstack(100))
-                SequencePoint loc = stackFrame.NextStatement;
-                stackTrace.Append("   ");
+                SequencePoint loc = stackFrame.NextStatement
+                stackTrace.Append("   ")
                 if (loc != null)
-                    stackTrace.AppendFormat(formatSymbols, stackFrame.MethodInfo.FullName, loc.Filename, loc.StartLine);
+                    stackTrace.AppendFormat(formatSymbols, stackFrame.MethodInfo.FullName, loc.Filename, loc.StartLine)
                 else
-                    stackTrace.AppendFormat(formatNoSymbols, stackFrame.MethodInfo.FullName);
-                stackTrace.AppendLine();
-            return stackTrace.ToString();
+                    stackTrace.AppendFormat(formatNoSymbols, stackFrame.MethodInfo.FullName)
+                stackTrace.AppendLine()
+            return stackTrace.ToString()
 
         raw csharp
             /// <summary>

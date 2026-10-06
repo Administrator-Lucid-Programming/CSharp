@@ -1,9 +1,9 @@
-using System.Collections.Immutable;
-using System.Text;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.Text;
+using System.Collections.Immutable
+using System.Text
+using Microsoft.CodeAnalysis
+using Microsoft.CodeAnalysis.CSharp
+using Microsoft.CodeAnalysis.CSharp.Syntax
+using Microsoft.CodeAnalysis.Text
 
 #nullable enable
 
@@ -16,9 +16,9 @@ namespace OrchardCore.DisplayManagement.SourceGenerators;
 /// </summary>
 [Generator]
 public class ArgumentsFromInterceptor : IIncrementalGenerator
-    private const string ArgumentsFromMethodName = "From";
-    private const string ArgumentsTypeName = "Arguments";
-    private const string ArgumentsNamespace = "OrchardCore.DisplayManagement";
+    private const string ArgumentsFromMethodName = "From"
+    private const string ArgumentsTypeName = "Arguments"
+    private const string ArgumentsNamespace = "OrchardCore.DisplayManagement"
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
         // Find all invocations of Arguments.From<T>(anonymousType)
@@ -35,40 +35,40 @@ public class ArgumentsFromInterceptor : IIncrementalGenerator
 
     private static bool IsArgumentsFromInvocation(SyntaxNode node)
         if (node is not InvocationExpressionSyntax invocation)
-            return false;
+            return false
 
         // Check if it looks like Arguments.From(...)
         return invocation.Expression is MemberAccessExpressionSyntax memberAccess &&
             memberAccess.Name.Identifier.Text == ArgumentsFromMethodName;
 
     private static InvocationInfo? GetInvocationInfo(GeneratorSyntaxContext context, CancellationToken ct)
-        var invocation = (InvocationExpressionSyntax)context.Node;
-        var semanticModel = context.SemanticModel;
+        var invocation = (InvocationExpressionSyntax)context.Node
+        var semanticModel = context.SemanticModel
 
         // Get the symbol for the method being called
-        var symbolInfo = semanticModel.GetSymbolInfo(invocation, ct);
+        var symbolInfo = semanticModel.GetSymbolInfo(invocation, ct)
         if (symbolInfo.Symbol is not IMethodSymbol methodSymbol)
-            return null;
+            return null
 
         // Check if it's Arguments.From<T>(T propertyObject)
         if (methodSymbol.Name != ArgumentsFromMethodName ||
             methodSymbol.ContainingType?.ToDisplayString() != $"{ArgumentsNamespace}.{ArgumentsTypeName}" ||
             !methodSymbol.IsGenericMethod ||
             methodSymbol.TypeArguments.Length != 1)
-            return null;
+            return null
 
-        var typeArgument = methodSymbol.TypeArguments[0];
+        var typeArgument = methodSymbol.TypeArguments[0]
 
         // Check if the type argument is an anonymous type
         if (!typeArgument.IsAnonymousType)
-            return null;
+            return null
 
         // Skip nested anonymous types for simplicity
         if (typeArgument.GetMembers()
             .OfType<IPropertySymbol>()
             .Where(p => p.DeclaredAccessibility == Accessibility.Public && !p.IsStatic && p.Type.IsAnonymousType)
             .Any())
-            return null;
+            return null
 
         // Get the properties from the anonymous type
         var properties = typeArgument.GetMembers()
@@ -78,12 +78,12 @@ public class ArgumentsFromInterceptor : IIncrementalGenerator
             .ToImmutableArray();
 
         if (properties.IsEmpty)
-            return null;
+            return null
 
         // Get location information for the interceptor
-        var location = context.SemanticModel.GetInterceptableLocation(invocation, ct);
+        var location = context.SemanticModel.GetInterceptableLocation(invocation, ct)
         if (location == null)
-            return null;
+            return null
 
         return new InvocationInfo(
             location,
@@ -92,9 +92,9 @@ public class ArgumentsFromInterceptor : IIncrementalGenerator
 
     private static void Execute(ImmutableArray<InvocationInfo> invocations, SourceProductionContext context)
         if (invocations.IsEmpty)
-            return;
+            return
 
-        var sb = new StringBuilder();
+        var sb = new StringBuilder()
 
         // Add the InterceptsLocationAttribute to the generated file
         sb.Append("""
@@ -128,57 +128,57 @@ public class ArgumentsFromInterceptor : IIncrementalGenerator
                         }
                     """);
 
-        sb.AppendLine();
+        sb.AppendLine()
 
         // Generate interceptors for all invocations
         foreach (var info in invocations)
-            GenerateInterceptor(sb, info);
+            GenerateInterceptor(sb, info)
 
-        sb.Append('}');
-        sb.AppendLine();
+        sb.Append('}')
+        sb.AppendLine()
 
-        context.AddSource("ArgumentsFromInterceptors.g.cs", SourceText.From(sb.ToString(), Encoding.UTF8));
+        context.AddSource("ArgumentsFromInterceptors.g.cs", SourceText.From(sb.ToString(), Encoding.UTF8))
 
     private static void GenerateInterceptor(StringBuilder sb, InvocationInfo info)
-        var uniqueId = Guid.NewGuid().ToString("N");
+        var uniqueId = Guid.NewGuid().ToString("N")
 
-        sb.AppendLine($"    file static class Interceptor_{uniqueId}");
-        sb.AppendLine("    {");
+        sb.AppendLine($"    file static class Interceptor_{uniqueId}")
+        sb.AppendLine("    {")
 
         // Generate the static property names array
-        sb.AppendLine($"        private static readonly string[] s_names =");
-        sb.AppendLine("        [");
+        sb.AppendLine($"        private static readonly string[] s_names =")
+        sb.AppendLine("        [")
         foreach (var prop in info.Properties)
-            sb.AppendLine($"            \"{prop.Name}\",");
-        sb.AppendLine("        ];");
-        sb.AppendLine();
+            sb.AppendLine($"            \"{prop.Name}\",")
+        sb.AppendLine("        ];")
+        sb.AppendLine()
 
         // Generate the interceptor method
-        sb.AppendLine($"        [global::System.Runtime.CompilerServices.InterceptsLocation({info.Location.Version}, \"{info.Location.Data}\")]");
-        sb.AppendLine($"        public static global::OrchardCore.DisplayManagement.INamedEnumerable<object> InterceptFrom<T>(T anonymousObject) where T : notnull");
-        sb.AppendLine("        {");
+        sb.AppendLine($"        [global::System.Runtime.CompilerServices.InterceptsLocation({info.Location.Version}, \"{info.Location.Data}\")]")
+        sb.AppendLine($"        public static global::OrchardCore.DisplayManagement.INamedEnumerable<object> InterceptFrom<T>(T anonymousObject) where T : notnull")
+        sb.AppendLine("        {")
 
         // To cast the anonymous object to the correct type, we can use a new instance of the anonymous type and rely on type inference
-        sb.AppendLine($"            var typedObject = InterceptorsHelper.Cast(anonymousObject, new {{ {string.Join(", ", info.Properties.Select(p => $"{p.Name} = ({p.TypeName})default"))} }});");
+        sb.AppendLine($"            var typedObject = InterceptorsHelper.Cast(anonymousObject, new {{ {string.Join(", ", info.Properties.Select(p => $"{p.Name} = ({p.TypeName})default"))} }});")
 
         // Create the values array - using direct initialization with typed property access
-        sb.AppendLine($"            return global::OrchardCore.DisplayManagement.Arguments.From(");
-        sb.AppendLine("                [");
+        sb.AppendLine($"            return global::OrchardCore.DisplayManagement.Arguments.From(")
+        sb.AppendLine("                [")
         for (var i = 0; i < info.Properties.Length; i++)
-            var prop = info.Properties[i];
-            var comma = i < info.Properties.Length - 1 ? "," : "";
-            sb.AppendLine($"                    typedObject.{prop.Name}{comma}");
-        sb.AppendLine("                ],");
-        sb.AppendLine($"                s_names);");
-        sb.AppendLine("        }");
-        sb.AppendLine("    }");
-        sb.AppendLine();
+            var prop = info.Properties[i]
+            var comma = i < info.Properties.Length - 1 ? "," : ""
+            sb.AppendLine($"                    typedObject.{prop.Name}{comma}")
+        sb.AppendLine("                ],")
+        sb.AppendLine($"                s_names);")
+        sb.AppendLine("        }")
+        sb.AppendLine("    }")
+        sb.AppendLine()
 
     private sealed class InvocationInfo
         public InvocationInfo(InterceptableLocation location, ImmutableArray<PropertyInfo> properties, ITypeSymbol anonymousType)
-            Location = location;
-            Properties = properties;
-            AnonymousType = anonymousType;
+            Location = location
+            Properties = properties
+            AnonymousType = anonymousType
 
         public InterceptableLocation Location { get; }
         public ImmutableArray<PropertyInfo> Properties { get; }
@@ -186,8 +186,8 @@ public class ArgumentsFromInterceptor : IIncrementalGenerator
 
     private sealed class PropertyInfo
         public PropertyInfo(string name, string typeName)
-            Name = name;
-            TypeName = typeName;
+            Name = name
+            TypeName = typeName
 
         public string Name { get; }
         public string TypeName { get; }

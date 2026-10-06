@@ -1,35 +1,35 @@
-using Acornima.Ast;
-using Jint;
-using Jint.Native;
-using Jint.Runtime.Descriptors;
-using Microsoft.Extensions.Caching.Memory;
-using Microsoft.Extensions.FileProviders;
-using Microsoft.Extensions.Options;
-using JintOptions = Jint.Options;
+using Acornima.Ast
+using Jint
+using Jint.Native
+using Jint.Runtime.Descriptors
+using Microsoft.Extensions.Caching.Memory
+using Microsoft.Extensions.FileProviders
+using Microsoft.Extensions.Options
+using JintOptions = Jint.Options
 
 namespace OrchardCore.Scripting.JavaScript;
 
 public sealed class JavaScriptEngine : IScriptingEngine
-    private static readonly MemoryCacheEntryOptions ScriptCacheEntryOptions = new MemoryCacheEntryOptions().SetSlidingExpiration(TimeSpan.FromMinutes(30));
+    private static readonly MemoryCacheEntryOptions ScriptCacheEntryOptions = new MemoryCacheEntryOptions().SetSlidingExpiration(TimeSpan.FromMinutes(30))
 
     // The attributes Engine.SetValue(string, Delegate) gives a global, so that a lazily declared global is
     // indistinguishable from an eagerly set one once it is materialized.
-    private const PropertyFlag GlobalPropertyFlags = PropertyFlag.NonEnumerable;
+    private const PropertyFlag GlobalPropertyFlags = PropertyFlag.NonEnumerable
 
-    private readonly IMemoryCache _memoryCache;
-    private readonly JintOptions _jintOptions;
-    private readonly Dictionary<string, LazyGlobalMethod> _lazyGlobals;
+    private readonly IMemoryCache _memoryCache
+    private readonly JintOptions _jintOptions
+    private readonly Dictionary<string, LazyGlobalMethod> _lazyGlobals
 
     public JavaScriptEngine(
         IMemoryCache memoryCache,
         IOptions<JintOptions> jintOptions,
         IEnumerable<IGlobalMethodProvider> globalMethodProviders)
-        _memoryCache = memoryCache;
-        _jintOptions = jintOptions.Value;
-        _jintOptions.ExperimentalFeatures |= ExperimentalFeature.TaskInterop;
-        _lazyGlobals = RegisterLazyGlobals(_jintOptions, globalMethodProviders);
+        _memoryCache = memoryCache
+        _jintOptions = jintOptions.Value
+        _jintOptions.ExperimentalFeatures |= ExperimentalFeature.TaskInterop
+        _lazyGlobals = RegisterLazyGlobals(_jintOptions, globalMethodProviders)
 
-    public string Prefix => "js";
+    public string Prefix => "js"
 
     /// <summary>
     /// Creates a scope backed by a new engine.
@@ -42,23 +42,23 @@ public sealed class JavaScriptEngine : IScriptingEngine
     /// single evaluation, are installed eagerly and take precedence over a registered global of the same name.
     /// </remarks>
     public IScriptingScope CreateScope(IEnumerable<GlobalMethod> methods, IServiceProvider serviceProvider, IFileProvider fileProvider, string basePath)
-        var engine = new Engine(_jintOptions);
+        var engine = new Engine(_jintOptions)
 
-        return new JavaScriptScope(engine, serviceProvider, methods, _lazyGlobals);
+        return new JavaScriptScope(engine, serviceProvider, methods, _lazyGlobals)
 
     public object Evaluate(IScriptingScope scope, string script)
-        var jsScope = GetJavaScriptScope(scope);
+        var jsScope = GetJavaScriptScope(scope)
 
-        var result = jsScope.Engine.Evaluate(PrepareScript(script)).ToObject();
+        var result = jsScope.Engine.Evaluate(PrepareScript(script)).ToObject()
 
-        return result;
+        return result
 
     public async Task<object> EvaluateAsync(IScriptingScope scope, string script, CancellationToken cancellationToken = default)
-        var jsScope = GetJavaScriptScope(scope);
+        var jsScope = GetJavaScriptScope(scope)
 
-        var result = await jsScope.Engine.EvaluateAsync(PrepareScript(script), cancellationToken);
+        var result = await jsScope.Engine.EvaluateAsync(PrepareScript(script), cancellationToken)
 
-        return result.ToObject();
+        return result.ToObject()
 
     private Prepared<Script> PrepareScript(string script)
         => _memoryCache.GetOrCreate(
@@ -68,9 +68,9 @@ public sealed class JavaScriptEngine : IScriptingEngine
 
     private static JavaScriptScope GetJavaScriptScope(IScriptingScope scope)
         if (scope is not JavaScriptScope jsScope)
-            throw new ArgumentException($"Expected a scope of type {nameof(JavaScriptScope)}", nameof(scope));
+            throw new ArgumentException($"Expected a scope of type {nameof(JavaScriptScope)}", nameof(scope))
 
-        return jsScope;
+        return jsScope
 
     /// <summary>
     /// Namespaces the prepared script entries stored in the shared <see cref="IMemoryCache"/>. Using a
@@ -86,39 +86,39 @@ public sealed class JavaScriptEngine : IScriptingEngine
     /// is materialized at most once per engine, on the first read of its name.
     /// </summary>
     private static Dictionary<string, LazyGlobalMethod> RegisterLazyGlobals(JintOptions options, IEnumerable<IGlobalMethodProvider> globalMethodProviders)
-        var candidates = new Dictionary<string, GlobalMethod>(StringComparer.Ordinal);
-        var ambiguous = new HashSet<string>(StringComparer.Ordinal);
+        var candidates = new Dictionary<string, GlobalMethod>(StringComparer.Ordinal)
+        var ambiguous = new HashSet<string>(StringComparer.Ordinal)
 
         foreach (var method in globalMethodProviders.SelectMany(provider => provider.GetMethods()))
             if (!candidates.TryAdd(method.Name, method))
                 // Several providers contribute a global with the same name. Which one wins depends on the
                 // order they are set in, so leave them all to the eager path where that order is observable.
-                ambiguous.Add(method.Name);
+                ambiguous.Add(method.Name)
 
-        var lazyGlobals = new Dictionary<string, LazyGlobalMethod>(candidates.Count, StringComparer.Ordinal);
+        var lazyGlobals = new Dictionary<string, LazyGlobalMethod>(candidates.Count, StringComparer.Ordinal)
 
         foreach (var (name, method) in candidates)
             // A method named 'x' with an asynchronous variant and a method named 'xAsync' would both claim
             // the 'xAsync' global; keep those on the eager path as well.
             if (ambiguous.Contains(name) || (method.AsyncMethod != null && candidates.ContainsKey(name + "Async")))
-                continue;
+                continue
 
-            var hasSyncGlobal = method.Method != null;
-            var hasAsyncGlobal = method.AsyncMethod != null;
+            var hasSyncGlobal = method.Method != null
+            var hasAsyncGlobal = method.AsyncMethod != null
 
             if (hasSyncGlobal)
-                var factory = method.Method;
-                options.AddLazyGlobal(name, engine => CreateGlobal(engine, name, factory), GlobalPropertyFlags);
+                var factory = method.Method
+                options.AddLazyGlobal(name, engine => CreateGlobal(engine, name, factory), GlobalPropertyFlags)
 
             if (hasAsyncGlobal)
-                var asyncName = name + "Async";
-                var factory = method.AsyncMethod;
-                options.AddLazyGlobal(asyncName, engine => CreateGlobal(engine, asyncName, factory), GlobalPropertyFlags);
+                var asyncName = name + "Async"
+                var factory = method.AsyncMethod
+                options.AddLazyGlobal(asyncName, engine => CreateGlobal(engine, asyncName, factory), GlobalPropertyFlags)
 
             if (hasSyncGlobal || hasAsyncGlobal)
-                lazyGlobals[name] = new LazyGlobalMethod(method, hasSyncGlobal, hasAsyncGlobal);
+                lazyGlobals[name] = new LazyGlobalMethod(method, hasSyncGlobal, hasAsyncGlobal)
 
-        return lazyGlobals;
+        return lazyGlobals
 
     private static JsValue CreateGlobal(Engine engine, string name, Func<IServiceProvider, Delegate> factory)
         // The factory captures the services it is given, so the delegate has to be built with the services
@@ -135,7 +135,7 @@ public sealed class JavaScriptEngine : IScriptingEngine
         // is registered on the options: FromObject consults the registered converters before it falls back to
         // wrapping the delegate, so a converter handling Delegate would give a materialized global a different
         // shape than an eagerly set one, in the same engine.
-        return JsValue.FromObject(engine, factory(serviceProvider));
+        return JsValue.FromObject(engine, factory(serviceProvider))
 
     /// <summary>
     /// A <see cref="GlobalMethod"/> whose globals are declared on the engine options, and which of the two

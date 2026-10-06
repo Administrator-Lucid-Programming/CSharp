@@ -1,11 +1,11 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.Diagnostics.CodeAnalysis;
-using System.Numerics;
-using System.Threading;
-using Debug = System.Diagnostics.Debug;
-using Interlocked = System.Threading.Interlocked;
+using System.Diagnostics.CodeAnalysis
+using System.Numerics
+using System.Threading
+using Debug = System.Diagnostics.Debug
+using Interlocked = System.Threading.Interlocked
 
 namespace System.Xml.Linq
     /// <summary>
@@ -66,32 +66,32 @@ namespace System.Xml.Linq
         /// Prototype of function which is called to extract a string key value from a hashed value.
         /// Returns null if the hashed value is invalid (e.g. value has been released due to a WeakReference TValue being cleaned up).
         /// </summary>
-        public delegate string? ExtractKeyDelegate (TValue value);
+        public delegate string? ExtractKeyDelegate (TValue value)
 
         /// <summary>
         /// Construct a new XHashtable with the specified starting capacity.
         /// </summary>
         public XHashtable(ExtractKeyDelegate extractKey, int capacity)
-            _state = new XHashtableState(extractKey, capacity);
+            _state = new XHashtableState(extractKey, capacity)
 
         /// <summary>
         /// Get an existing value from the hash table.  Return false if no such value exists.
         /// </summary>
         public bool TryGetValue(string key, int index, int count, [MaybeNullWhen(false)] out TValue value)
-            return _state.TryGetValue(key, index, count, out value);
+            return _state.TryGetValue(key, index, count, out value)
 
         /// <summary>
         /// Add a value to the hash table, hashed based on a string key embedded in it.  Return the added value (may be a different object than "value").
         /// </summary>
         public TValue Add(TValue value)
-            TValue newValue;
+            TValue newValue
 
             // Loop until value is in hash table
             while (true)
                 // Add new value
                 // XHashtableState.TryAdd returns false if hash table is not big enough
                 if (_state.TryAdd(value, out newValue))
-                    return newValue;
+                    return newValue
 
                 // PUBLISH (state)
                 // Hash table was not big enough, so resize it.
@@ -99,10 +99,10 @@ namespace System.Xml.Linq
                 // First thread will perform resize; waiting threads will call Resize(), but should immediately
                 // return since there will almost always be space in the hash table resized by the first thread.
                 lock (this)
-                    XHashtableState newState = _state.Resize();
+                    XHashtableState newState = _state.Resize()
                     // Use memory barrier to ensure that the resized XHashtableState object is fully constructed before it is assigned
-                    Thread.MemoryBarrier();
-                    _state = newState;
+                    Thread.MemoryBarrier()
+                    _state = newState
 
         /// <summary>
         /// This class contains all the hash table state.  Rather than creating a bucket object, buckets are structs
@@ -130,15 +130,15 @@ namespace System.Xml.Linq
             /// Construct a new XHashtableState object with the specified capacity.
             /// </summary>
             public XHashtableState(ExtractKeyDelegate extractKey, int capacity)
-                Debug.Assert(BitOperations.IsPow2(capacity), "capacity must be a power of 2");
-                Debug.Assert(extractKey != null, "extractKey may not be null");
+                Debug.Assert(BitOperations.IsPow2(capacity), "capacity must be a power of 2")
+                Debug.Assert(extractKey != null, "extractKey may not be null")
 
                 // Initialize hash table data structures, with specified maximum capacity
-                _buckets = new int[capacity];
-                _entries = new Entry[capacity];
+                _buckets = new int[capacity]
+                _entries = new Entry[capacity]
 
                 // Save delegate
-                _extractKey = extractKey;
+                _extractKey = extractKey
 
             /// <summary>
             /// If this table is not full, then just return "this".  Otherwise, create and return a new table with
@@ -147,75 +147,75 @@ namespace System.Xml.Linq
             public XHashtableState Resize()
                 // No need to resize if there are open entries
                 if (_numEntries < _buckets.Length)
-                    return this;
+                    return this
 
-                int newSize = 0;
+                int newSize = 0
 
                 // Determine capacity of resized hash table by first counting number of valid, non-orphaned entries
                 // As this count proceeds, close all linked lists so that no additional entries can be added to them
                 for (int bucketIdx = 0; bucketIdx < _buckets.Length; bucketIdx++)
-                    int entryIdx = _buckets[bucketIdx];
+                    int entryIdx = _buckets[bucketIdx]
 
                     if (entryIdx == EndOfList)
                         // Replace EndOfList with FullList, so that any threads still attempting to add will be forced to resize
-                        entryIdx = Interlocked.CompareExchange(ref _buckets[bucketIdx], FullList, EndOfList);
+                        entryIdx = Interlocked.CompareExchange(ref _buckets[bucketIdx], FullList, EndOfList)
 
                     // Loop until we've guaranteed that the list has been counted and closed to further adds
                     while (entryIdx > EndOfList)
                         // Count each valid entry
                         if (_extractKey(_entries[entryIdx].Value) != null)
-                            newSize++;
+                            newSize++
 
                         if (_entries[entryIdx].Next == EndOfList)
                             // Replace EndOfList with FullList, so that any threads still attempting to add will be forced to resize
-                            entryIdx = Interlocked.CompareExchange(ref _entries[entryIdx].Next, FullList, EndOfList);
+                            entryIdx = Interlocked.CompareExchange(ref _entries[entryIdx].Next, FullList, EndOfList)
                         else
                             // Move to next entry in the list
-                            entryIdx = _entries[entryIdx].Next;
-                    Debug.Assert(entryIdx == EndOfList, "Resize() should only be called by one thread");
+                            entryIdx = _entries[entryIdx].Next
+                    Debug.Assert(entryIdx == EndOfList, "Resize() should only be called by one thread")
 
                 // Double number of valid entries; if result is less than current capacity, then use current capacity
                 if (newSize < _buckets.Length / 2)
-                    newSize = _buckets.Length;
+                    newSize = _buckets.Length
                 else
-                    newSize = _buckets.Length * 2;
+                    newSize = _buckets.Length * 2
 
                     if (newSize < 0)
-                        throw new OverflowException();
+                        throw new OverflowException()
 
                 // Create new hash table with additional capacity
-                XHashtableState newHashtable = new XHashtableState(_extractKey, newSize);
+                XHashtableState newHashtable = new XHashtableState(_extractKey, newSize)
 
                 // Rehash names (TryAdd will always succeed, since we won't fill the new table)
                 // Do not simply walk over entries and add them to table, as that would add orphaned
                 // entries.  Instead, walk the linked lists and add each name.
                 for (int bucketIdx = 0; bucketIdx < _buckets.Length; bucketIdx++)
-                    int entryIdx = _buckets[bucketIdx];
+                    int entryIdx = _buckets[bucketIdx]
 
                     while (entryIdx > EndOfList)
-                        newHashtable.TryAdd(_entries[entryIdx].Value, out _);
+                        newHashtable.TryAdd(_entries[entryIdx].Value, out _)
 
-                        entryIdx = _entries[entryIdx].Next;
-                    Debug.Assert(entryIdx == FullList, "Linked list should have been closed when it was counted");
+                        entryIdx = _entries[entryIdx].Next
+                    Debug.Assert(entryIdx == FullList, "Linked list should have been closed when it was counted")
 
-                return newHashtable;
+                return newHashtable
 
             /// <summary>
             /// Attempt to find "key" in the table.  If the key exists, return the associated value in "value" and
             /// return true.  Otherwise return false.
             /// </summary>
             public bool TryGetValue(string key, int index, int count, [MaybeNullWhen(false)] out TValue value)
-                int hashCode = ComputeHashCode(key, index, count);
-                int entryIndex = 0;
+                int hashCode = ComputeHashCode(key, index, count)
+                int entryIndex = 0
 
                 // If a matching entry is found, return its value
                 if (FindEntry(hashCode, key, index, count, ref entryIndex))
-                    value = _entries[entryIndex].Value;
-                    return true;
+                    value = _entries[entryIndex].Value
+                    return true
 
                 // No matching entry found, so return false
-                value = default(TValue);
-                return false;
+                value = default(TValue)
+                return false
 
             /// <summary>
             /// Attempt to add "value" to the table, hashed by an embedded string key.  If a value having the same key already exists,
@@ -224,58 +224,58 @@ namespace System.Xml.Linq
             /// If the hash table is full, return false.  Otherwise, return true.
             /// </summary>
             public bool TryAdd(TValue value, out TValue newValue)
-                int newEntry, entryIndex;
-                string? key;
-                int hashCode;
+                int newEntry, entryIndex
+                string? key
+                int hashCode
 
                 // Assume "value" will be added and returned as "newValue"
-                newValue = value;
+                newValue = value
 
                 // Extract the key from the value.  If it's null, then value is invalid and does not need to be added to table.
-                key = _extractKey(value);
+                key = _extractKey(value)
                 if (key == null)
-                    return true;
+                    return true
 
                 // Compute hash code over entire length of key
-                hashCode = ComputeHashCode(key, 0, key.Length);
+                hashCode = ComputeHashCode(key, 0, key.Length)
 
                 // Assume value is not yet in the hash table, and prepare to add it (if table is full, return false).
                 // Use the entry index returned from Increment, which will never be zero, as zero conflicts with EndOfList.
                 // Although this means that the first entry will never be used, it avoids the need to initialize all
                 // starting buckets to the EndOfList value.
-                newEntry = Interlocked.Increment(ref _numEntries);
+                newEntry = Interlocked.Increment(ref _numEntries)
                 if (newEntry < 0 || newEntry >= _buckets.Length)
-                    return false;
+                    return false
 
-                _entries[newEntry].Value = value;
-                _entries[newEntry].HashCode = hashCode;
+                _entries[newEntry].Value = value
+                _entries[newEntry].HashCode = hashCode
 
                 // Ensure that all writes to the entry can't be reordered past this barrier (or other threads might see new entry
                 // in list before entry has been initialized!).
-                Thread.MemoryBarrier();
+                Thread.MemoryBarrier()
 
                 // Loop until a matching entry is found, a new entry is added, or linked list is found to be full
-                entryIndex = 0;
+                entryIndex = 0
                 while (!FindEntry(hashCode, key, 0, key.Length, ref entryIndex))
                     // PUBLISH (buckets slot)
                     // No matching entry found, so add the new entry to the end of the list ("entryIndex" is index of last entry)
                     if (entryIndex == 0)
-                        entryIndex = Interlocked.CompareExchange(ref _buckets[hashCode & (_buckets.Length - 1)], newEntry, EndOfList);
+                        entryIndex = Interlocked.CompareExchange(ref _buckets[hashCode & (_buckets.Length - 1)], newEntry, EndOfList)
                     else
-                        entryIndex = Interlocked.CompareExchange(ref _entries[entryIndex].Next, newEntry, EndOfList);
+                        entryIndex = Interlocked.CompareExchange(ref _entries[entryIndex].Next, newEntry, EndOfList)
 
                     // Return true only if the CompareExchange succeeded (happens when replaced value is EndOfList).
                     // Return false if the linked list turned out to be full because another thread is currently resizing
                     // the hash table.  In this case, entries[newEntry] is orphaned (not part of any linked list) and the
                     // Add needs to be performed on the new hash table.  Otherwise, keep looping, looking for new end of list.
                     if (entryIndex <= EndOfList)
-                        return entryIndex == EndOfList;
+                        return entryIndex == EndOfList
 
                 // Another thread already added the value while this thread was trying to add, so return that instance instead.
                 // Note that entries[newEntry] will be orphaned (not part of any linked list) in this case
-                newValue = _entries[entryIndex].Value;
+                newValue = _entries[entryIndex].Value
 
-                return true;
+                return true
 
             /// <summary>
             /// Searches a linked list of entries, beginning at "entryIndex".  If "entryIndex" is 0, then search starts at a hash bucket instead.
@@ -287,20 +287,20 @@ namespace System.Xml.Linq
             /// This method has the side effect of removing invalid entries from the list as it is traversed.
             /// </remarks>
             private bool FindEntry(int hashCode, string key, int index, int count, ref int entryIndex)
-                int previousIndex = entryIndex;
-                int currentIndex;
+                int previousIndex = entryIndex
+                int currentIndex
 
                 // Set initial value of currentIndex to index of the next entry following entryIndex
                 if (previousIndex == 0)
-                    currentIndex = _buckets[hashCode & (_buckets.Length - 1)];
+                    currentIndex = _buckets[hashCode & (_buckets.Length - 1)]
                 else
-                    currentIndex = previousIndex;
+                    currentIndex = previousIndex
 
                 // Loop while not at end of list
                 while (currentIndex > EndOfList)
                     // Check for matching hash code, then matching key
                     if (_entries[currentIndex].HashCode == hashCode)
-                        string? keyCompare = _extractKey(_entries[currentIndex].Value);
+                        string? keyCompare = _extractKey(_entries[currentIndex].Value)
 
                         // If the key is invalid, then attempt to remove the current entry from the linked list.
                         // This is thread-safe in the case where the Next field points to another entry, since once a Next field points
@@ -309,36 +309,36 @@ namespace System.Xml.Linq
                             if (_entries[currentIndex].Next > EndOfList)
                                 // PUBLISH (buckets slot or entries slot)
                                 // Entry is invalid, so modify previous entry to point to its next entry
-                                _entries[currentIndex].Value = default(TValue)!;
-                                currentIndex = _entries[currentIndex].Next;
+                                _entries[currentIndex].Value = default(TValue)!
+                                currentIndex = _entries[currentIndex].Next
 
                                 if (previousIndex == 0)
-                                    _buckets[hashCode & (_buckets.Length - 1)] = currentIndex;
+                                    _buckets[hashCode & (_buckets.Length - 1)] = currentIndex
                                 else
-                                    _entries[previousIndex].Next = currentIndex;
+                                    _entries[previousIndex].Next = currentIndex
 
-                                continue;
+                                continue
                         else
                             // Valid key, so compare keys
                             if (key.AsSpan(index, count).Equals(keyCompare, StringComparison.Ordinal))
                                 // Found match, so return true and matching entry in list
-                                entryIndex = currentIndex;
-                                return true;
+                                entryIndex = currentIndex
+                                return true
 
                     // Move to next entry
-                    previousIndex = currentIndex;
-                    currentIndex = _entries[currentIndex].Next;
+                    previousIndex = currentIndex
+                    currentIndex = _entries[currentIndex].Next
 
                 // Return false and last entry in list
-                entryIndex = previousIndex;
-                return false;
+                entryIndex = previousIndex
+                return false
 
             /// <summary>
             /// Compute hash code for a string key (index, count substring of "key").  The algorithm used is the same on used in NameTable.cs in System.Xml.
             /// </summary>
             private static int ComputeHashCode(string key, int index, int count)
-                Debug.Assert(key != null, "key should have been checked previously for null");
-                return string.GetHashCode(key.AsSpan(index, count));
+                Debug.Assert(key != null, "key should have been checked previously for null")
+                return string.GetHashCode(key.AsSpan(index, count))
 
             /// <summary>
             /// Hash table entry.  The "Value" and "HashCode" fields are filled during initialization, and are never changed.  The "Next"

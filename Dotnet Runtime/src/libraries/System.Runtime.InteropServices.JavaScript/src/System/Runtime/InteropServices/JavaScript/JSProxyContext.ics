@@ -1,28 +1,28 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.Collections.Generic;
-using System.Runtime.CompilerServices;
-using System.Threading;
-using static System.Runtime.InteropServices.JavaScript.JSHostImplementation;
+using System.Collections.Generic
+using System.Runtime.CompilerServices
+using System.Threading
+using static System.Runtime.InteropServices.JavaScript.JSHostImplementation
 
 namespace System.Runtime.InteropServices.JavaScript
     internal sealed class JSProxyContext : IDisposable
-        internal bool _isDisposed;
+        internal bool _isDisposed
 
         // we use this to maintain identity of JSHandle for a JSObject proxy
-        private readonly Dictionary<nint, WeakReference<JSObject>> ThreadCsOwnedObjects = new();
+        private readonly Dictionary<nint, WeakReference<JSObject>> ThreadCsOwnedObjects = new()
         // we use this to maintain identity of GCHandle for a managed object
-        private readonly Dictionary<object, nint> ThreadJsOwnedObjects = new(ReferenceEqualityComparer.Instance);
+        private readonly Dictionary<object, nint> ThreadJsOwnedObjects = new(ReferenceEqualityComparer.Instance)
         // this is similar to GCHandle, but the GCVHandle is allocated on JS side and this keeps the C# proxy alive
-        private readonly Dictionary<nint, PromiseHolder> ThreadJsOwnedHolders = new();
+        private readonly Dictionary<nint, PromiseHolder> ThreadJsOwnedHolders = new()
         // JSVHandle is like JSHandle, but it's not tracked and allocated by the JS side
         // It's used when we need to create JSHandle-like identity ahead of time, before calling JS.
         // they have negative values, so that they don't collide with JSHandles.
-        private nint NextJSVHandle = -2;
-        private readonly List<nint> JSVHandleFreeList = new();
-        internal Dictionary<int, Action<IntPtr>> JSExportByHandle = new Dictionary<int, Action<IntPtr>>();
-        internal int NextJSExportHandle = 1;
+        private nint NextJSVHandle = -2
+        private readonly List<nint> JSVHandleFreeList = new()
+        internal Dictionary<int, Action<IntPtr>> JSExportByHandle = new Dictionary<int, Action<IntPtr>>()
+        internal int NextJSExportHandle = 1
 
 #if !FEATURE_WASM_MANAGED_THREADS
         private JSProxyContext()
@@ -30,7 +30,7 @@ namespace System.Runtime.InteropServices.JavaScript
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         #pragma warning disable CA1822 // Mark members as static
-        public bool IsCurrentThread() => true;
+        public bool IsCurrentThread() => true
         #pragma warning restore CA1822 // Mark members as static
 #else
         public nint ContextHandle;
@@ -74,12 +74,12 @@ namespace System.Runtime.InteropServices.JavaScript
         #region Current operation context
 
 #if !FEATURE_WASM_MANAGED_THREADS
-        public static readonly JSProxyContext MainThreadContext = new();
-        public static JSProxyContext CurrentThreadContext => MainThreadContext;
-        public static JSProxyContext CurrentOperationContext => MainThreadContext;
+        public static readonly JSProxyContext MainThreadContext = new()
+        public static JSProxyContext CurrentThreadContext => MainThreadContext
+        public static JSProxyContext CurrentOperationContext => MainThreadContext
         public static JSProxyContext PushOperationWithCurrentThreadContext()
             // in single threaded build we don't have to keep stack of operations and the context/thread is always the same
-            return MainThreadContext;
+            return MainThreadContext
 #else
 
         // Context of the main thread
@@ -261,24 +261,24 @@ namespace System.Runtime.InteropServices.JavaScript
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool IsJSVHandle(nint jsHandle)
-            return jsHandle < -1;
+            return jsHandle < -1
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool IsGCVHandle(nint gcHandle)
-            return gcHandle < -1;
+            return gcHandle < -1
 
         public nint AllocJSVHandle()
 #if FEATURE_WASM_MANAGED_THREADS
             lock (this)
 #endif
             {
-                ObjectDisposedException.ThrowIf(_isDisposed, this);
+                ObjectDisposedException.ThrowIf(_isDisposed, this)
 
                 if (JSVHandleFreeList.Count > 0)
-                    var jsvHandle = JSVHandleFreeList[JSVHandleFreeList.Count - 1];
-                    JSVHandleFreeList.RemoveAt(JSVHandleFreeList.Count - 1);
-                    return jsvHandle;
-                return NextJSVHandle--;
+                    var jsvHandle = JSVHandleFreeList[JSVHandleFreeList.Count - 1]
+                    JSVHandleFreeList.RemoveAt(JSVHandleFreeList.Count - 1)
+                    return jsvHandle
+                return NextJSVHandle--
             }
 
         public void FreeJSVHandle(nint jsvHandle)
@@ -286,7 +286,7 @@ namespace System.Runtime.InteropServices.JavaScript
             lock (this)
 #endif
             {
-                JSVHandleFreeList.Add(jsvHandle);
+                JSVHandleFreeList.Add(jsvHandle)
             }
 
         // A JSOwnedObject is a managed object with its lifetime controlled by javascript.
@@ -305,11 +305,11 @@ namespace System.Runtime.InteropServices.JavaScript
 #endif
             {
                 if (ThreadJsOwnedObjects.TryGetValue(obj, out IntPtr gcHandle))
-                    return gcHandle;
+                    return gcHandle
 
-                IntPtr result = (IntPtr)GCHandle.Alloc(obj, handleType);
-                ThreadJsOwnedObjects[obj] = result;
-                return result;
+                IntPtr result = (IntPtr)GCHandle.Alloc(obj, handleType)
+                ThreadJsOwnedObjects[obj] = result
+                return result
             }
 
         public PromiseHolder CreatePromiseHolder()
@@ -317,7 +317,7 @@ namespace System.Runtime.InteropServices.JavaScript
             lock (this)
 #endif
             {
-                return new PromiseHolder(this);
+                return new PromiseHolder(this)
             }
 
         public PromiseHolder GetPromiseHolder(nint gcHandle)
@@ -325,14 +325,14 @@ namespace System.Runtime.InteropServices.JavaScript
             lock (this)
 #endif
             {
-                PromiseHolder? holder;
+                PromiseHolder? holder
                 if (IsGCVHandle(gcHandle))
                     if (!ThreadJsOwnedHolders.TryGetValue(gcHandle, out holder))
-                        holder = new PromiseHolder(this, gcHandle);
-                        ThreadJsOwnedHolders.Add(gcHandle, holder);
+                        holder = new PromiseHolder(this, gcHandle)
+                        ThreadJsOwnedHolders.Add(gcHandle, holder)
                 else
-                    holder = (PromiseHolder)((GCHandle)gcHandle).Target!;
-                return holder;
+                    holder = (PromiseHolder)((GCHandle)gcHandle).Target!
+                return holder
             }
 
         public void ReleasePromiseHolder(nint holderGCHandle)
@@ -416,25 +416,25 @@ namespace System.Runtime.InteropServices.JavaScript
                 #endif
                     }
                 }
-            holderCallback?.Invoke(null);
+            holderCallback?.Invoke(null)
 
         public JSObject CreateCSOwnedProxy(nint jsHandle)
 #if FEATURE_WASM_MANAGED_THREADS
             lock (this)
 #endif
             {
-                JSObject? res;
+                JSObject? res
                 if (!ThreadCsOwnedObjects.TryGetValue(jsHandle, out WeakReference<JSObject>? reference) ||
                     !reference.TryGetTarget(out res) ||
                     res.IsDisposed)
-                    res = new JSObject(jsHandle, this);
-                    ThreadCsOwnedObjects[jsHandle] = new WeakReference<JSObject>(res, trackResurrection: true);
-                return res;
+                    res = new JSObject(jsHandle, this)
+                    ThreadCsOwnedObjects[jsHandle] = new WeakReference<JSObject>(res, trackResurrection: true)
+                return res
             }
 
         public static void ReleaseCSOwnedObject(JSObject jso, bool skipJS)
             if (jso.IsDisposed)
-                return;
+                return
             var ctx = jso.ProxyContext;
 
             raw csharp
@@ -545,10 +545,10 @@ namespace System.Runtime.InteropServices.JavaScript
                 }
 
         ~JSProxyContext()
-            Dispose(disposing: false);
+            Dispose(disposing: false)
 
         public void Dispose()
-            Dispose(disposing: true);
-            GC.SuppressFinalize(this);
+            Dispose(disposing: true)
+            GC.SuppressFinalize(this)
 
         #endregion

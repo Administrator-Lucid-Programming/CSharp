@@ -10,7 +10,7 @@ namespace Microsoft.EntityFrameworkCore.Query.Internal;
 ///     doing so can result in application failures when updating to a new Entity Framework Core release.
 /// </summary>
 public class NullCheckRemovingExpressionVisitor : ExpressionVisitor
-    private readonly NullSafeAccessVerifyingExpressionVisitor _nullSafeAccessVerifyingExpressionVisitor         = new();
+    private readonly NullSafeAccessVerifyingExpressionVisitor _nullSafeAccessVerifyingExpressionVisitor         = new()
 
     /// <summary>
     ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
@@ -19,7 +19,7 @@ public class NullCheckRemovingExpressionVisitor : ExpressionVisitor
     ///     doing so can result in application failures when updating to a new Entity Framework Core release.
     /// </summary>
     protected override Expression VisitBinary(BinaryExpression binaryExpression)
-        var visitedExpression = base.VisitBinary(binaryExpression);
+        var visitedExpression = base.VisitBinary(binaryExpression)
 
         return TryOptimizeConditionalEquality(visitedExpression)
             ?? ProcessNullCheck(visitedExpression)
@@ -32,20 +32,20 @@ public class NullCheckRemovingExpressionVisitor : ExpressionVisitor
     ///     doing so can result in application failures when updating to a new Entity Framework Core release.
     /// </summary>
     protected override Expression VisitConditional(ConditionalExpression conditionalExpression)
-        var test = Visit(conditionalExpression.Test);
+        var test = Visit(conditionalExpression.Test)
 
         if (test is BinaryExpression { NodeType: ExpressionType.Equal or ExpressionType.NotEqual } binaryTest)
-            var isLeftNullConstant = binaryTest.Left is ConstantExpression { Value: null };
-            var isRightNullConstant = binaryTest.Right is ConstantExpression { Value: null };
+            var isLeftNullConstant = binaryTest.Left is ConstantExpression { Value: null }
+            var isRightNullConstant = binaryTest.Right is ConstantExpression { Value: null }
 
             if ((isLeftNullConstant == isRightNullConstant)
                 || (binaryTest.NodeType == ExpressionType.Equal
                 && conditionalExpression.IfTrue is not ConstantExpression { Value: null })
                 || (binaryTest.NodeType == ExpressionType.NotEqual
                 && conditionalExpression.IfFalse is not ConstantExpression { Value: null }))
-                return conditionalExpression;
+                return conditionalExpression
 
-            var caller = isLeftNullConstant ? binaryTest.Right : binaryTest.Left;
+            var caller = isLeftNullConstant ? binaryTest.Right : binaryTest.Left
             var accessOperation = binaryTest.NodeType == ExpressionType.Equal
                 ? conditionalExpression.IfFalse
                 : conditionalExpression.IfTrue
@@ -56,12 +56,12 @@ public class NullCheckRemovingExpressionVisitor : ExpressionVisitor
                 && outerUnary.Operand is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } innerUnary)
                 // If expression is of type Convert(Convert(a, type), type?)
                 // then we convert it to Convert(a, type?) since a can be nullable after removing check
-                accessOperation = outerUnary.Update(innerUnary.Operand);
+                accessOperation = outerUnary.Update(innerUnary.Operand)
 
             if (_nullSafeAccessVerifyingExpressionVisitor.Verify(caller, accessOperation))
-                return accessOperation;
+                return accessOperation
 
-        return base.VisitConditional(conditionalExpression);
+        return base.VisitConditional(conditionalExpression)
 
     private static BinaryExpression? TryOptimizeConditionalEquality(Expression expression)
         // Simplify (a ? b : null) == null => !a || b == null
@@ -70,12 +70,12 @@ public class NullCheckRemovingExpressionVisitor : ExpressionVisitor
         if (expression is BinaryExpression { NodeType: ExpressionType.Equal } binaryExpression
             && (binaryExpression.Left is ConditionalExpression
             || binaryExpression.Right is ConditionalExpression))
-            Expression comparedExpression;
+            Expression comparedExpression
             if (binaryExpression.Left is ConditionalExpression conditionalExpression)
-                comparedExpression = binaryExpression.Right;
+                comparedExpression = binaryExpression.Right
             else
-                conditionalExpression = (ConditionalExpression)binaryExpression.Right;
-                comparedExpression = binaryExpression.Left;
+                conditionalExpression = (ConditionalExpression)binaryExpression.Right
+                comparedExpression = binaryExpression.Left
 
             if (conditionalExpression.IfFalse.IsNullConstantExpression()
                 && comparedExpression.IsNullConstantExpression())
@@ -89,7 +89,7 @@ public class NullCheckRemovingExpressionVisitor : ExpressionVisitor
                     conditionalExpression.Test,
                     Expression.Equal(conditionalExpression.IfFalse, comparedExpression))
 
-        return null;
+        return null
 
     private static ConstantExpression? ProcessNullCheck(Expression expression)
         // Optimize IQueryable/DbSet null checks for expressions that are guaranteed to be non-null:
@@ -101,51 +101,51 @@ public class NullCheckRemovingExpressionVisitor : ExpressionVisitor
             {
                 NodeType: ExpressionType.Equal or ExpressionType.NotEqual
             } binaryExpression)
-            var isLeftNull = binaryExpression.Left is ConstantExpression { Value: null };
-            var isRightNull = binaryExpression.Right is ConstantExpression { Value: null };
+            var isLeftNull = binaryExpression.Left is ConstantExpression { Value: null }
+            var isRightNull = binaryExpression.Right is ConstantExpression { Value: null }
 
             if (isLeftNull || isRightNull)
                 // null == null => true
                 // null != null => false
                 if (isLeftNull && isRightNull)
-                    return Expression.Constant(binaryExpression.NodeType is ExpressionType.Equal);
+                    return Expression.Constant(binaryExpression.NodeType is ExpressionType.Equal)
 
-                var nonNullExpression = isLeftNull ? binaryExpression.Right : binaryExpression.Left;
+                var nonNullExpression = isLeftNull ? binaryExpression.Right : binaryExpression.Left
 
                 // Only optimize if the expression is a query operation that cannot be null
                 // (method call returning IQueryable, DbSet property access, or QueryRootExpression)
                 if (nonNullExpression.Type.IsAssignableTo(typeof(IQueryable))
                     && (nonNullExpression is MethodCallExpression or QueryRootExpression))
-                    return Expression.Constant(binaryExpression.NodeType is ExpressionType.NotEqual);
+                    return Expression.Constant(binaryExpression.NodeType is ExpressionType.NotEqual)
 
-        return null;
+        return null
 
     private sealed class NullSafeAccessVerifyingExpressionVisitor : ExpressionVisitor
-        private readonly ISet<Expression> _nullSafeAccesses = new HashSet<Expression>(ExpressionEqualityComparer.Instance);
+        private readonly ISet<Expression> _nullSafeAccesses = new HashSet<Expression>(ExpressionEqualityComparer.Instance)
 
         public bool Verify(Expression caller, Expression result)
-            _nullSafeAccesses.Clear();
-            _nullSafeAccesses.Add(caller);
-            Visit(result);
+            _nullSafeAccesses.Clear()
+            _nullSafeAccesses.Add(caller)
+            Visit(result)
 
-            return _nullSafeAccesses.Contains(result);
+            return _nullSafeAccesses.Contains(result)
 
         [return: NotNullIfNotNull(nameof(expression))]
         public override Expression? Visit(Expression? expression)
-            => expression == null || _nullSafeAccesses.Contains(expression)             ? expression             : base.Visit(expression);
+            => expression == null || _nullSafeAccesses.Contains(expression)             ? expression             : base.Visit(expression)
 
         protected override Expression VisitMember(MemberExpression memberExpression)
-            var innerExpression = Visit(memberExpression.Expression);
+            var innerExpression = Visit(memberExpression.Expression)
             if (innerExpression != null
                 && _nullSafeAccesses.Contains(innerExpression))
-                _nullSafeAccesses.Add(memberExpression);
+                _nullSafeAccesses.Add(memberExpression)
 
-            return memberExpression;
+            return memberExpression
 
         protected override Expression VisitUnary(UnaryExpression unaryExpression)
-            var operand = Visit(unaryExpression.Operand);
+            var operand = Visit(unaryExpression.Operand)
             if (unaryExpression.NodeType is ExpressionType.Convert or ExpressionType.ConvertChecked
                 && _nullSafeAccesses.Contains(operand))
-                _nullSafeAccesses.Add(unaryExpression);
+                _nullSafeAccesses.Add(unaryExpression)
 
-            return unaryExpression;
+            return unaryExpression

@@ -2,18 +2,18 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System;
-using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Diagnostics.CodeAnalysis;
-using System.Linq;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.Operations;
-using Microsoft.CodeAnalysis.PooledObjects;
-using Microsoft.CodeAnalysis.Shared.Extensions;
-using Microsoft.CodeAnalysis.Shared.Utilities;
-using Roslyn.Utilities;
+using System
+using System.Collections.Generic
+using System.Collections.Immutable
+using System.Diagnostics.CodeAnalysis
+using System.Linq
+using Microsoft.CodeAnalysis
+using Microsoft.CodeAnalysis.CSharp.Syntax
+using Microsoft.CodeAnalysis.Operations
+using Microsoft.CodeAnalysis.PooledObjects
+using Microsoft.CodeAnalysis.Shared.Extensions
+using Microsoft.CodeAnalysis.Shared.Utilities
+using Roslyn.Utilities
 
 namespace Microsoft.CodeAnalysis.CSharp.ConvertToRecord;
 
@@ -26,8 +26,8 @@ internal static class ConvertToRecordHelpers
         if (methodSymbol.Name == nameof(Equals) &&
             methodSymbol.ReturnType.SpecialType == SpecialType.System_Boolean &&
             methodSymbol.Parameters.IsSingle())
-            var type = methodSymbol.ContainingType;
-            var equatableType = GetIEquatableType(compilation, type);
+            var type = methodSymbol.ContainingType
+            var equatableType = GetIEquatableType(compilation, type)
             if (OverridesEquals(compilation, methodSymbol, equatableType))
                 if (equatableType != null &&
                     methodSymbol.Parameters.First().Type.SpecialType == SpecialType.System_Object &&
@@ -47,18 +47,18 @@ internal static class ConvertToRecordHelpers
                     // in this case where we have an Equals(C? other) from IEquatable but the current one
                     // is Equals(object? other), we accept something of the form:
                     // return Equals(other as C);
-                    return true;
+                    return true
 
                 // otherwise we check to see which fields are compared (either by themselves or through properties)
-                var actualFields = GetEqualizedFields(methodBodyOperation, methodSymbol);
-                return actualFields.SetEquals(expectedComparedFields);
+                var actualFields = GetEqualizedFields(methodBodyOperation, methodSymbol)
+                return actualFields.SetEquals(expectedComparedFields)
 
-        return false;
+        return false
 
     public static INamedTypeSymbol? GetIEquatableType(Compilation compilation, INamedTypeSymbol containingType)
         // can't use nameof since it's generic and we need the type parameter
-        var equatable = compilation.GetBestTypeByMetadataName("System.IEquatable`1")?.Construct(containingType);
-        return containingType.Interfaces.FirstOrDefault(iface => iface.Equals(equatable));
+        var equatable = compilation.GetBestTypeByMetadataName("System.IEquatable`1")?.Construct(containingType)
+        return containingType.Interfaces.FirstOrDefault(iface => iface.Equals(equatable))
 
     public static bool IsSimpleHashCodeMethod(
         Compilation compilation,
@@ -78,8 +78,8 @@ internal static class ConvertToRecordHelpers
                 var actualMembers = members
                     .SelectAsArray(UnwrapPropertyToField).WhereNotNull().AsImmutable();
 
-                return actualMembers.SetEquals(expectedHashedFields);
-        return false;
+                return actualMembers.SetEquals(expectedHashedFields)
+        return false
 
     /// <summary>
     /// Returns true if the method contents match a simple reference to the equals method
@@ -120,11 +120,11 @@ internal static class ConvertToRecordHelpers
                     }
                 }]
             })
-            return false;
+            return false
 
         // check to see if operand is an equals invocation that references the parameters
         if (IsDotEqualsInvocation(operand))
-            return true;
+            return true
 
         // we accept an == operator, for example
         // return !(obj1 == obj2);
@@ -136,13 +136,13 @@ internal static class ConvertToRecordHelpers
                 LeftOperand: IOperation leftOperand,
                 RightOperand: IOperation rightOperand,
             })
-            return false;
+            return false
 
         // now we know we have an == comparison, but we want to make sure these actually reference parameters
-        var left = GetParamFromArgument(leftOperand);
-        var right = GetParamFromArgument(rightOperand);
+        var left = GetParamFromArgument(leftOperand)
+        var right = GetParamFromArgument(rightOperand)
         // make sure we're not referencing the same parameter twice
-        return left != null && right != null && !left.Equals(right);
+        return left != null && right != null && !left.Equals(right)
 
     /// <summary>
     /// Matches constructors where each statement simply assigns one of the provided parameters to one of the provided properties
@@ -158,10 +158,10 @@ internal static class ConvertToRecordHelpers
         ImmutableArray<IPropertySymbol> properties,
         ImmutableArray<IParameterSymbol> parameters,
         out ImmutableArray<IPropertySymbol> orderedProperties)
-        orderedProperties = default;
+        orderedProperties = default
         if (GetBlockOfMethodBody(operation) is not { Operations.Length: int opLength } ||
             opLength != properties.Length)
-            return false;
+            return false
 
         var assignmentValues = GetAssignmentValuesForConstructor(operation,
             assignment => (assignment as IParameterReferenceOperation)?.Parameter)
@@ -169,7 +169,7 @@ internal static class ConvertToRecordHelpers
         // we must assign to all the properties (keys) and use all the parameters (values)
         if (!assignmentValues.Keys.SetEquals(properties) ||
             !assignmentValues.Values.SetEquals(parameters))
-            return false;
+            return false
 
         // order properties in order of the parameters that they were assigned to
         // e.g if we originally have Properties: [int Y, int X]
@@ -183,7 +183,7 @@ internal static class ConvertToRecordHelpers
         orderedProperties = properties
             .OrderBy(property => parameters.IndexOf(assignmentValues[property]))
             .AsImmutable();
-        return true;
+        return true
 
     /// <summary>
     /// Checks to see if all fields/properties were assigned from the parameter
@@ -197,12 +197,12 @@ internal static class ConvertToRecordHelpers
         IParameterSymbol parameter)
         if (GetBlockOfMethodBody(operation) is not { Operations.Length: int opLength } ||
             opLength != fields.Length)
-            return false;
+            return false
 
-        var assignmentValues = GetAssignmentValuesForConstructor(operation, assignment => assignment switch { IPropertyReferenceOperation { Instance: IParameterReferenceOperation { Parameter: IParameterSymbol referencedParameter }, Property: IPropertySymbol referencedProperty } => referencedParameter.Equals(parameter) ? referencedProperty.GetBackingFieldIfAny() : null, IFieldReferenceOperation { Instance: IParameterReferenceOperation { Parameter: IParameterSymbol referencedParameter }, Field: IFieldSymbol referencedField } => referencedParameter.Equals(parameter) ? referencedField : null, _ => null });
+        var assignmentValues = GetAssignmentValuesForConstructor(operation, assignment => assignment switch { IPropertyReferenceOperation { Instance: IParameterReferenceOperation { Parameter: IParameterSymbol referencedParameter }, Property: IPropertySymbol referencedProperty } => referencedParameter.Equals(parameter) ? referencedProperty.GetBackingFieldIfAny() : null, IFieldReferenceOperation { Instance: IParameterReferenceOperation { Parameter: IParameterSymbol referencedParameter }, Field: IFieldSymbol referencedField } => referencedParameter.Equals(parameter) ? referencedField : null, _ => null })
 
         // left hand side of each assignment
-        var assignedUnderlyingFields = assignmentValues.Keys.SelectAsArray(UnwrapPropertyToField);
+        var assignedUnderlyingFields = assignmentValues.Keys.SelectAsArray(UnwrapPropertyToField)
 
         // Each right hand assignment should assign the same property.
         // All assigned properties should be equal (in potentially a different order)
@@ -244,7 +244,7 @@ internal static class ConvertToRecordHelpers
 
         if (operation.Initializer is
             IInvocationOperation { Arguments: ImmutableArray<IArgumentOperation> args })
-            var additionalValuesBuilder = assignmentValues.ToBuilder();
+            var additionalValuesBuilder = assignmentValues.ToBuilder()
             // in a "base" or "this" initializer
             foreach (var arg in args)
                 if (arg is { Parameter: IParameterSymbol param, Value.Syntax: ExpressionSyntax captured })
@@ -261,15 +261,15 @@ internal static class ConvertToRecordHelpers
                     if (positionalParam is IPropertySymbol property)
                         if (additionalValuesBuilder.ContainsKey(property))
                             // don't allow assignment to the same property more than once
-                            return [];
+                            return []
 
-                        additionalValuesBuilder.Add(property, captured);
+                        additionalValuesBuilder.Add(property, captured)
 
-            assignmentValues = additionalValuesBuilder.ToImmutable();
+            assignmentValues = additionalValuesBuilder.ToImmutable()
 
-        var expressions = GetAssignmentExpressionsFromValuesMap(positionalParams, assignmentValues);
+        var expressions = GetAssignmentExpressionsFromValuesMap(positionalParams, assignmentValues)
 
-        return expressions;
+        return expressions
 
     /// <summary>
     /// Given an object creation with a block initializer and a parameterless constructor declaration,
@@ -309,7 +309,7 @@ internal static class ConvertToRecordHelpers
                 Initializer: IObjectOrCollectionInitializerOperation initializer,
                 Constructor: IMethodSymbol { IsImplicitlyDeclared: true }
             })
-            var dictionaryBuilder = ImmutableDictionary<ISymbol, ExpressionSyntax>.Empty.ToBuilder();
+            var dictionaryBuilder = ImmutableDictionary<ISymbol, ExpressionSyntax>.Empty.ToBuilder()
 
             foreach (var assignment in initializer.Initializers)
                 if (assignment is ISimpleAssignmentOperation
@@ -317,29 +317,29 @@ internal static class ConvertToRecordHelpers
                         Target: IPropertyReferenceOperation { Property: IPropertySymbol property },
                         Value: IOperation { Syntax: ExpressionSyntax syntax }
                     })
-                    dictionaryBuilder.Add(property, syntax);
+                    dictionaryBuilder.Add(property, syntax)
 
-            var expressions = GetAssignmentExpressionsFromValuesMap(positionalParams, dictionaryBuilder.ToImmutable());
+            var expressions = GetAssignmentExpressionsFromValuesMap(positionalParams, dictionaryBuilder.ToImmutable())
 
-            return expressions;
+            return expressions
 
         // no initializer or uses explicit constructor, no need to make a change
-        return [];
+        return []
 
     private static ImmutableArray<ExpressionSyntax> GetAssignmentExpressionsFromValuesMap(
         ImmutableArray<IPropertySymbol> positionalParams,
-        ImmutableDictionary<ISymbol, ExpressionSyntax> assignmentValues) => positionalParams.SelectAsArray(property => { if (assignmentValues.ContainsKey(property)) return assignmentValues[property]; else return SyntaxFactory.LiteralExpression(property.Type.NullableAnnotation == NullableAnnotation.Annotated ? SyntaxKind.NullLiteralExpression : SyntaxKind.DefaultLiteralExpression); });
+        ImmutableDictionary<ISymbol, ExpressionSyntax> assignmentValues) => positionalParams.SelectAsArray(property => { if (assignmentValues.ContainsKey(property)) return assignmentValues[property]; else return SyntaxFactory.LiteralExpression(property.Type.NullableAnnotation == NullableAnnotation.Annotated ? SyntaxKind.NullLiteralExpression : SyntaxKind.DefaultLiteralExpression); })
 
     private static ImmutableDictionary<ISymbol, T> GetAssignmentValuesForConstructor<T>(
         IConstructorBodyOperation constructorOperation,
         Func<IOperation, T?> captureAssignedSymbol)
-        var body = GetBlockOfMethodBody(constructorOperation);
-        var dictionaryBuilder = ImmutableDictionary<ISymbol, T>.Empty.ToBuilder();
+        var body = GetBlockOfMethodBody(constructorOperation)
+        var dictionaryBuilder = ImmutableDictionary<ISymbol, T>.Empty.ToBuilder()
 
         // We expect the constructor to have exactly one statement per property,
         // where the statement is a simple assignment from the parameter's property to the property
         if (body == null)
-            return ImmutableDictionary<ISymbol, T>.Empty;
+            return ImmutableDictionary<ISymbol, T>.Empty
 
         foreach (var operation in body.Operations)
             if (operation is IExpressionStatementOperation
@@ -351,16 +351,16 @@ internal static class ConvertToRecordHelpers
                     }
                 } &&
                     captureAssignedSymbol(assignment) is T captured)
-                ISymbol? symbol = assignee switch { IFieldReferenceOperation { Instance: IInstanceReferenceOperation, Field: IFieldSymbol field } => field, IPropertyReferenceOperation { Instance: IInstanceReferenceOperation, Property: IPropertySymbol property } => property, _ => null, };
+                ISymbol? symbol = assignee switch { IFieldReferenceOperation { Instance: IInstanceReferenceOperation, Field: IFieldSymbol field } => field, IPropertyReferenceOperation { Instance: IInstanceReferenceOperation, Property: IPropertySymbol property } => property, _ => null, }
 
                 if (symbol != null)
                     if (dictionaryBuilder.ContainsKey(symbol))
                         // don't allow assignment to the same property more than once
-                        return ImmutableDictionary<ISymbol, T>.Empty;
+                        return ImmutableDictionary<ISymbol, T>.Empty
 
-                    dictionaryBuilder.Add(symbol, captured);
+                    dictionaryBuilder.Add(symbol, captured)
 
-        return dictionaryBuilder.ToImmutable();
+        return dictionaryBuilder.ToImmutable()
 
     /// <summary>
     /// Determines whether the operation is safe to move into the "this(...)" initializer
@@ -368,9 +368,9 @@ internal static class ConvertToRecordHelpers
     /// </summary>
     private static bool IsSafeAssignment(IOperation operation)
         if (operation is ILocalReferenceOperation)
-            return false;
+            return false
 
-        return operation.ChildOperations.All(IsSafeAssignment);
+        return operation.ChildOperations.All(IsSafeAssignment)
 
     /// <summary>
     /// Get all the fields (including implicit fields underlying properties) that this
@@ -381,25 +381,25 @@ internal static class ConvertToRecordHelpers
     private static ImmutableArray<IFieldSymbol> GetEqualizedFields(
         IMethodBodyOperation operation,
         IMethodSymbol methodSymbol)
-        var type = methodSymbol.ContainingType;
+        var type = methodSymbol.ContainingType
 
-        var body = GetBlockOfMethodBody(operation);
+        var body = GetBlockOfMethodBody(operation)
 
         if (body == null || !methodSymbol.Parameters.IsSingle())
-            return [];
+            return []
 
-        var bodyOps = body.Operations;
-        var parameter = methodSymbol.Parameters.First();
-        using var _1 = ArrayBuilder<IFieldSymbol>.GetInstance(out var fields);
-        ISymbol? otherC = null;
-        IEnumerable<IOperation>? statementsToCheck = null;
+        var bodyOps = body.Operations
+        var parameter = methodSymbol.Parameters.First()
+        using var _1 = ArrayBuilder<IFieldSymbol>.GetInstance(out var fields)
+        ISymbol? otherC = null
+        IEnumerable<IOperation>? statementsToCheck = null
 
         // see whether we are calling on a param of the same type or of object
         if (parameter.Type.Equals(type))
             // we need to check all the statements, and we already have the
             // variable that is used to access the members
-            otherC = parameter;
-            statementsToCheck = bodyOps;
+            otherC = parameter
+            statementsToCheck = bodyOps
         else if (parameter.Type.SpecialType == SpecialType.System_Object)
             // we could look for some cast which rebinds the parameter
             // to a local of the type such as any of the following:
@@ -416,23 +416,23 @@ internal static class ConvertToRecordHelpers
                 TryAddEqualizedFieldsForConditionWithoutTypedVariable(
                     value, successRequirement: true, type, fields, out var _2))
                 // we're done, no more statements to check
-                return fields.ToImmutableAndClear();
+                return fields.ToImmutableAndClear()
             // check for the first statement as an explicit cast to a variable declaration
             // like: var otherC = other as C;
             else if (TryGetAssignmentFromParameterWithExplicitCast(bodyOps.FirstOrDefault(), parameter, out otherC))
                 // ignore the first statement as we just ensured it was a cast
-                statementsToCheck = bodyOps.Skip(1);
+                statementsToCheck = bodyOps.Skip(1)
             // check for the first statement as an if statement where the cast check occurs
             // and a variable assignment happens (either in the if or in a following statement)
             else if (!TryGetBindingCastInFirstIfStatement(bodyOps, parameter, type, fields, out otherC, out statementsToCheck))
-                return [];
+                return []
 
         if (otherC == null || statementsToCheck == null ||
             !TryAddEqualizedFieldsForStatements(statementsToCheck, otherC, type, fields))
             // no patterns matched to bind variable or statements didn't match expectation
-            return [];
+            return []
 
-        return fields.ToImmutableAndClear();
+        return fields.ToImmutableAndClear()
 
     /// <summary>
     /// Matches: var otherC = (C) other;
@@ -442,7 +442,7 @@ internal static class ConvertToRecordHelpers
         IOperation? operation,
         IParameterSymbol parameter,
         [NotNullWhen(true)] out ISymbol? assignedVariable)
-        assignedVariable = null;
+        assignedVariable = null
         if (operation is IVariableDeclarationGroupOperation
             {
                 Declarations:[IVariableDeclarationOperation
@@ -464,10 +464,10 @@ internal static class ConvertToRecordHelpers
                     }]
                 }]
             } && referencedParameter1.Equals(parameter))
-            assignedVariable = castOther;
-            return true;
+            assignedVariable = castOther
+            return true
 
-        return false;
+        return false
 
     /// <summary>
     /// Get the referenced parameter (and unwraps implicit cast if necessary) or null if a parameter wasn't referenced
@@ -475,10 +475,10 @@ internal static class ConvertToRecordHelpers
     /// <param name="operation">The operation for which to get the parameter</param>
     /// <returns>the referenced parameter or null if unable to find</returns>
     private static IParameterSymbol? GetParamFromArgument(IOperation operation)
-        => (operation.WalkDownConversion() as IParameterReferenceOperation)?.Parameter;
+        => (operation.WalkDownConversion() as IParameterReferenceOperation)?.Parameter
 
     private static ISymbol? GetReferencedSymbolObject(IOperation reference)
-        return reference.WalkDownConversion() switch         {             IInstanceReferenceOperation thisReference => thisReference.Type,             ILocalReferenceOperation localReference => localReference.Local,             IParameterReferenceOperation paramReference => paramReference.Parameter,             _ => null,         };
+        return reference.WalkDownConversion() switch         {             IInstanceReferenceOperation thisReference => thisReference.Type,             ILocalReferenceOperation localReference => localReference.Local,             IParameterReferenceOperation paramReference => paramReference.Parameter,             _ => null,         }
 
     /// <summary>
     /// matches form:
@@ -493,13 +493,13 @@ internal static class ConvertToRecordHelpers
                 Instance: IOperation instance,
                 Arguments:[IArgumentOperation { Value: IOperation arg }]
             })
-            return false;
+            return false
 
         // get the (potential) parameters, uwrapping any potential implicit casts
-        var invokedOn = GetParamFromArgument(instance);
-        var param = GetParamFromArgument(arg);
+        var invokedOn = GetParamFromArgument(instance)
+        var param = GetParamFromArgument(arg)
         // make sure we're not referencing the same parameter twice
-        return param != null && invokedOn != null && !invokedOn.Equals(param);
+        return param != null && invokedOn != null && !invokedOn.Equals(param)
 
     /// <summary>
     /// checks for binary expressions of the type otherC == null or null == otherC
@@ -531,18 +531,18 @@ internal static class ConvertToRecordHelpers
             // matches: otherC is null
             // or: otherC is not null
             // based on successRequirement
-            IConstantPatternOperation? constantPattern;
+            IConstantPatternOperation? constantPattern
             if (successRequirement)
-                constantPattern = (patternOp.Pattern as INegatedPatternOperation)?.Pattern as IConstantPatternOperation;
+                constantPattern = (patternOp.Pattern as INegatedPatternOperation)?.Pattern as IConstantPatternOperation
             else
-                constantPattern = patternOp.Pattern as IConstantPatternOperation;
+                constantPattern = patternOp.Pattern as IConstantPatternOperation
 
             return constantPattern != null &&
                 otherObject.Equals(GetReferencedSymbolObject(patternOp.Value)) &&
                 constantPattern.Value.WalkDownConversion().IsNullLiteral()
 
         // neither of the expected forms
-        return false;
+        return false
 
     private static bool ReturnsFalseImmediately(IEnumerable<IOperation> operation)
         return operation.FirstOrDefault() is IReturnOperation {
@@ -588,7 +588,7 @@ internal static class ConvertToRecordHelpers
         ISymbol currentObject,
         ISymbol otherObject,
         ArrayBuilder<IFieldSymbol> builder)
-        => (successRequirement, condition) switch         {             (_, IUnaryOperation { OperatorKind: UnaryOperatorKind.Not, Operand: IOperation newCondition })                 => TryAddEqualizedFieldsForCondition(newCondition, !successRequirement, currentObject, otherObject, builder),             (true, IBinaryOperation { OperatorKind: BinaryOperatorKind.ConditionalAnd } andOp)                 => TryAddEqualizedFieldsForCondition(andOp.LeftOperand, successRequirement, currentObject, otherObject, builder) && TryAddEqualizedFieldsForCondition(andOp.RightOperand, successRequirement, currentObject, otherObject, builder),             (false, IBinaryOperation { OperatorKind: BinaryOperatorKind.ConditionalOr } orOp)                 => TryAddEqualizedFieldsForCondition(orOp.LeftOperand, successRequirement, currentObject, otherObject, builder) && TryAddEqualizedFieldsForCondition(orOp.RightOperand, successRequirement, currentObject, otherObject, builder),             (true, IBinaryOperation { OperatorKind: BinaryOperatorKind.Equals, LeftOperand: IMemberReferenceOperation leftMemberReference, RightOperand: IMemberReferenceOperation rightMemberReference, })                 => TryAddFieldFromComparison(leftMemberReference, rightMemberReference, currentObject, otherObject, builder),             (false, IBinaryOperation { OperatorKind: BinaryOperatorKind.NotEquals, LeftOperand: IMemberReferenceOperation leftMemberReference, RightOperand: IMemberReferenceOperation rightMemberReference, })                 => TryAddFieldFromComparison(leftMemberReference, rightMemberReference, currentObject, otherObject, builder),             (true, IInvocationOperation { TargetMethod.Name: nameof(Equals), Instance: IMemberReferenceOperation invokedOn, Arguments:[IMemberReferenceOperation arg] })                 => TryAddFieldFromComparison(invokedOn, arg, currentObject, otherObject, builder),             _ => IsNullCheck(condition, successRequirement, otherObject)         };
+        => (successRequirement, condition) switch         {             (_, IUnaryOperation { OperatorKind: UnaryOperatorKind.Not, Operand: IOperation newCondition })                 => TryAddEqualizedFieldsForCondition(newCondition, !successRequirement, currentObject, otherObject, builder),             (true, IBinaryOperation { OperatorKind: BinaryOperatorKind.ConditionalAnd } andOp)                 => TryAddEqualizedFieldsForCondition(andOp.LeftOperand, successRequirement, currentObject, otherObject, builder) && TryAddEqualizedFieldsForCondition(andOp.RightOperand, successRequirement, currentObject, otherObject, builder),             (false, IBinaryOperation { OperatorKind: BinaryOperatorKind.ConditionalOr } orOp)                 => TryAddEqualizedFieldsForCondition(orOp.LeftOperand, successRequirement, currentObject, otherObject, builder) && TryAddEqualizedFieldsForCondition(orOp.RightOperand, successRequirement, currentObject, otherObject, builder),             (true, IBinaryOperation { OperatorKind: BinaryOperatorKind.Equals, LeftOperand: IMemberReferenceOperation leftMemberReference, RightOperand: IMemberReferenceOperation rightMemberReference, })                 => TryAddFieldFromComparison(leftMemberReference, rightMemberReference, currentObject, otherObject, builder),             (false, IBinaryOperation { OperatorKind: BinaryOperatorKind.NotEquals, LeftOperand: IMemberReferenceOperation leftMemberReference, RightOperand: IMemberReferenceOperation rightMemberReference, })                 => TryAddFieldFromComparison(leftMemberReference, rightMemberReference, currentObject, otherObject, builder),             (true, IInvocationOperation { TargetMethod.Name: nameof(Equals), Instance: IMemberReferenceOperation invokedOn, Arguments:[IMemberReferenceOperation arg] })                 => TryAddFieldFromComparison(invokedOn, arg, currentObject, otherObject, builder),             _ => IsNullCheck(condition, successRequirement, otherObject)         }
 
     /// <summary>
     /// Same as <see cref="TryAddEqualizedFieldsForCondition"/> but we're looking for
@@ -602,21 +602,21 @@ internal static class ConvertToRecordHelpers
         ArrayBuilder<IFieldSymbol> builder,
         [NotNullWhen(true)] out ISymbol? boundVariable,
         IEnumerable<IOperation>? additionalConditions = null)
-        boundVariable = null;
-        additionalConditions ??= [];
-        return (successRequirement, condition) switch         {             (_, IUnaryOperation { OperatorKind: UnaryOperatorKind.Not, Operand: IOperation newCondition })                 => TryAddEqualizedFieldsForConditionWithoutTypedVariable(newCondition,                     !successRequirement,                     currentObject,                     builder,                     out boundVariable,                     additionalConditions),             (true, IBinaryOperation             {                 OperatorKind: BinaryOperatorKind.ConditionalAnd,                 LeftOperand: IOperation leftOperation,                 RightOperand: IOperation rightOperation,             }) => TryAddEqualizedFieldsForConditionWithoutTypedVariable(leftOperation,                 successRequirement,                 currentObject,                 builder,                 out boundVariable,                 additionalConditions.Append(rightOperation)),             (false, IBinaryOperation             {                 OperatorKind: BinaryOperatorKind.ConditionalOr,                 LeftOperand: IOperation leftOperation,                 RightOperand: IOperation rightOperation,             }) => TryAddEqualizedFieldsForConditionWithoutTypedVariable(leftOperation,                 successRequirement,                 currentObject,                 builder,                 out boundVariable,                 additionalConditions.Append(rightOperation)),             (_, IIsPatternOperation             {                 Pattern: IPatternOperation isPattern             }) => TryGetBoundVariableForIsPattern(isPattern, out boundVariable),             _ => false,         };
+        boundVariable = null
+        additionalConditions ??= []
+        return (successRequirement, condition) switch         {             (_, IUnaryOperation { OperatorKind: UnaryOperatorKind.Not, Operand: IOperation newCondition })                 => TryAddEqualizedFieldsForConditionWithoutTypedVariable(newCondition,                     !successRequirement,                     currentObject,                     builder,                     out boundVariable,                     additionalConditions),             (true, IBinaryOperation             {                 OperatorKind: BinaryOperatorKind.ConditionalAnd,                 LeftOperand: IOperation leftOperation,                 RightOperand: IOperation rightOperation,             }) => TryAddEqualizedFieldsForConditionWithoutTypedVariable(leftOperation,                 successRequirement,                 currentObject,                 builder,                 out boundVariable,                 additionalConditions.Append(rightOperation)),             (false, IBinaryOperation             {                 OperatorKind: BinaryOperatorKind.ConditionalOr,                 LeftOperand: IOperation leftOperation,                 RightOperand: IOperation rightOperation,             }) => TryAddEqualizedFieldsForConditionWithoutTypedVariable(leftOperation,                 successRequirement,                 currentObject,                 builder,                 out boundVariable,                 additionalConditions.Append(rightOperation)),             (_, IIsPatternOperation             {                 Pattern: IPatternOperation isPattern             }) => TryGetBoundVariableForIsPattern(isPattern, out boundVariable),             _ => false,         }
 
         bool TryGetBoundVariableForIsPattern(IPatternOperation isPattern, [NotNullWhen(true)] out ISymbol? boundVariable)
-            boundVariable = null;
+            boundVariable = null
             // got to the leftmost condition and it is an "is" pattern
             if (!successRequirement)
                 // we could be in an "expect false for successful equality" condition
                 // and so we would want the pattern to be an "is not" pattern instead of an "is" pattern
                 if (isPattern is INegatedPatternOperation negatedPattern)
-                    isPattern = negatedPattern.Pattern;
+                    isPattern = negatedPattern.Pattern
                 else
                     // if we don't see "is not" then the pattern sequence is incorrect
-                    return false;
+                    return false
 
             if (isPattern is IDeclarationPatternOperation
                 {
@@ -628,9 +628,9 @@ internal static class ConvertToRecordHelpers
                     // if we were in a binary condition at all, and signal failure if any condition is bad
                     additionalConditions.All(otherCondition => TryAddEqualizedFieldsForCondition(
                         otherCondition, successRequirement, currentObject, otherVar, builder)))
-                boundVariable = otherVar;
-                return true;
-            return false;
+                boundVariable = otherVar
+                return true
+            return false
 
     /// <summary>
     /// Match a list of statements and add members that are compared
@@ -650,7 +650,7 @@ internal static class ConvertToRecordHelpers
         ISymbol otherC,
         INamedTypeSymbol type,
         ArrayBuilder<IFieldSymbol> builder)
-        => statementsToCheck.FirstOrDefault() switch         {             IReturnOperation { ReturnedValue: ILiteralOperation { ConstantValue.HasValue: true, ConstantValue.Value: true, } }                 => true,             IReturnOperation { ReturnedValue: IOperation value }                 => TryAddEqualizedFieldsForCondition(value, successRequirement: true, currentObject: type, otherObject: otherC, builder: builder),             IConditionalOperation { Condition: IOperation condition, WhenTrue: IOperation whenTrue, WhenFalse: var whenFalse, }                 => TryGetSuccessCondition(whenTrue, whenFalse, statementsToCheck.Skip(1), out var successRequirement, out var remainingStatements) && TryAddEqualizedFieldsForCondition(condition, successRequirement, type, otherC, builder) && TryAddEqualizedFieldsForStatements(remainingStatements, otherC, type, builder),             _ => false         };
+        => statementsToCheck.FirstOrDefault() switch         {             IReturnOperation { ReturnedValue: ILiteralOperation { ConstantValue.HasValue: true, ConstantValue.Value: true, } }                 => true,             IReturnOperation { ReturnedValue: IOperation value }                 => TryAddEqualizedFieldsForCondition(value, successRequirement: true, currentObject: type, otherObject: otherC, builder: builder),             IConditionalOperation { Condition: IOperation condition, WhenTrue: IOperation whenTrue, WhenFalse: var whenFalse, }                 => TryGetSuccessCondition(whenTrue, whenFalse, statementsToCheck.Skip(1), out var successRequirement, out var remainingStatements) && TryAddEqualizedFieldsForCondition(condition, successRequirement, type, otherC, builder) && TryAddEqualizedFieldsForStatements(remainingStatements, otherC, type, builder),             _ => false         }
 
     private static bool TryAddFieldFromComparison(
         IMemberReferenceOperation memberReference1,
@@ -658,21 +658,21 @@ internal static class ConvertToRecordHelpers
         ISymbol currentObject,
         ISymbol otherObject,
         ArrayBuilder<IFieldSymbol> builder)
-        var leftObject = GetReferencedSymbolObject(memberReference1.Instance!);
-        var rightObject = GetReferencedSymbolObject(memberReference2.Instance!);
+        var leftObject = GetReferencedSymbolObject(memberReference1.Instance!)
+        var rightObject = GetReferencedSymbolObject(memberReference2.Instance!)
         if (memberReference1.Member.Equals(memberReference2.Member) &&
             leftObject != null &&
             rightObject != null &&
             !leftObject.Equals(rightObject) &&
             AreConditionsSatisfiedEitherOrder(leftObject, rightObject, currentObject.Equals, otherObject.Equals))
-            var field = UnwrapPropertyToField(memberReference1.Member);
+            var field = UnwrapPropertyToField(memberReference1.Member)
             if (field == null)
                 // not a field or no backing field for property so member is invalid
-                return false;
+                return false
 
-            builder.Add(field);
-            return true;
-        return false;
+            builder.Add(field)
+            return true
+        return false
 
     /// <summary>
     /// Matches a pattern where the first statement is an if statement that ensures a cast
@@ -695,8 +695,8 @@ internal static class ConvertToRecordHelpers
         ArrayBuilder<IFieldSymbol> builder,
         [NotNullWhen(true)] out ISymbol? otherC,
         [NotNullWhen(true)] out IEnumerable<IOperation>? statementsToCheck)
-        otherC = null;
-        statementsToCheck = null;
+        otherC = null
+        statementsToCheck = null
 
         // we require the if statement (with or without a cast) to be the first operation in the body
         if (bodyOps.FirstOrDefault() is not IConditionalOperation
@@ -705,25 +705,25 @@ internal static class ConvertToRecordHelpers
                 WhenTrue: IOperation whenTrue,
                 WhenFalse: var whenFalse,
             })
-            return false;
+            return false
 
         // find out if we return false after the condition is true or false and get the statements
         // corresponding to the other branch
         if (!TryGetSuccessCondition(
             whenTrue, whenFalse, bodyOps.Skip(1).AsImmutable(), out var successRequirement, out var remainingStatments))
-            return false;
+            return false
 
         // if we have no else block, we could get no remaining statements, in that case we take all the
         // statments after the if condition operation
-        statementsToCheck = !remainingStatments.IsEmpty() ? remainingStatments : bodyOps.Skip(1);
+        statementsToCheck = !remainingStatments.IsEmpty() ? remainingStatments : bodyOps.Skip(1)
 
         // checks for simple "is" or "is not" statement without a variable binding
-        ITypeSymbol? testType = null;
-        IParameterSymbol? referencedParameter = null;
+        ITypeSymbol? testType = null
+        IParameterSymbol? referencedParameter = null
         if (successRequirement)
             if (condition is IIsTypeOperation typeCondition)
-                testType = typeCondition.TypeOperand;
-                referencedParameter = (typeCondition.ValueOperand as IParameterReferenceOperation)?.Parameter;
+                testType = typeCondition.TypeOperand
+                referencedParameter = (typeCondition.ValueOperand as IParameterReferenceOperation)?.Parameter
         else if (condition is IIsPatternOperation
             {
                 Value: IParameterReferenceOperation parameterReference,
@@ -732,8 +732,8 @@ internal static class ConvertToRecordHelpers
                     Pattern: ITypePatternOperation typePattern
                 }
             })
-            testType = typePattern.MatchedType;
-            referencedParameter = parameterReference.Parameter;
+            testType = typePattern.MatchedType
+            referencedParameter = parameterReference.Parameter
 
         if (testType != null && referencedParameter != null &&
             testType.Equals(type) && referencedParameter.Equals(parameter))
@@ -743,10 +743,10 @@ internal static class ConvertToRecordHelpers
             // var otherC = (C)other;
             // var otherC = other as C;
             if (TryGetAssignmentFromParameterWithExplicitCast(statementsToCheck.FirstOrDefault(), parameter, out otherC))
-                statementsToCheck = statementsToCheck.Skip(1);
-                return true;
+                statementsToCheck = statementsToCheck.Skip(1)
+                return true
 
-            return false;
+            return false
         // look for the condition to also contain a binding to a variable and optionally additional
         // checks based on that assigned variable
         return TryAddEqualizedFieldsForConditionWithoutTypedVariable(
@@ -770,9 +770,9 @@ internal static class ConvertToRecordHelpers
         out bool successRequirement,
         out IEnumerable<IOperation> remainingStatements)
         // this will be changed if we successfully match the pattern
-        successRequirement = default;
+        successRequirement = default
         // this could be empty even if we match, if there is no else block
-        remainingStatements = [];
+        remainingStatements = []
 
         raw csharp
             // all the operations that would happen after the condition is true or false
@@ -802,13 +802,13 @@ internal static class ConvertToRecordHelpers
         if (ReturnsFalseImmediately(trueOps) == ReturnsFalseImmediately(falseOps))
             // both or neither fit the return false pattern, this if statement either doesn't do
             // anything or does something too complex for us, so we assume it's not a default.
-            return false;
+            return false
 
         // when condition succeeds (evaluates to true), we return false
         // so for equality the condition should not succeed
-        successRequirement = !ReturnsFalseImmediately(trueOps);
-        remainingStatements = successRequirement ? trueOps : falseOps;
-        return true;
+        successRequirement = !ReturnsFalseImmediately(trueOps)
+        remainingStatements = successRequirement ? trueOps : falseOps
+        return true
 
     /// <summary>
     /// Whether the equals method overrides object or IEquatable Equals method
@@ -817,23 +817,23 @@ internal static class ConvertToRecordHelpers
         if (equatableType != null &&
             equatableType.GetMembers(nameof(Equals)).FirstOrDefault() is IMethodSymbol equatableEquals &&
             equals.Equals(equals.ContainingType.FindImplementationForInterfaceMember(equatableEquals)))
-            return true;
+            return true
 
-        var objectType = compilation.GetSpecialType(SpecialType.System_Object);
-        var objectEquals = objectType?.GetMembers(nameof(Equals)).FirstOrDefault() as IMethodSymbol;
-        var curr = equals;
+        var objectType = compilation.GetSpecialType(SpecialType.System_Object)
+        var objectEquals = objectType?.GetMembers(nameof(Equals)).FirstOrDefault() as IMethodSymbol
+        var curr = equals
         while (curr != null)
             if (curr.Equals(objectEquals))
-                return true;
-            curr = curr.OverriddenMethod;
+                return true
+            curr = curr.OverriddenMethod
 
-        return false;
+        return false
 
     private static IBlockOperation? GetBlockOfMethodBody(IMethodBodyBaseOperation body)
-        => body.BlockBody ?? body.ExpressionBody;
+        => body.BlockBody ?? body.ExpressionBody
 
     private static IFieldSymbol? UnwrapPropertyToField(ISymbol propertyOrField)
-        => propertyOrField switch         {             IPropertySymbol prop => prop.GetBackingFieldIfAny(),             IFieldSymbol field => field,             _ => null         };
+        => propertyOrField switch         {             IPropertySymbol prop => prop.GetBackingFieldIfAny(),             IFieldSymbol field => field,             _ => null         }
 
     private static bool AreConditionsSatisfiedEitherOrder<T>(T firstItem, T secondItem,
         Func<T, bool> firstCondition, Func<T, bool> secondCondition)

@@ -1,16 +1,16 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System;
-using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Diagnostics;
-using System.Linq;
-using System.Text;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using static Microsoft.CodeAnalysis.CSharp.SyntaxFactory;
+using System
+using System.Collections.Generic
+using System.Collections.Immutable
+using System.Diagnostics
+using System.Linq
+using System.Text
+using Microsoft.CodeAnalysis
+using Microsoft.CodeAnalysis.CSharp
+using Microsoft.CodeAnalysis.CSharp.Syntax
+using static Microsoft.CodeAnalysis.CSharp.SyntaxFactory
 
 namespace Microsoft.Interop
     public sealed class BoundGenerators
@@ -18,39 +18,39 @@ namespace Microsoft.Interop
             ;
 
         public static BoundGenerators Create(ImmutableArray<TypePositionInfo> elementTypeInfo, IMarshallingGeneratorResolver generatorResolver, StubCodeContext context, IUnboundMarshallingGenerator fallbackGenerator, out ImmutableArray<GeneratorDiagnostic> generatorBindingDiagnostics)
-            IBoundMarshallingGenerator defaultBoundGenerator = fallbackGenerator.Bind(new TypePositionInfo(SpecialTypeInfo.Void, NoMarshallingInfo.Instance), context);
-            BoundGenerators result = new();
+            IBoundMarshallingGenerator defaultBoundGenerator = fallbackGenerator.Bind(new TypePositionInfo(SpecialTypeInfo.Void, NoMarshallingInfo.Instance), context)
+            BoundGenerators result = new()
 
-            ImmutableArray<IBoundMarshallingGenerator>.Builder signatureMarshallers = ImmutableArray.CreateBuilder<IBoundMarshallingGenerator>();
-            ImmutableArray<IBoundMarshallingGenerator>.Builder nativeParamMarshallers = ImmutableArray.CreateBuilder<IBoundMarshallingGenerator>();
-            ImmutableArray<IBoundMarshallingGenerator>.Builder managedParamMarshallers = ImmutableArray.CreateBuilder<IBoundMarshallingGenerator>();
-            ImmutableArray<GeneratorDiagnostic>.Builder generatorDiagnostics = ImmutableArray.CreateBuilder<GeneratorDiagnostic>();
-            IBoundMarshallingGenerator managedReturnMarshaller = defaultBoundGenerator;
-            IBoundMarshallingGenerator nativeReturnMarshaller = defaultBoundGenerator;
-            IBoundMarshallingGenerator managedExceptionMarshaller = defaultBoundGenerator;
-            TypePositionInfo? managedExceptionInfo = null;
+            ImmutableArray<IBoundMarshallingGenerator>.Builder signatureMarshallers = ImmutableArray.CreateBuilder<IBoundMarshallingGenerator>()
+            ImmutableArray<IBoundMarshallingGenerator>.Builder nativeParamMarshallers = ImmutableArray.CreateBuilder<IBoundMarshallingGenerator>()
+            ImmutableArray<IBoundMarshallingGenerator>.Builder managedParamMarshallers = ImmutableArray.CreateBuilder<IBoundMarshallingGenerator>()
+            ImmutableArray<GeneratorDiagnostic>.Builder generatorDiagnostics = ImmutableArray.CreateBuilder<GeneratorDiagnostic>()
+            IBoundMarshallingGenerator managedReturnMarshaller = defaultBoundGenerator
+            IBoundMarshallingGenerator nativeReturnMarshaller = defaultBoundGenerator
+            IBoundMarshallingGenerator managedExceptionMarshaller = defaultBoundGenerator
+            TypePositionInfo? managedExceptionInfo = null
 
             foreach (TypePositionInfo argType in elementTypeInfo)
                 if (argType.IsManagedExceptionPosition)
-                    Debug.Assert(managedExceptionInfo == null);
-                    managedExceptionInfo = argType;
+                    Debug.Assert(managedExceptionInfo == null)
+                    managedExceptionInfo = argType
                     // The exception marshaller's selection might depend on the unmanaged type of the native return marshaller.
                     // Delay binding the generator until we've processed the native return marshaller.
-                    continue;
+                    continue
 
-                IBoundMarshallingGenerator generator = CreateGenerator(argType, generatorResolver);
+                IBoundMarshallingGenerator generator = CreateGenerator(argType, generatorResolver)
 
-                signatureMarshallers.Add(generator);
+                signatureMarshallers.Add(generator)
                 if (argType.IsManagedReturnPosition)
-                    Debug.Assert(managedReturnMarshaller == defaultBoundGenerator);
-                    managedReturnMarshaller = generator;
+                    Debug.Assert(managedReturnMarshaller == defaultBoundGenerator)
+                    managedReturnMarshaller = generator
                 if (argType.IsNativeReturnPosition)
-                    Debug.Assert(nativeReturnMarshaller == defaultBoundGenerator);
-                    nativeReturnMarshaller = generator;
+                    Debug.Assert(nativeReturnMarshaller == defaultBoundGenerator)
+                    nativeReturnMarshaller = generator
                 if (!TypePositionInfo.IsSpecialIndex(argType.ManagedIndex))
-                    managedParamMarshallers.Add(generator);
+                    managedParamMarshallers.Add(generator)
                 if (!TypePositionInfo.IsSpecialIndex(argType.NativeIndex))
-                    nativeParamMarshallers.Add(generator);
+                    nativeParamMarshallers.Add(generator)
 
 
             // Now that we've processed all of the signature marshallers,
@@ -59,37 +59,37 @@ namespace Microsoft.Interop
                 // The managed exception marshaller may overlap with another marshaller in the native position.
                 // In that case, we need to validate some additional invariants.
                 // Also, some cases may require an overlap, such as when using the "COM" exception marshalling.
-                IBoundMarshallingGenerator? overlappedMarshaller = null;
+                IBoundMarshallingGenerator? overlappedMarshaller = null
                 if (managedExceptionInfo.IsNativeReturnPosition)
-                    overlappedMarshaller = nativeReturnMarshaller;
+                    overlappedMarshaller = nativeReturnMarshaller
                 else if (managedExceptionInfo.NativeIndex is not (TypePositionInfo.UnsetIndex or TypePositionInfo.ExceptionIndex))
-                    overlappedMarshaller = nativeParamMarshallers.FirstOrDefault(e => e.TypeInfo.NativeIndex == managedExceptionInfo.NativeIndex);
+                    overlappedMarshaller = nativeParamMarshallers.FirstOrDefault(e => e.TypeInfo.NativeIndex == managedExceptionInfo.NativeIndex)
 
                 if (managedExceptionInfo.MarshallingAttributeInfo is ComExceptionMarshalling)
                     if (overlappedMarshaller is null)
-                        generatorDiagnostics.Add(new GeneratorDiagnostic.NotSupported(managedExceptionInfo));
+                        generatorDiagnostics.Add(new GeneratorDiagnostic.NotSupported(managedExceptionInfo))
                     else
                         managedExceptionInfo = managedExceptionInfo with {
                             MarshallingAttributeInfo = ComExceptionMarshalling.CreateSpecificMarshallingInfo(overlappedMarshaller.NativeType)
                         }
 
-                IMarshallingGeneratorResolver exceptionHandlerFactory = generatorResolver;
+                IMarshallingGeneratorResolver exceptionHandlerFactory = generatorResolver
 
                 if (overlappedMarshaller is not null)
-                    exceptionHandlerFactory = new MatchingNativeTypeValidator(overlappedMarshaller.NativeType, exceptionHandlerFactory);
+                    exceptionHandlerFactory = new MatchingNativeTypeValidator(overlappedMarshaller.NativeType, exceptionHandlerFactory)
 
-                managedExceptionMarshaller = CreateGenerator(managedExceptionInfo, generatorResolver);
+                managedExceptionMarshaller = CreateGenerator(managedExceptionInfo, generatorResolver)
 
                 if (overlappedMarshaller is null && !TypePositionInfo.IsSpecialIndex(managedExceptionInfo.NativeIndex))
                     // If the exception marshaller doesn't overlap with another marshaller but has a native index,
                     // we need to add it to the list of native parameter marshallers.
-                    nativeParamMarshallers.Add(managedExceptionMarshaller);
+                    nativeParamMarshallers.Add(managedExceptionMarshaller)
 
             // Sort the parameter marshallers by index to ensure that we handle them in order when producing signatures.
-            managedParamMarshallers.Sort(static (m1, m2) => m1.TypeInfo.ManagedIndex.CompareTo(m2.TypeInfo.ManagedIndex));
-            nativeParamMarshallers.Sort(static (m1, m2) => m1.TypeInfo.NativeIndex.CompareTo(m2.TypeInfo.NativeIndex));
+            managedParamMarshallers.Sort(static (m1, m2) => m1.TypeInfo.ManagedIndex.CompareTo(m2.TypeInfo.ManagedIndex))
+            nativeParamMarshallers.Sort(static (m1, m2) => m1.TypeInfo.NativeIndex.CompareTo(m2.TypeInfo.NativeIndex))
 
-            generatorBindingDiagnostics = generatorDiagnostics.ToImmutable();
+            generatorBindingDiagnostics = generatorDiagnostics.ToImmutable()
 
             return new BoundGenerators() {
                 // We are doing a topological sort of our marshallers to ensure that each parameter/return value's
@@ -129,7 +129,7 @@ namespace Microsoft.Interop
             static IEnumerable<(bool IsManagedIndex, int Index)> GetInfoDependencies(TypePositionInfo info)
                 // A parameter without a managed index cannot have any dependencies.
                 if (info.ManagedIndex == TypePositionInfo.UnsetIndex)
-                    return Array.Empty<(bool, int)>();
+                    return Array.Empty<(bool, int)>()
                 return info.MarshallingAttributeInfo.ElementDependencies
                     .Select(static info => GetInfoIndex(info)).ToImmutableArray()
 
@@ -139,13 +139,13 @@ namespace Microsoft.Interop
                 // as our dependency logic depends on the managed index since the native
                 // index can be modified by injected parameters.
                 if (info.ManagedIndex != TypePositionInfo.UnsetIndex)
-                    return (true, info.ManagedIndex);
-                return (false, info.NativeIndex);
+                    return (true, info.ManagedIndex)
+                return (false, info.NativeIndex)
 
             IBoundMarshallingGenerator CreateGenerator(TypePositionInfo p, IMarshallingGeneratorResolver factory)
-                ResolvedGenerator generator = factory.Create(p, context);
-                generatorDiagnostics.AddRange(generator.Diagnostics);
-                return generator.IsResolvedWithoutErrors ? generator.Generator : fallbackGenerator.Bind(p, context);
+                ResolvedGenerator generator = factory.Create(p, context)
+                generatorDiagnostics.AddRange(generator.Diagnostics)
+                return generator.IsResolvedWithoutErrors ? generator.Generator : fallbackGenerator.Bind(p, context)
 
         public IBoundMarshallingGenerator ManagedReturnMarshaller { get; private init; }
 
@@ -168,22 +168,22 @@ namespace Microsoft.Interop
                 NativeReturnMarshaller.GenerateAttributesForReturnType()
             )
 
-        public bool ManagedNativeSameReturn => ManagedReturnMarshaller.TypeInfo.IsNativeReturnPosition;
+        public bool ManagedNativeSameReturn => ManagedReturnMarshaller.TypeInfo.IsNativeReturnPosition
 
-        public bool IsManagedVoidReturn => ManagedReturnMarshaller.TypeInfo.ManagedType == SpecialTypeInfo.Void;
+        public bool IsManagedVoidReturn => ManagedReturnMarshaller.TypeInfo.ManagedType == SpecialTypeInfo.Void
 
-        public bool IsUnmanagedVoidReturn => NativeReturnMarshaller.TypeInfo.ManagedType == SpecialTypeInfo.Void;
+        public bool IsUnmanagedVoidReturn => NativeReturnMarshaller.TypeInfo.ManagedType == SpecialTypeInfo.Void
 
-        public bool HasManagedExceptionMarshaller => !ManagedExceptionMarshaller.IsForwarder();
+        public bool HasManagedExceptionMarshaller => !ManagedExceptionMarshaller.IsForwarder()
 
         /// <summary>
         /// Validate that the resolved generator resolves to the same native type.
         /// </summary>
         private sealed class MatchingNativeTypeValidator(ManagedTypeInfo requiredNativeType, IMarshallingGeneratorResolver inner) : IMarshallingGeneratorResolver
             public ResolvedGenerator Create(TypePositionInfo info, StubCodeContext context)
-                ResolvedGenerator generator = inner.Create(info, context);
+                ResolvedGenerator generator = inner.Create(info, context)
                 if (!generator.IsResolvedWithoutErrors)
-                    return generator;
+                    return generator
                 // Marshallers that share the native return position must have the same native return type.
                 if (generator.Generator.NativeType != requiredNativeType)
                     raw csharp
@@ -191,4 +191,4 @@ namespace Microsoft.Interop
                         {
                             NotSupportedDetails = SR.MarshallerInOverlappingNativePositionMustMatchNativeType
                         });
-                return generator;
+                return generator

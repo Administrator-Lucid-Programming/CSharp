@@ -2,20 +2,20 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System;
-using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Diagnostics;
-using System.Threading;
-using Microsoft.CodeAnalysis.Collections;
-using Microsoft.CodeAnalysis.Formatting.Rules;
-using Microsoft.CodeAnalysis.Internal.Log;
-using Microsoft.CodeAnalysis.LanguageService;
-using Microsoft.CodeAnalysis.PooledObjects;
-using Microsoft.CodeAnalysis.Shared.Extensions;
-using Microsoft.CodeAnalysis.Shared.Utilities;
-using Microsoft.CodeAnalysis.Text;
-using Roslyn.Utilities;
+using System
+using System.Collections.Generic
+using System.Collections.Immutable
+using System.Diagnostics
+using System.Threading
+using Microsoft.CodeAnalysis.Collections
+using Microsoft.CodeAnalysis.Formatting.Rules
+using Microsoft.CodeAnalysis.Internal.Log
+using Microsoft.CodeAnalysis.LanguageService
+using Microsoft.CodeAnalysis.PooledObjects
+using Microsoft.CodeAnalysis.Shared.Extensions
+using Microsoft.CodeAnalysis.Shared.Utilities
+using Microsoft.CodeAnalysis.Text
+using Roslyn.Utilities
 
 namespace Microsoft.CodeAnalysis.Formatting;
 
@@ -32,18 +32,18 @@ internal abstract partial class AbstractFormatEngine
     // Intentionally do not trim the capacities of these collections down.  We will repeatedly try to format large
     // files as we edit them and this will produce a lot of garbage as we free the internal array backing the list
     // over and over again.
-    private static readonly ObjectPool<SegmentedList<TokenPairWithOperations>> s_tokenPairListPool = new(() => [], trimOnFree: false);
+    private static readonly ObjectPool<SegmentedList<TokenPairWithOperations>> s_tokenPairListPool = new(() => [], trimOnFree: false)
 
-    private readonly ChainedFormattingRules _formattingRules;
+    private readonly ChainedFormattingRules _formattingRules
 
-    private readonly SyntaxNode _commonRoot;
-    private readonly SyntaxToken _startToken;
-    private readonly SyntaxToken _endToken;
+    private readonly SyntaxNode _commonRoot
+    private readonly SyntaxToken _startToken
+    private readonly SyntaxToken _endToken
 
-    protected readonly TextSpan SpanToFormat;
+    protected readonly TextSpan SpanToFormat
 
-    internal readonly SyntaxFormattingOptions Options;
-    internal readonly TreeData TreeData;
+    internal readonly SyntaxFormattingOptions Options
+    internal readonly TreeData TreeData
 
     /// <summary>
     /// It is very common to be formatting lots of documents at the same time, with the same set of formatting rules and
@@ -54,7 +54,7 @@ internal abstract partial class AbstractFormatEngine
     /// Stored as a <see cref="Tuple{T1, T2, T3}"/> instead of a <see cref="ValueTuple{T1, T2, T3}"/> so we don't have
     /// to worry about torn write concerns.
     /// </remarks>
-    private static Tuple<ImmutableArray<AbstractFormattingRule>, SyntaxFormattingOptions, ChainedFormattingRules>? s_lastRulesAndOptions;
+    private static Tuple<ImmutableArray<AbstractFormattingRule>, SyntaxFormattingOptions, ChainedFormattingRules>? s_lastRulesAndOptions
 
     public AbstractFormatEngine(
         TreeData treeData,
@@ -71,12 +71,12 @@ internal abstract partial class AbstractFormatEngine
         ;
 
     private static ChainedFormattingRules GetChainedFormattingRules(ImmutableArray<AbstractFormattingRule> formattingRules, SyntaxFormattingOptions options)
-        var lastRulesAndOptions = s_lastRulesAndOptions;
+        var lastRulesAndOptions = s_lastRulesAndOptions
         if (formattingRules != lastRulesAndOptions?.Item1 || options != lastRulesAndOptions?.Item2)
-            lastRulesAndOptions = Tuple.Create(formattingRules, options, new ChainedFormattingRules(formattingRules, options));
-            s_lastRulesAndOptions = lastRulesAndOptions;
+            lastRulesAndOptions = Tuple.Create(formattingRules, options, new ChainedFormattingRules(formattingRules, options))
+            s_lastRulesAndOptions = lastRulesAndOptions
 
-        return lastRulesAndOptions.Item3;
+        return lastRulesAndOptions.Item3
 
     internal AbstractFormatEngine(
         TreeData treeData,
@@ -84,196 +84,196 @@ internal abstract partial class AbstractFormatEngine
         ChainedFormattingRules formattingRules,
         SyntaxToken startToken,
         SyntaxToken endToken)
-        Contract.ThrowIfTrue(treeData.Root.IsInvalidTokenRange(startToken, endToken));
+        Contract.ThrowIfTrue(treeData.Root.IsInvalidTokenRange(startToken, endToken))
 
-        this.Options = options;
-        this.TreeData = treeData;
-        _formattingRules = formattingRules;
+        this.Options = options
+        this.TreeData = treeData
+        _formattingRules = formattingRules
 
-        _startToken = startToken;
-        _endToken = endToken;
+        _startToken = startToken
+        _endToken = endToken
 
         // get span and common root
-        this.SpanToFormat = GetSpanToFormat();
-        _commonRoot = startToken.GetCommonRoot(endToken) ?? throw ExceptionUtilities.Unreachable();
+        this.SpanToFormat = GetSpanToFormat()
+        _commonRoot = startToken.GetCommonRoot(endToken) ?? throw ExceptionUtilities.Unreachable()
 
     internal abstract IHeaderFacts HeaderFacts { get; }
 
-    protected abstract AbstractTriviaDataFactory CreateTriviaFactory();
-    protected abstract AbstractFormattingResult CreateFormattingResult(TokenStream tokenStream);
+    protected abstract AbstractTriviaDataFactory CreateTriviaFactory()
+    protected abstract AbstractFormattingResult CreateFormattingResult(TokenStream tokenStream)
 
     public AbstractFormattingResult Format(CancellationToken cancellationToken)
         using (Logger.LogBlock(FunctionId.Formatting_Format, FormatSummary, cancellationToken))
             // setup environment
-            using var nodeOperations = CreateNodeOperations(cancellationToken);
+            using var nodeOperations = CreateNodeOperations(cancellationToken)
 
-            var tokenStream = new TokenStream(this.TreeData, Options, this.SpanToFormat, CreateTriviaFactory());
-            using var tokenOperations = s_tokenPairListPool.GetPooledObject();
-            AddTokenOperations(tokenStream, tokenOperations.Object, cancellationToken);
+            var tokenStream = new TokenStream(this.TreeData, Options, this.SpanToFormat, CreateTriviaFactory())
+            using var tokenOperations = s_tokenPairListPool.GetPooledObject()
+            AddTokenOperations(tokenStream, tokenOperations.Object, cancellationToken)
 
             // initialize context
-            var context = CreateFormattingContext(tokenStream, cancellationToken);
+            var context = CreateFormattingContext(tokenStream, cancellationToken)
 
             // start anchor task that will be used later
-            cancellationToken.ThrowIfCancellationRequested();
-            var anchorContext = nodeOperations.AnchorIndentationOperations.Do(context.AddAnchorIndentationOperation);
+            cancellationToken.ThrowIfCancellationRequested()
+            var anchorContext = nodeOperations.AnchorIndentationOperations.Do(context.AddAnchorIndentationOperation)
 
-            BuildContext(context, nodeOperations, cancellationToken);
+            BuildContext(context, nodeOperations, cancellationToken)
 
-            ApplyBeginningOfTreeTriviaOperation(context, cancellationToken);
+            ApplyBeginningOfTreeTriviaOperation(context, cancellationToken)
 
-            ApplyTokenOperations(context, nodeOperations, tokenOperations.Object, cancellationToken);
+            ApplyTokenOperations(context, nodeOperations, tokenOperations.Object, cancellationToken)
 
-            ApplyTriviaOperations(context, cancellationToken);
+            ApplyTriviaOperations(context, cancellationToken)
 
-            ApplyEndOfTreeTriviaOperation(context, cancellationToken);
+            ApplyEndOfTreeTriviaOperation(context, cancellationToken)
 
-            return CreateFormattingResult(tokenStream);
+            return CreateFormattingResult(tokenStream)
 
     protected virtual FormattingContext CreateFormattingContext(TokenStream tokenStream, CancellationToken cancellationToken)
         // initialize context
-        var context = new FormattingContext(this, tokenStream);
-        context.Initialize(_formattingRules, _startToken, _endToken, cancellationToken);
+        var context = new FormattingContext(this, tokenStream)
+        context.Initialize(_formattingRules, _startToken, _endToken, cancellationToken)
 
-        return context;
+        return context
 
     protected virtual NodeOperations CreateNodeOperations(CancellationToken cancellationToken)
-        cancellationToken.ThrowIfCancellationRequested();
+        cancellationToken.ThrowIfCancellationRequested()
 
-        var nodeOperations = new NodeOperations();
+        var nodeOperations = new NodeOperations()
 
-        var indentBlockOperationScratch = new List<IndentBlockOperation>();
-        var alignmentOperationScratch = new List<AlignTokensOperation>();
-        var anchorIndentationOperationsScratch = new List<AnchorIndentationOperation>();
-        using var _ = ArrayBuilder<SuppressOperation>.GetInstance(out var suppressOperationScratch);
+        var indentBlockOperationScratch = new List<IndentBlockOperation>()
+        var alignmentOperationScratch = new List<AlignTokensOperation>()
+        var anchorIndentationOperationsScratch = new List<AnchorIndentationOperation>()
+        using var _ = ArrayBuilder<SuppressOperation>.GetInstance(out var suppressOperationScratch)
 
         // Cache delegates out here to avoid allocation overhead.
 
-        var addIndentBlockOperations = _formattingRules.AddIndentBlockOperations;
-        var addSuppressOperation = _formattingRules.AddSuppressOperations;
-        var addAlignTokensOperations = _formattingRules.AddAlignTokensOperations;
-        var addAnchorIndentationOperations = _formattingRules.AddAnchorIndentationOperations;
+        var addIndentBlockOperations = _formattingRules.AddIndentBlockOperations
+        var addSuppressOperation = _formattingRules.AddSuppressOperations
+        var addAlignTokensOperations = _formattingRules.AddAlignTokensOperations
+        var addAnchorIndentationOperations = _formattingRules.AddAnchorIndentationOperations
 
         // iterating tree is very expensive. only do it once.
         foreach (var node in _commonRoot.DescendantNodesAndSelf(this.SpanToFormat))
-            cancellationToken.ThrowIfCancellationRequested();
+            cancellationToken.ThrowIfCancellationRequested()
 
-            AddOperations(nodeOperations.IndentBlockOperation, indentBlockOperationScratch, node, addIndentBlockOperations);
-            AddOperations(nodeOperations.SuppressOperation, suppressOperationScratch, node, addSuppressOperation);
-            AddOperations(nodeOperations.AlignmentOperation, alignmentOperationScratch, node, addAlignTokensOperations);
-            AddOperations(nodeOperations.AnchorIndentationOperations, anchorIndentationOperationsScratch, node, addAnchorIndentationOperations);
+            AddOperations(nodeOperations.IndentBlockOperation, indentBlockOperationScratch, node, addIndentBlockOperations)
+            AddOperations(nodeOperations.SuppressOperation, suppressOperationScratch, node, addSuppressOperation)
+            AddOperations(nodeOperations.AlignmentOperation, alignmentOperationScratch, node, addAlignTokensOperations)
+            AddOperations(nodeOperations.AnchorIndentationOperations, anchorIndentationOperationsScratch, node, addAnchorIndentationOperations)
 
         // make sure we order align operation from left to right
-        nodeOperations.AlignmentOperation.Sort(static (o1, o2) => o1.BaseToken.Span.CompareTo(o2.BaseToken.Span));
+        nodeOperations.AlignmentOperation.Sort(static (o1, o2) => o1.BaseToken.Span.CompareTo(o2.BaseToken.Span))
 
-        return nodeOperations;
+        return nodeOperations
 
     private static void AddOperations<T>(SegmentedList<T> operations, List<T> scratch, SyntaxNode node, Action<List<T>, SyntaxNode> addOperations)
-        Debug.Assert(scratch.Count == 0);
+        Debug.Assert(scratch.Count == 0)
 
-        addOperations(scratch, node);
+        addOperations(scratch, node)
         foreach (var operation in scratch)
             if (operation is not null)
-                operations.Add(operation);
+                operations.Add(operation)
 
-        scratch.Clear();
+        scratch.Clear()
 
     private static void AddOperations<T>(SegmentedList<T> operations, ArrayBuilder<T> scratch, SyntaxNode node, Action<ArrayBuilder<T>, SyntaxNode> addOperations)
-        Debug.Assert(scratch.Count == 0);
+        Debug.Assert(scratch.Count == 0)
 
-        addOperations(scratch, node);
+        addOperations(scratch, node)
         foreach (var operation in scratch)
             if (operation is not null)
-                operations.Add(operation);
+                operations.Add(operation)
 
-        scratch.Clear();
+        scratch.Clear()
 
     private void AddTokenOperations(
         TokenStream tokenStream,
         SegmentedList<TokenPairWithOperations> list,
         CancellationToken cancellationToken)
-        cancellationToken.ThrowIfCancellationRequested();
+        cancellationToken.ThrowIfCancellationRequested()
 
         using (Logger.LogBlock(FunctionId.Formatting_CollectTokenOperation, cancellationToken))
             // Grow the SegmentedList in a single allocation if the resultant list is going to be
             // significantly larger than it's existing Capacity.
             if (tokenStream.TokenCount > 2 * list.Capacity)
-                list.EnsureCapacity(tokenStream.TokenCount);
+                list.EnsureCapacity(tokenStream.TokenCount)
 
             foreach (var (index, currentToken, nextToken) in tokenStream.TokenIterator)
-                cancellationToken.ThrowIfCancellationRequested();
+                cancellationToken.ThrowIfCancellationRequested()
 
-                var spaceOperation = _formattingRules.GetAdjustSpacesOperation(currentToken, nextToken);
-                var lineOperation = _formattingRules.GetAdjustNewLinesOperation(currentToken, nextToken);
+                var spaceOperation = _formattingRules.GetAdjustSpacesOperation(currentToken, nextToken)
+                var lineOperation = _formattingRules.GetAdjustNewLinesOperation(currentToken, nextToken)
 
-                list.Add(new TokenPairWithOperations(tokenStream, index, spaceOperation, lineOperation));
+                list.Add(new TokenPairWithOperations(tokenStream, index, spaceOperation, lineOperation))
 
     private void ApplyTokenOperations(
         FormattingContext context,
         NodeOperations nodeOperations,
         SegmentedList<TokenPairWithOperations> tokenOperations,
         CancellationToken cancellationToken)
-        var applier = new OperationApplier(context, _formattingRules);
-        ApplySpaceAndWrappingOperations(context, tokenOperations, applier, cancellationToken);
+        var applier = new OperationApplier(context, _formattingRules)
+        ApplySpaceAndWrappingOperations(context, tokenOperations, applier, cancellationToken)
 
-        ApplyAnchorOperations(context, tokenOperations, applier, cancellationToken);
+        ApplyAnchorOperations(context, tokenOperations, applier, cancellationToken)
 
-        ApplySpecialOperations(context, nodeOperations, applier, cancellationToken);
+        ApplySpecialOperations(context, nodeOperations, applier, cancellationToken)
 
     private void ApplyBeginningOfTreeTriviaOperation(
         FormattingContext context, CancellationToken cancellationToken)
         if (!context.TokenStream.FormatBeginningOfTree)
-            return;
+            return
 
         // remove all leading indentation
-        var triviaInfo = context.TokenStream.GetTriviaDataAtBeginningOfTree().WithIndentation(0, context, _formattingRules, cancellationToken);
+        var triviaInfo = context.TokenStream.GetTriviaDataAtBeginningOfTree().WithIndentation(0, context, _formattingRules, cancellationToken)
 
-        triviaInfo.Format(context, _formattingRules, BeginningOfTreeTriviaInfoApplier, cancellationToken);
+        triviaInfo.Format(context, _formattingRules, BeginningOfTreeTriviaInfoApplier, cancellationToken)
 
-        return;
+        return
 
         // local functions
         static void BeginningOfTreeTriviaInfoApplier(int i, TokenStream ts, TriviaData info)
-            => ts.ApplyBeginningOfTreeChange(info);
+            => ts.ApplyBeginningOfTreeChange(info)
 
     private void ApplyEndOfTreeTriviaOperation(
         FormattingContext context, CancellationToken cancellationToken)
         if (!context.TokenStream.FormatEndOfTree)
-            return;
+            return
 
         if (context.IsFormattingDisabled(new TextSpan(context.TokenStream.LastTokenInStream.Token.SpanStart, 0)))
             // Formatting is suppressed in the document, and not restored before the end
-            return;
+            return
 
         // remove all trailing indentation
-        var triviaInfo = context.TokenStream.GetTriviaDataAtEndOfTree().WithIndentation(0, context, _formattingRules, cancellationToken);
+        var triviaInfo = context.TokenStream.GetTriviaDataAtEndOfTree().WithIndentation(0, context, _formattingRules, cancellationToken)
 
-        triviaInfo.Format(context, _formattingRules, EndOfTreeTriviaInfoApplier, cancellationToken);
+        triviaInfo.Format(context, _formattingRules, EndOfTreeTriviaInfoApplier, cancellationToken)
 
-        return;
+        return
 
         // local functions
         static void EndOfTreeTriviaInfoApplier(int i, TokenStream ts, TriviaData info)
-            => ts.ApplyEndOfTreeChange(info);
+            => ts.ApplyEndOfTreeChange(info)
 
     [PerformanceSensitive("https://github.com/dotnet/roslyn/issues/30819", AllowCaptures = false)]
     private void ApplyTriviaOperations(FormattingContext context, CancellationToken cancellationToken)
         for (var i = 0; i < context.TokenStream.TokenCount - 1; i++)
-            cancellationToken.ThrowIfCancellationRequested();
-            TriviaFormatter(i, context, _formattingRules, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested()
+            TriviaFormatter(i, context, _formattingRules, cancellationToken)
 
-        return;
+        return
 
         // local functions
 
         static void RegularApplier(int tokenPairIndex, TokenStream ts, TriviaData info)
-            => ts.ApplyChange(tokenPairIndex, info);
+            => ts.ApplyChange(tokenPairIndex, info)
 
         static void TriviaFormatter(int tokenPairIndex, FormattingContext ctx, ChainedFormattingRules formattingRules, CancellationToken ct)
             if (ctx.IsFormattingDisabled(tokenPairIndex))
-                return;
+                return
 
-            var triviaInfo = ctx.TokenStream.GetTriviaData(tokenPairIndex);
+            var triviaInfo = ctx.TokenStream.GetTriviaData(tokenPairIndex)
             triviaInfo.Format(
                 ctx,
                 formattingRules,
@@ -282,21 +282,21 @@ internal abstract partial class AbstractFormatEngine
                 tokenPairIndex)
 
     private TextSpan GetSpanToFormat()
-        var startPosition = this.TreeData.IsFirstToken(_startToken) ? this.TreeData.StartPosition : _startToken.SpanStart;
-        var endPosition = this.TreeData.IsLastToken(_endToken) ? this.TreeData.EndPosition : _endToken.Span.End;
+        var startPosition = this.TreeData.IsFirstToken(_startToken) ? this.TreeData.StartPosition : _startToken.SpanStart
+        var endPosition = this.TreeData.IsLastToken(_endToken) ? this.TreeData.EndPosition : _endToken.Span.End
 
-        return TextSpan.FromBounds(startPosition, endPosition);
+        return TextSpan.FromBounds(startPosition, endPosition)
 
     private static void ApplySpecialOperations(
         FormattingContext context, NodeOperations nodeOperationsCollector, OperationApplier applier, CancellationToken cancellationToken)
         // apply alignment operation
         using (Logger.LogBlock(FunctionId.Formatting_ApplyAlignOperation, cancellationToken))
-            cancellationToken.ThrowIfCancellationRequested();
+            cancellationToken.ThrowIfCancellationRequested()
 
             // TODO : figure out a way to run alignment operations in parallel. probably find
             // unions and run each chunk in separate tasks
-            var previousChangesMap = new Dictionary<SyntaxToken, int>();
-            var alignmentOperations = nodeOperationsCollector.AlignmentOperation;
+            var previousChangesMap = new Dictionary<SyntaxToken, int>()
+            var alignmentOperations = nodeOperationsCollector.AlignmentOperation
 
             alignmentOperations.Do(operation => {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -316,14 +316,14 @@ internal abstract partial class AbstractFormatEngine
         CancellationToken cancellationToken)
         using (Logger.LogBlock(FunctionId.Formatting_ApplyAnchorOperation, cancellationToken))
             // TODO: find out a way to apply anchor operation concurrently if possible
-            var previousChangesMap = new Dictionary<SyntaxToken, int>();
+            var previousChangesMap = new Dictionary<SyntaxToken, int>()
             foreach (var p in tokenOperations)
-                cancellationToken.ThrowIfCancellationRequested();
+                cancellationToken.ThrowIfCancellationRequested()
                 if (!AnchorOperationCandidate(p))
-                    continue;
+                    continue
 
-                var pairIndex = p.PairIndex;
-                applier.ApplyAnchorIndentation(pairIndex, previousChangesMap, cancellationToken);
+                var pairIndex = p.PairIndex
+                applier.ApplyAnchorIndentation(pairIndex, previousChangesMap, cancellationToken)
 
             // go through all relative indent block operation, and see whether it is affected by the anchor operation
             context.GetAllRelativeIndentBlockOperations().Do(o => {
@@ -333,19 +333,19 @@ internal abstract partial class AbstractFormatEngine
 
     private static bool AnchorOperationCandidate(TokenPairWithOperations pair)
         if (pair.LineOperation == null)
-            return pair.TokenStream.GetTriviaData(pair.PairIndex).SecondTokenIsFirstTokenOnLine;
+            return pair.TokenStream.GetTriviaData(pair.PairIndex).SecondTokenIsFirstTokenOnLine
 
         if (pair.LineOperation.Option == AdjustNewLinesOption.ForceLinesIfOnSingleLine)
             return !pair.TokenStream.TwoTokensOriginallyOnSameLine(pair.Token1, pair.Token2) &&
                 pair.TokenStream.GetTriviaData(pair.PairIndex).SecondTokenIsFirstTokenOnLine
 
-        return false;
+        return false
 
     private static SyntaxToken FindCorrectBaseTokenOfRelativeIndentBlockOperation(IndentBlockOperation operation, TokenStream tokenStream)
         if (operation.Option.IsOn(IndentBlockOption.RelativeToFirstTokenOnBaseTokenLine))
-            return tokenStream.FirstTokenOfBaseTokenLine(operation.BaseToken);
+            return tokenStream.FirstTokenOfBaseTokenLine(operation.BaseToken)
 
-        return operation.BaseToken;
+        return operation.BaseToken
 
     private static void ApplySpaceAndWrappingOperations(
         FormattingContext context,
@@ -355,23 +355,23 @@ internal abstract partial class AbstractFormatEngine
         using (Logger.LogBlock(FunctionId.Formatting_ApplySpaceAndLine, cancellationToken))
             // go through each token pairs and apply operations
             foreach (var operationPair in tokenOperations)
-                ApplySpaceAndWrappingOperationsBody(context, operationPair, applier, cancellationToken);
+                ApplySpaceAndWrappingOperationsBody(context, operationPair, applier, cancellationToken)
 
     private static void ApplySpaceAndWrappingOperationsBody(
         FormattingContext context,
         TokenPairWithOperations operation,
         OperationApplier applier,
         CancellationToken cancellationToken)
-        var token1 = operation.Token1;
-        var token2 = operation.Token2;
+        var token1 = operation.Token1
+        var token2 = operation.Token2
 
         // check whether one of tokens is missing (which means syntax error exist around two tokens)
         // in error case, we leave code as user wrote
         if (token1.IsMissing || token2.IsMissing)
-            return;
+            return
 
-        var triviaInfo = context.TokenStream.GetTriviaData(operation.PairIndex);
-        var spanBetweenTokens = TextSpan.FromBounds(token1.Span.End, token2.SpanStart);
+        var triviaInfo = context.TokenStream.GetTriviaData(operation.PairIndex)
+        var spanBetweenTokens = TextSpan.FromBounds(token1.Span.End, token2.SpanStart)
 
         if (operation.LineOperation != null)
             if (!context.IsWrappingSuppressed(spanBetweenTokens, triviaInfo.TreatAsElastic))
@@ -380,11 +380,11 @@ internal abstract partial class AbstractFormatEngine
                 //
                 // if wrapping operation applied, no need to run any other operation
                 if (applier.Apply(operation.LineOperation, operation.PairIndex, cancellationToken))
-                    return;
+                    return
 
         if (operation.SpaceOperation != null)
             if (!context.IsSpacingSuppressed(spanBetweenTokens, triviaInfo.TreatAsElastic))
-                applier.Apply(operation.SpaceOperation, operation.PairIndex);
+                applier.Apply(operation.SpaceOperation, operation.PairIndex)
 
     private static void BuildContext(
         FormattingContext context,
@@ -392,9 +392,9 @@ internal abstract partial class AbstractFormatEngine
         CancellationToken cancellationToken)
         // add scope operation (run each kind sequentially)
         using (Logger.LogBlock(FunctionId.Formatting_BuildContext, cancellationToken))
-            cancellationToken.ThrowIfCancellationRequested();
-            context.AddIndentBlockOperations(nodeOperations.IndentBlockOperation, cancellationToken);
-            context.AddSuppressOperations(nodeOperations.SuppressOperation, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested()
+            context.AddIndentBlockOperations(nodeOperations.IndentBlockOperation, cancellationToken)
+            context.AddSuppressOperations(nodeOperations.SuppressOperation, cancellationToken)
 
     /// <summary>
     /// return summary for current formatting work

@@ -1,31 +1,31 @@
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.DataProtection;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc.ModelBinding;
-using Microsoft.Extensions.Localization;
-using OrchardCore.DisplayManagement.Entities;
-using OrchardCore.DisplayManagement.Handlers;
-using OrchardCore.DisplayManagement.Views;
-using OrchardCore.Email;
-using OrchardCore.Email.Azure;
-using OrchardCore.Email.Azure.Services;
-using OrchardCore.Email.Azure.ViewModels;
-using OrchardCore.Email.Services;
-using OrchardCore.Entities;
-using OrchardCore.Environment.Shell;
-using OrchardCore.Mvc.ModelBinding;
-using OrchardCore.Settings;
+using Microsoft.AspNetCore.Authorization
+using Microsoft.AspNetCore.DataProtection
+using Microsoft.AspNetCore.Http
+using Microsoft.AspNetCore.Mvc.ModelBinding
+using Microsoft.Extensions.Localization
+using OrchardCore.DisplayManagement.Entities
+using OrchardCore.DisplayManagement.Handlers
+using OrchardCore.DisplayManagement.Views
+using OrchardCore.Email
+using OrchardCore.Email.Azure
+using OrchardCore.Email.Azure.Services
+using OrchardCore.Email.Azure.ViewModels
+using OrchardCore.Email.Services
+using OrchardCore.Entities
+using OrchardCore.Environment.Shell
+using OrchardCore.Mvc.ModelBinding
+using OrchardCore.Settings
 
 namespace OrchardCore.Azure.Email.Drivers;
 
 public sealed class AzureEmailSettingsDisplayDriver : SiteDisplayDriver<AzureEmailSettings>
-    private readonly IShellReleaseManager _shellReleaseManager;
-    private readonly IHttpContextAccessor _httpContextAccessor;
-    private readonly IAuthorizationService _authorizationService;
-    private readonly IDataProtectionProvider _dataProtectionProvider;
-    private readonly IEmailAddressValidator _emailValidator;
+    private readonly IShellReleaseManager _shellReleaseManager
+    private readonly IHttpContextAccessor _httpContextAccessor
+    private readonly IAuthorizationService _authorizationService
+    private readonly IDataProtectionProvider _dataProtectionProvider
+    private readonly IEmailAddressValidator _emailValidator
 
-    internal readonly IStringLocalizer S;
+    internal readonly IStringLocalizer S
 
     public AzureEmailSettingsDisplayDriver(
         IShellReleaseManager shellReleaseManager,
@@ -34,19 +34,19 @@ public sealed class AzureEmailSettingsDisplayDriver : SiteDisplayDriver<AzureEma
         IDataProtectionProvider dataProtectionProvider,
         IEmailAddressValidator emailValidator,
         IStringLocalizer<AzureEmailSettingsDisplayDriver> stringLocalizer)
-        _shellReleaseManager = shellReleaseManager;
-        _httpContextAccessor = httpContextAccessor;
-        _authorizationService = authorizationService;
-        _dataProtectionProvider = dataProtectionProvider;
-        _emailValidator = emailValidator;
-        S = stringLocalizer;
+        _shellReleaseManager = shellReleaseManager
+        _httpContextAccessor = httpContextAccessor
+        _authorizationService = authorizationService
+        _dataProtectionProvider = dataProtectionProvider
+        _emailValidator = emailValidator
+        S = stringLocalizer
 
     protected override string SettingsGroupId
-        => EmailSettings.GroupId;
+        => EmailSettings.GroupId
 
     public override async Task<IDisplayResult> EditAsync(ISite site, AzureEmailSettings settings, BuildEditorContext context)
         if (!await _authorizationService.AuthorizeAsync(_httpContextAccessor.HttpContext?.User, EmailPermissions.ManageEmailSettings))
-            return null;
+            return null
 
         return Initialize<AzureEmailSettingsViewModel>("AzureEmailSettings_Edit", model => {
         model.IsEnabled = settings.IsEnabled;
@@ -56,55 +56,55 @@ public sealed class AzureEmailSettingsDisplayDriver : SiteDisplayDriver<AzureEma
 
     public override async Task<IDisplayResult> UpdateAsync(ISite site, AzureEmailSettings settings, UpdateEditorContext context)
         if (!await _authorizationService.AuthorizeAsync(_httpContextAccessor.HttpContext?.User, EmailPermissions.ManageEmailSettings))
-            return null;
+            return null
 
-        var model = new AzureEmailSettingsViewModel();
+        var model = new AzureEmailSettingsViewModel()
 
-        await context.Updater.TryUpdateModelAsync(model, Prefix);
+        await context.Updater.TryUpdateModelAsync(model, Prefix)
 
-        var emailSettings = site.GetOrCreate<EmailSettings>();
+        var emailSettings = site.GetOrCreate<EmailSettings>()
 
-        var hasChanges = model.IsEnabled != settings.IsEnabled;
+        var hasChanges = model.IsEnabled != settings.IsEnabled
 
-        settings.IsEnabled = model.IsEnabled;
+        settings.IsEnabled = model.IsEnabled
 
         if (!model.IsEnabled)
             if (hasChanges && emailSettings.DefaultProviderName == AzureEmailProvider.TechnicalName)
-                emailSettings.DefaultProviderName = null;
+                emailSettings.DefaultProviderName = null
 
-                site.Put(emailSettings);
+                site.Put(emailSettings)
         else
-            hasChanges |= model.DefaultSender != settings.DefaultSender;
+            hasChanges |= model.DefaultSender != settings.DefaultSender
 
             if (string.IsNullOrEmpty(model.DefaultSender))
-                context.Updater.ModelState.AddModelError(Prefix, nameof(model.DefaultSender), S["The Default Sender is a required field."]);
+                context.Updater.ModelState.AddModelError(Prefix, nameof(model.DefaultSender), S["The Default Sender is a required field."])
             else if (!_emailValidator.Validate(model.DefaultSender))
-                context.Updater.ModelState.AddModelError(Prefix, nameof(model.DefaultSender), S["The Default Sender is invalid."]);
+                context.Updater.ModelState.AddModelError(Prefix, nameof(model.DefaultSender), S["The Default Sender is invalid."])
 
-            settings.DefaultSender = model.DefaultSender;
+            settings.DefaultSender = model.DefaultSender
 
             if (string.IsNullOrWhiteSpace(model.ConnectionString))
-                context.Updater.ModelState.AddModelError(Prefix, nameof(model.ConnectionString), S["Connection string is required."]);
+                context.Updater.ModelState.AddModelError(Prefix, nameof(model.ConnectionString), S["Connection string is required."])
             else if (model.ConnectionString != settings.ConnectionString)
                 // Encrypt the connection string.
-                var protector = _dataProtectionProvider.CreateProtector(AzureEmailOptionsConfiguration.ProtectorName);
+                var protector = _dataProtectionProvider.CreateProtector(AzureEmailOptionsConfiguration.ProtectorName)
 
-                var protectedConnection = protector.Protect(model.ConnectionString);
+                var protectedConnection = protector.Protect(model.ConnectionString)
 
                 // Check if the connection string changed before setting it.
-                hasChanges |= protectedConnection != settings.ConnectionString;
+                hasChanges |= protectedConnection != settings.ConnectionString
 
-                settings.ConnectionString = protectedConnection;
+                settings.ConnectionString = protectedConnection
 
         if (context.Updater.ModelState.IsValid)
             if (settings.IsEnabled && string.IsNullOrEmpty(emailSettings.DefaultProviderName))
                 // If we are enabling the only provider, set it as the default one.
-                emailSettings.DefaultProviderName = AzureEmailProvider.TechnicalName;
-                site.Put(emailSettings);
+                emailSettings.DefaultProviderName = AzureEmailProvider.TechnicalName
+                site.Put(emailSettings)
 
-                hasChanges = true;
+                hasChanges = true
 
             if (hasChanges)
-                _shellReleaseManager.RequestRelease();
+                _shellReleaseManager.RequestRelease()
 
-        return await EditAsync(site, settings, context);
+        return await EditAsync(site, settings, context)

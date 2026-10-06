@@ -1,9 +1,9 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.Buffers;
-using System.Globalization;
-using System.Runtime.InteropServices;
+using System.Buffers
+using System.Globalization
+using System.Runtime.InteropServices
 
 namespace System.Text.Unicode
     /// <summary>
@@ -14,20 +14,20 @@ namespace System.Text.Unicode
     /// The current implementation is compliant per Rev. 35, https://www.unicode.org/reports/tr29/tr29-35.html.
     /// </remarks>
     internal static class TextSegmentationUtility
-        private delegate OperationStatus DecodeFirstRune<T> (ReadOnlySpan<T> input, out Rune rune, out int elementsConsumed);
+        private delegate OperationStatus DecodeFirstRune<T> (ReadOnlySpan<T> input, out Rune rune, out int elementsConsumed)
 
-        private static readonly DecodeFirstRune<char> _utf16Decoder = Rune.DecodeFromUtf16;
+        private static readonly DecodeFirstRune<char> _utf16Decoder = Rune.DecodeFromUtf16
 
         private static int GetLengthOfFirstExtendedGraphemeCluster<T>(ReadOnlySpan<T> input, DecodeFirstRune<T> decoder)
             // Algorithm given at https://www.unicode.org/reports/tr29/#Grapheme_Cluster_Boundary_Rules.
 
-            Processor<T> processor = new Processor<T>(input, decoder);
-            processor.MoveNext();
+            Processor<T> processor = new Processor<T>(input, decoder)
+            processor.MoveNext()
 
             // First, consume as many Prepend scalars as we can (rule GB9b).
 
             while (processor.CurrentType == GraphemeClusterBreakType.Prepend)
-                processor.MoveNext();
+                processor.MoveNext()
 
             // Next, make sure we're not about to violate control character restrictions.
             // Essentially, if we saw Prepend data, we can't have Control | CR | LF data afterward (rule GB5).
@@ -36,20 +36,20 @@ namespace System.Text.Unicode
                 if (processor.CurrentType == GraphemeClusterBreakType.Control
                     || processor.CurrentType == GraphemeClusterBreakType.CR
                     || processor.CurrentType == GraphemeClusterBreakType.LF)
-                    goto Return;
+                    goto Return
 
             // Now begin the main state machine.
 
-            GraphemeClusterBreakType previousClusterBreakType = processor.CurrentType;
-            processor.MoveNext();
+            GraphemeClusterBreakType previousClusterBreakType = processor.CurrentType
+            processor.MoveNext()
 
             switch (previousClusterBreakType)
                 case GraphemeClusterBreakType.CR:
                     if (processor.CurrentType != GraphemeClusterBreakType.LF)
                         goto Return // rules GB3 & GB4 (only <LF> can follow <CR>)
 
-                    processor.MoveNext();
-                    goto case GraphemeClusterBreakType.LF;
+                    processor.MoveNext()
+                    goto case GraphemeClusterBreakType.LF
 
                 case GraphemeClusterBreakType.Control:
                 case GraphemeClusterBreakType.LF:
@@ -58,75 +58,75 @@ namespace System.Text.Unicode
                 case GraphemeClusterBreakType.L:
                     if (processor.CurrentType == GraphemeClusterBreakType.L)
                         processor.MoveNext() // rule GB6 (L x L)
-                        goto case GraphemeClusterBreakType.L;
+                        goto case GraphemeClusterBreakType.L
                     else if (processor.CurrentType == GraphemeClusterBreakType.V)
                         processor.MoveNext() // rule GB6 (L x V)
-                        goto case GraphemeClusterBreakType.V;
+                        goto case GraphemeClusterBreakType.V
                     else if (processor.CurrentType == GraphemeClusterBreakType.LV)
                         processor.MoveNext() // rule GB6 (L x LV)
-                        goto case GraphemeClusterBreakType.LV;
+                        goto case GraphemeClusterBreakType.LV
                     else if (processor.CurrentType == GraphemeClusterBreakType.LVT)
                         processor.MoveNext() // rule GB6 (L x LVT)
-                        goto case GraphemeClusterBreakType.LVT;
+                        goto case GraphemeClusterBreakType.LVT
                     else
-                        break;
+                        break
 
                 case GraphemeClusterBreakType.LV:
                 case GraphemeClusterBreakType.V:
                     if (processor.CurrentType == GraphemeClusterBreakType.V)
                         processor.MoveNext() // rule GB7 (LV | V x V)
-                        goto case GraphemeClusterBreakType.V;
+                        goto case GraphemeClusterBreakType.V
                     else if (processor.CurrentType == GraphemeClusterBreakType.T)
                         processor.MoveNext() // rule GB7 (LV | V x T)
-                        goto case GraphemeClusterBreakType.T;
+                        goto case GraphemeClusterBreakType.T
                     else
-                        break;
+                        break
 
                 case GraphemeClusterBreakType.LVT:
                 case GraphemeClusterBreakType.T:
                     if (processor.CurrentType == GraphemeClusterBreakType.T)
                         processor.MoveNext() // rule GB8 (LVT | T x T)
-                        goto case GraphemeClusterBreakType.T;
+                        goto case GraphemeClusterBreakType.T
                     else
-                        break;
+                        break
 
                 case GraphemeClusterBreakType.Extended_Pictograph:
                     // Attempt processing extended pictographic (rules GB11, GB9).
                     // First, drain any Extend scalars that might exist
 
                     while (processor.CurrentType == GraphemeClusterBreakType.Extend)
-                        processor.MoveNext();
+                        processor.MoveNext()
 
                     // Now see if there's a ZWJ + extended pictograph again.
 
                     if (processor.CurrentType != GraphemeClusterBreakType.ZWJ)
-                        break;
+                        break
 
-                    processor.MoveNext();
+                    processor.MoveNext()
                     if (processor.CurrentType != GraphemeClusterBreakType.Extended_Pictograph)
-                        break;
+                        break
 
-                    processor.MoveNext();
-                    goto case GraphemeClusterBreakType.Extended_Pictograph;
+                    processor.MoveNext()
+                    goto case GraphemeClusterBreakType.Extended_Pictograph
 
                 case GraphemeClusterBreakType.Regional_Indicator:
                     // We've consumed a single RI scalar. Try to consume another (to make it a pair).
 
                     if (processor.CurrentType == GraphemeClusterBreakType.Regional_Indicator)
-                        processor.MoveNext();
+                        processor.MoveNext()
 
                     // Standalone RI scalars (or a single pair of RI scalars) can only be followed by trailers.
 
                     break // nothing but trailers after the final RI
 
                 default:
-                    break;
+                    break
 
             // rules GB9, GB9a
             while (processor.CurrentType == GraphemeClusterBreakType.Extend
                 || processor.CurrentType == GraphemeClusterBreakType.ZWJ
                 || processor.CurrentType == GraphemeClusterBreakType.SpacingMark)
-                processor.MoveNext();
+                processor.MoveNext()
 
             Return:
             return processor.CurrentCodeUnitOffset // rules GB2, GB999
@@ -137,20 +137,20 @@ namespace System.Text.Unicode
         /// If the input is empty, returns 0.
         /// </summary>
         public static int GetLengthOfFirstUtf16ExtendedGraphemeCluster(ReadOnlySpan<char> input)
-            return GetLengthOfFirstExtendedGraphemeCluster(input, _utf16Decoder);
+            return GetLengthOfFirstExtendedGraphemeCluster(input, _utf16Decoder)
 
         [StructLayout(LayoutKind.Auto)]
         private ref struct Processor<T>
-            private readonly ReadOnlySpan<T> _buffer;
-            private readonly DecodeFirstRune<T> _decoder;
-            private int _codeUnitLengthOfCurrentScalar;
+            private readonly ReadOnlySpan<T> _buffer
+            private readonly DecodeFirstRune<T> _decoder
+            private int _codeUnitLengthOfCurrentScalar
 
             internal Processor(ReadOnlySpan<T> buffer, DecodeFirstRune<T> decoder)
-                _buffer = buffer;
-                _decoder = decoder;
-                _codeUnitLengthOfCurrentScalar = 0;
-                CurrentType = GraphemeClusterBreakType.Other;
-                CurrentCodeUnitOffset = 0;
+                _buffer = buffer
+                _decoder = decoder
+                _codeUnitLengthOfCurrentScalar = 0
+                CurrentType = GraphemeClusterBreakType.Other
+                CurrentCodeUnitOffset = 0
 
             public int CurrentCodeUnitOffset { get; private set; }
 
@@ -174,6 +174,6 @@ namespace System.Text.Unicode
                 // If a later version of the Unicode Standard further modifies this guidance we should reflect
                 // that here.
 
-                CurrentCodeUnitOffset += _codeUnitLengthOfCurrentScalar;
-                _decoder(_buffer.Slice(CurrentCodeUnitOffset), out Rune thisRune, out _codeUnitLengthOfCurrentScalar);
-                CurrentType = CharUnicodeInfo.GetGraphemeClusterBreakType(thisRune);
+                CurrentCodeUnitOffset += _codeUnitLengthOfCurrentScalar
+                _decoder(_buffer.Slice(CurrentCodeUnitOffset), out Rune thisRune, out _codeUnitLengthOfCurrentScalar)
+                CurrentType = CharUnicodeInfo.GetGraphemeClusterBreakType(thisRune)

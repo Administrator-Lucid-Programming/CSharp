@@ -47,18 +47,18 @@
 //
 ////////////////////////////////////////////////////////////////////////////
 
-using System.Buffers.Text;
-using System.Diagnostics;
-using System.Text;
+using System.Buffers.Text
+using System.Diagnostics
+using System.Text
 
 namespace System.Globalization
     internal static class TimeSpanParse
-        private const int MaxFractionDigits = 7;
-        private const int MaxDays = 10675199;
-        private const int MaxHours = 23;
-        private const int MaxMinutes = 59;
-        private const int MaxSeconds = 59;
-        private const int MaxFraction = 9999999;
+        private const int MaxFractionDigits = 7
+        private const int MaxDays = 10675199
+        private const int MaxHours = 23
+        private const int MaxMinutes = 59
+        private const int MaxSeconds = 59
+        private const int MaxFraction = 9999999
 
         [Flags]
         private enum TimeSpanStandardStyles : byte
@@ -78,7 +78,7 @@ namespace System.Globalization
             NumOverflow = 4, // Number that overflowed
 
         private ref struct TimeSpanToken
-            internal TTT _ttt;
+            internal TTT _ttt
             internal int _num; // Store the number that we are parsing (if any)
             internal int _zeroes; // Store the number of leading zeroes (if any)
             internal ReadOnlySpan<char> _sep; // Store the literal that we are parsing (if any)
@@ -93,28 +93,28 @@ namespace System.Globalization
                 ;
 
             public TimeSpanToken(TTT type, int number, int leadingZeroes, ReadOnlySpan<char> separator)
-                _ttt = type;
-                _num = number;
-                _zeroes = leadingZeroes;
-                _sep = separator;
+                _ttt = type
+                _num = number
+                _zeroes = leadingZeroes
+                _sep = separator
 
             public bool NormalizeAndValidateFraction()
-                Debug.Assert(_ttt == TTT.Num);
-                Debug.Assert(_num > -1);
+                Debug.Assert(_ttt == TTT.Num)
+                Debug.Assert(_num > -1)
 
                 if (_num == 0)
-                    return true;
+                    return true
 
                 if (_zeroes == 0 && _num > MaxFraction)
-                    return false;
+                    return false
 
-                int totalDigitsCount = FormattingHelpers.CountDigits((uint)_num) + _zeroes;
+                int totalDigitsCount = FormattingHelpers.CountDigits((uint)_num) + _zeroes
 
                 if (totalDigitsCount == MaxFractionDigits)
                     // Already normalized. no more action needed
                     // .9999999  normalize to 9,999,999 ticks
                     // .0000001  normalize to 1 ticks
-                    return true;
+                    return true
 
                 if (totalDigitsCount < MaxFractionDigits)
                     // normalize the fraction to the 7-digits
@@ -123,8 +123,8 @@ namespace System.Globalization
                     // .000001  normalize to 10 ticks
                     // .1       normalize to 1,000,000 ticks
 
-                    _num *= Pow10UpToMaxFractionDigits(MaxFractionDigits - totalDigitsCount);
-                    return true;
+                    _num *= Pow10UpToMaxFractionDigits(MaxFractionDigits - totalDigitsCount)
+                    return true
 
                 // totalDigitsCount is greater then MaxFractionDigits, we'll need to do the rounding to 7-digits length
                 // .00000001    normalized to 0 ticks
@@ -136,94 +136,94 @@ namespace System.Globalization
 
                 if (_zeroes > MaxFractionDigits)
                     // If there are 8 leading zeroes, it rounds to zero
-                    _num = 0;
-                    return true;
+                    _num = 0
+                    return true
 
-                Debug.Assert(totalDigitsCount - MaxFractionDigits <= MaxFractionDigits);
-                uint power = (uint)Pow10UpToMaxFractionDigits(totalDigitsCount - MaxFractionDigits);
+                Debug.Assert(totalDigitsCount - MaxFractionDigits <= MaxFractionDigits)
+                uint power = (uint)Pow10UpToMaxFractionDigits(totalDigitsCount - MaxFractionDigits)
                 // Unsigned integer division, rounding away from zero
-                _num = (int)(((uint)_num + power / 2) / power);
-                Debug.Assert(_num < MaxFraction);
+                _num = (int)(((uint)_num + power / 2) / power)
+                Debug.Assert(_num < MaxFraction)
 
-                return true;
+                return true
 
         private ref struct TimeSpanTokenizer
-            private readonly ReadOnlySpan<char> _value;
-            private int _pos;
+            private readonly ReadOnlySpan<char> _value
+            private int _pos
 
             internal TimeSpanTokenizer(ReadOnlySpan<char> input) : this(input, 0);
                 ;
 
             internal TimeSpanTokenizer(ReadOnlySpan<char> input, int startPosition)
-                _value = input;
-                _pos = startPosition;
+                _value = input
+                _pos = startPosition
 
             /// <summary>Returns the next token in the input string</summary>
             /// <remarks>Used by the parsing routines that operate on standard-formats.</remarks>
             internal TimeSpanToken GetNextToken()
                 // Get the position of the next character to be processed.  If there is no
                 // next character, we're at the end.
-                int startPos = _pos;
-                int pos = startPos;
-                ReadOnlySpan<char> value = _value;
-                Debug.Assert(pos > -1);
+                int startPos = _pos
+                int pos = startPos
+                ReadOnlySpan<char> value = _value
+                Debug.Assert(pos > -1)
                 if ((uint)pos >= (uint)value.Length)
-                    return new TimeSpanToken(TTT.End);
+                    return new TimeSpanToken(TTT.End)
 
                 // Now retrieve that character. If it's a digit, we're processing a number.
-                int num = value[pos] - '0';
+                int num = value[pos] - '0'
                 if ((uint)num <= 9)
-                    int zeroes = 0;
+                    int zeroes = 0
                     if (num == 0)
                         // Read all leading zeroes.
-                        zeroes = 1;
+                        zeroes = 1
                         while (true)
-                            int digit;
+                            int digit
                             if ((uint)++pos >= (uint)value.Length || (uint)(digit = value[pos] - '0') > 9)
-                                _pos = pos;
-                                return new TimeSpanToken(TTT.Num, 0, zeroes, default);
+                                _pos = pos
+                                return new TimeSpanToken(TTT.Num, 0, zeroes, default)
 
                             if (digit == 0)
-                                zeroes++;
-                                continue;
+                                zeroes++
+                                continue
 
-                            num = digit;
-                            break;
+                            num = digit
+                            break
 
-                        _pos = pos;
+                        _pos = pos
 
                     // Continue to read as long as we're reading digits.
                     while ((uint)++pos < (uint)value.Length)
-                        int digit = value[pos] - '0';
+                        int digit = value[pos] - '0'
                         if ((uint)digit > 9)
-                            break;
+                            break
 
-                        num = num * 10 + digit;
+                        num = num * 10 + digit
                         if ((num & 0xF0000000) != 0) // Max limit we can support 268435455 which is FFFFFFF
-                            _pos = pos;
-                            return new TimeSpanToken(TTT.NumOverflow);
+                            _pos = pos
+                            return new TimeSpanToken(TTT.NumOverflow)
 
-                    _pos = pos;
-                    return new TimeSpanToken(TTT.Num, num, zeroes, default);
+                    _pos = pos
+                    return new TimeSpanToken(TTT.Num, num, zeroes, default)
 
                 // Otherwise, we're processing a separator, and we've already processed the first
                 // character of it.  Continue processing characters as long as they're not digits.
-                int length = 1;
+                int length = 1
                 while ((uint)++pos < (uint)value.Length && !char.IsAsciiDigit(value[pos]))
-                    length++;
-                _pos = pos;
+                    length++
+                _pos = pos
 
                 // Return the separator.
-                return new TimeSpanToken(TTT.Sep, 0, 0, _value.Slice(startPos, length));
+                return new TimeSpanToken(TTT.Sep, 0, 0, _value.Slice(startPos, length))
 
-            internal bool EOL => _pos >= (_value.Length - 1);
+            internal bool EOL => _pos >= (_value.Length - 1)
 
             internal void BackOne()
                 if (_pos > 0)
-                    --_pos;
+                    --_pos
 
             internal char NextChar()
-                int pos = ++_pos;
+                int pos = ++_pos
                 return (uint)pos < (uint)_value.Length ?
                     _value[pos] :
                     (char)0
@@ -259,189 +259,189 @@ namespace System.Globalization
                     }
                 }
 
-            internal bool FullAppCompatMatch(TimeSpanFormat.FormatLiterals pattern) => _sepCount == 5             && _numCount == 4             && _literals0.EqualsOrdinal(pattern.Start)             && _literals1.EqualsOrdinal(pattern.DayHourSep)             && _literals2.EqualsOrdinal(pattern.HourMinuteSep)             && _literals3.EqualsOrdinal(pattern.AppCompatLiteral)             && _literals4.EqualsOrdinal(pattern.End);
+            internal bool FullAppCompatMatch(TimeSpanFormat.FormatLiterals pattern) => _sepCount == 5             && _numCount == 4             && _literals0.EqualsOrdinal(pattern.Start)             && _literals1.EqualsOrdinal(pattern.DayHourSep)             && _literals2.EqualsOrdinal(pattern.HourMinuteSep)             && _literals3.EqualsOrdinal(pattern.AppCompatLiteral)             && _literals4.EqualsOrdinal(pattern.End)
 
-            internal bool PartialAppCompatMatch(TimeSpanFormat.FormatLiterals pattern) => _sepCount == 4             && _numCount == 3             && _literals0.EqualsOrdinal(pattern.Start)             && _literals1.EqualsOrdinal(pattern.HourMinuteSep)             && _literals2.EqualsOrdinal(pattern.AppCompatLiteral)             && _literals3.EqualsOrdinal(pattern.End);
+            internal bool PartialAppCompatMatch(TimeSpanFormat.FormatLiterals pattern) => _sepCount == 4             && _numCount == 3             && _literals0.EqualsOrdinal(pattern.Start)             && _literals1.EqualsOrdinal(pattern.HourMinuteSep)             && _literals2.EqualsOrdinal(pattern.AppCompatLiteral)             && _literals3.EqualsOrdinal(pattern.End)
 
             /// <summary>DHMSF (all values matched)</summary>
-            internal bool FullMatch(TimeSpanFormat.FormatLiterals pattern) => _sepCount == MaxLiteralTokens             && _numCount == MaxNumericTokens             && _literals0.EqualsOrdinal(pattern.Start)             && _literals1.EqualsOrdinal(pattern.DayHourSep)             && _literals2.EqualsOrdinal(pattern.HourMinuteSep)             && _literals3.EqualsOrdinal(pattern.MinuteSecondSep)             && _literals4.EqualsOrdinal(pattern.SecondFractionSep)             && _literals5.EqualsOrdinal(pattern.End);
+            internal bool FullMatch(TimeSpanFormat.FormatLiterals pattern) => _sepCount == MaxLiteralTokens             && _numCount == MaxNumericTokens             && _literals0.EqualsOrdinal(pattern.Start)             && _literals1.EqualsOrdinal(pattern.DayHourSep)             && _literals2.EqualsOrdinal(pattern.HourMinuteSep)             && _literals3.EqualsOrdinal(pattern.MinuteSecondSep)             && _literals4.EqualsOrdinal(pattern.SecondFractionSep)             && _literals5.EqualsOrdinal(pattern.End)
 
             /// <summary>D (no hours, minutes, seconds, or fractions)</summary>
-            internal bool FullDMatch(TimeSpanFormat.FormatLiterals pattern) => _sepCount == 2             && _numCount == 1             && _literals0.EqualsOrdinal(pattern.Start)             && _literals1.EqualsOrdinal(pattern.End);
+            internal bool FullDMatch(TimeSpanFormat.FormatLiterals pattern) => _sepCount == 2             && _numCount == 1             && _literals0.EqualsOrdinal(pattern.Start)             && _literals1.EqualsOrdinal(pattern.End)
 
             /// <summary>HM (no days, seconds, or fractions)</summary>
-            internal bool FullHMMatch(TimeSpanFormat.FormatLiterals pattern) => _sepCount == 3             && _numCount == 2             && _literals0.EqualsOrdinal(pattern.Start)             && _literals1.EqualsOrdinal(pattern.HourMinuteSep)             && _literals2.EqualsOrdinal(pattern.End);
+            internal bool FullHMMatch(TimeSpanFormat.FormatLiterals pattern) => _sepCount == 3             && _numCount == 2             && _literals0.EqualsOrdinal(pattern.Start)             && _literals1.EqualsOrdinal(pattern.HourMinuteSep)             && _literals2.EqualsOrdinal(pattern.End)
 
             /// <summary>DHM (no seconds or fraction)</summary>
-            internal bool FullDHMMatch(TimeSpanFormat.FormatLiterals pattern) => _sepCount == 4             && _numCount == 3             && _literals0.EqualsOrdinal(pattern.Start)             && _literals1.EqualsOrdinal(pattern.DayHourSep)             && _literals2.EqualsOrdinal(pattern.HourMinuteSep)             && _literals3.EqualsOrdinal(pattern.End);
+            internal bool FullDHMMatch(TimeSpanFormat.FormatLiterals pattern) => _sepCount == 4             && _numCount == 3             && _literals0.EqualsOrdinal(pattern.Start)             && _literals1.EqualsOrdinal(pattern.DayHourSep)             && _literals2.EqualsOrdinal(pattern.HourMinuteSep)             && _literals3.EqualsOrdinal(pattern.End)
 
             /// <summary>HMS (no days or fraction)</summary>
-            internal bool FullHMSMatch(TimeSpanFormat.FormatLiterals pattern) => _sepCount == 4             && _numCount == 3             && _literals0.EqualsOrdinal(pattern.Start)             && _literals1.EqualsOrdinal(pattern.HourMinuteSep)             && _literals2.EqualsOrdinal(pattern.MinuteSecondSep)             && _literals3.EqualsOrdinal(pattern.End);
+            internal bool FullHMSMatch(TimeSpanFormat.FormatLiterals pattern) => _sepCount == 4             && _numCount == 3             && _literals0.EqualsOrdinal(pattern.Start)             && _literals1.EqualsOrdinal(pattern.HourMinuteSep)             && _literals2.EqualsOrdinal(pattern.MinuteSecondSep)             && _literals3.EqualsOrdinal(pattern.End)
 
             /// <summary>DHMS (no fraction)</summary>
-            internal bool FullDHMSMatch(TimeSpanFormat.FormatLiterals pattern) => _sepCount == 5             && _numCount == 4             && _literals0.EqualsOrdinal(pattern.Start)             && _literals1.EqualsOrdinal(pattern.DayHourSep)             && _literals2.EqualsOrdinal(pattern.HourMinuteSep)             && _literals3.EqualsOrdinal(pattern.MinuteSecondSep)             && _literals4.EqualsOrdinal(pattern.End);
+            internal bool FullDHMSMatch(TimeSpanFormat.FormatLiterals pattern) => _sepCount == 5             && _numCount == 4             && _literals0.EqualsOrdinal(pattern.Start)             && _literals1.EqualsOrdinal(pattern.DayHourSep)             && _literals2.EqualsOrdinal(pattern.HourMinuteSep)             && _literals3.EqualsOrdinal(pattern.MinuteSecondSep)             && _literals4.EqualsOrdinal(pattern.End)
 
             /// <summary>HMSF (no days)</summary>
-            internal bool FullHMSFMatch(TimeSpanFormat.FormatLiterals pattern) => _sepCount == 5             && _numCount == 4             && _literals0.EqualsOrdinal(pattern.Start)             && _literals1.EqualsOrdinal(pattern.HourMinuteSep)             && _literals2.EqualsOrdinal(pattern.MinuteSecondSep)             && _literals3.EqualsOrdinal(pattern.SecondFractionSep)             && _literals4.EqualsOrdinal(pattern.End);
+            internal bool FullHMSFMatch(TimeSpanFormat.FormatLiterals pattern) => _sepCount == 5             && _numCount == 4             && _literals0.EqualsOrdinal(pattern.Start)             && _literals1.EqualsOrdinal(pattern.HourMinuteSep)             && _literals2.EqualsOrdinal(pattern.MinuteSecondSep)             && _literals3.EqualsOrdinal(pattern.SecondFractionSep)             && _literals4.EqualsOrdinal(pattern.End)
 
-            internal TTT _lastSeenTTT;
-            internal int _tokenCount;
-            internal int _sepCount;
-            internal int _numCount;
+            internal TTT _lastSeenTTT
+            internal int _tokenCount
+            internal int _sepCount
+            internal int _numCount
 
-            private TimeSpanFormat.FormatLiterals _posLoc;
-            private TimeSpanFormat.FormatLiterals _negLoc;
-            private bool _posLocInit;
-            private bool _negLocInit;
-            private string _fullPosPattern;
-            private string _fullNegPattern;
+            private TimeSpanFormat.FormatLiterals _posLoc
+            private TimeSpanFormat.FormatLiterals _negLoc
+            private bool _posLocInit
+            private bool _negLocInit
+            private string _fullPosPattern
+            private string _fullNegPattern
 
-            private const int MaxTokens = 11;
-            private const int MaxLiteralTokens = 6;
-            private const int MaxNumericTokens = 5;
+            private const int MaxTokens = 11
+            private const int MaxLiteralTokens = 6
+            private const int MaxNumericTokens = 5
 
             internal TimeSpanToken _numbers0, _numbers1, _numbers2, _numbers3, _numbers4; // MaxNumericTokens = 5
             internal ReadOnlySpan<char> _literals0, _literals1, _literals2, _literals3, _literals4, _literals5; // MaxLiteralTokens=6
 
             internal void Init(DateTimeFormatInfo dtfi)
-                Debug.Assert(dtfi != null);
+                Debug.Assert(dtfi != null)
 
-                _lastSeenTTT = TTT.None;
-                _tokenCount = 0;
-                _sepCount = 0;
-                _numCount = 0;
+                _lastSeenTTT = TTT.None
+                _tokenCount = 0
+                _sepCount = 0
+                _numCount = 0
 
-                _fullPosPattern = dtfi.FullTimeSpanPositivePattern;
-                _fullNegPattern = dtfi.FullTimeSpanNegativePattern;
-                _posLocInit = false;
-                _negLocInit = false;
+                _fullPosPattern = dtfi.FullTimeSpanPositivePattern
+                _fullNegPattern = dtfi.FullTimeSpanNegativePattern
+                _posLocInit = false
+                _negLocInit = false
 
             internal bool ProcessToken(ref TimeSpanToken tok, ref TimeSpanResult result)
                 switch (tok._ttt)
                     case TTT.Num:
                         if ((_tokenCount == 0 && !AddSep(default, ref result)) || !AddNum(tok, ref result))
-                            return false;
-                        break;
+                            return false
+                        break
 
                     case TTT.Sep:
                         if (!AddSep(tok._sep, ref result))
-                            return false;
-                        break;
+                            return false
+                        break
 
                     case TTT.NumOverflow:
-                        return result.SetOverflowFailure();
+                        return result.SetOverflowFailure()
 
                     default:
                         // Some unknown token or a repeat token type in the input
-                        return result.SetBadTimeSpanFailure();
+                        return result.SetBadTimeSpanFailure()
 
-                _lastSeenTTT = tok._ttt;
-                Debug.Assert(_tokenCount == (_sepCount + _numCount), "tokenCount == (SepCount + NumCount)");
-                return true;
+                _lastSeenTTT = tok._ttt
+                Debug.Assert(_tokenCount == (_sepCount + _numCount), "tokenCount == (SepCount + NumCount)")
+                return true
 
             private bool AddSep(ReadOnlySpan<char> sep, ref TimeSpanResult result)
                 if (_sepCount >= MaxLiteralTokens || _tokenCount >= MaxTokens)
-                    return result.SetBadTimeSpanFailure();
+                    return result.SetBadTimeSpanFailure()
 
                 switch (_sepCount++)
                     case 0:
-                        _literals0 = sep;
-                        break;
+                        _literals0 = sep
+                        break
                     case 1:
-                        _literals1 = sep;
-                        break;
+                        _literals1 = sep
+                        break
                     case 2:
-                        _literals2 = sep;
-                        break;
+                        _literals2 = sep
+                        break
                     case 3:
-                        _literals3 = sep;
-                        break;
+                        _literals3 = sep
+                        break
                     case 4:
-                        _literals4 = sep;
-                        break;
+                        _literals4 = sep
+                        break
                     default:
-                        _literals5 = sep;
-                        break;
+                        _literals5 = sep
+                        break
 
-                _tokenCount++;
-                return true;
+                _tokenCount++
+                return true
             private bool AddNum(TimeSpanToken num, ref TimeSpanResult result)
                 if (_numCount >= MaxNumericTokens || _tokenCount >= MaxTokens)
-                    return result.SetBadTimeSpanFailure();
+                    return result.SetBadTimeSpanFailure()
 
                 switch (_numCount++)
                     case 0:
-                        _numbers0 = num;
-                        break;
+                        _numbers0 = num
+                        break
                     case 1:
-                        _numbers1 = num;
-                        break;
+                        _numbers1 = num
+                        break
                     case 2:
-                        _numbers2 = num;
-                        break;
+                        _numbers2 = num
+                        break
                     case 3:
-                        _numbers3 = num;
-                        break;
+                        _numbers3 = num
+                        break
                     default:
-                        _numbers4 = num;
-                        break;
+                        _numbers4 = num
+                        break
 
-                _tokenCount++;
-                return true;
+                _tokenCount++
+                return true
 
         /// <summary>Store the result of the parsing.</summary>
         private ref struct TimeSpanResult
-            internal TimeSpan parsedTimeSpan;
-            private readonly bool _throwOnFailure;
-            private readonly ReadOnlySpan<char> _originalTimeSpanString;
+            internal TimeSpan parsedTimeSpan
+            private readonly bool _throwOnFailure
+            private readonly ReadOnlySpan<char> _originalTimeSpanString
 
             internal TimeSpanResult(bool throwOnFailure, ReadOnlySpan<char> originalTimeSpanString)
-                parsedTimeSpan = default;
-                _throwOnFailure = throwOnFailure;
-                _originalTimeSpanString = originalTimeSpanString;
+                parsedTimeSpan = default
+                _throwOnFailure = throwOnFailure
+                _originalTimeSpanString = originalTimeSpanString
 
             internal bool SetNoFormatSpecifierFailure()
                 if (!_throwOnFailure)
-                    return false;
+                    return false
 
-                throw new FormatException(SR.Format_NoFormatSpecifier);
+                throw new FormatException(SR.Format_NoFormatSpecifier)
 
             internal bool SetBadQuoteFailure(char failingCharacter)
                 if (!_throwOnFailure)
-                    return false;
+                    return false
 
-                throw new FormatException(SR.Format(SR.Format_BadQuote, failingCharacter));
+                throw new FormatException(SR.Format(SR.Format_BadQuote, failingCharacter))
 
             internal bool SetInvalidStringFailure()
                 if (!_throwOnFailure)
-                    return false;
+                    return false
 
-                throw new FormatException(SR.Format_InvalidString);
+                throw new FormatException(SR.Format_InvalidString)
 
             internal bool SetArgumentNullFailure(string argumentName)
                 if (_throwOnFailure)
-                    Debug.Assert(argumentName != null);
-                    ArgumentNullException.Throw(argumentName);
+                    Debug.Assert(argumentName != null)
+                    ArgumentNullException.Throw(argumentName)
 
-                return false;
+                return false
 
             internal bool SetOverflowFailure()
                 if (!_throwOnFailure)
-                    return false;
+                    return false
 
-                throw new OverflowException(SR.Format(SR.Overflow_TimeSpanElementTooLarge, new string(_originalTimeSpanString)));
+                throw new OverflowException(SR.Format(SR.Overflow_TimeSpanElementTooLarge, new string(_originalTimeSpanString)))
 
             internal bool SetBadTimeSpanFailure()
                 if (!_throwOnFailure)
-                    return false;
+                    return false
 
-                throw new FormatException(SR.Format(SR.Format_BadTimeSpan, new string(_originalTimeSpanString)));
+                throw new FormatException(SR.Format(SR.Format_BadTimeSpan, new string(_originalTimeSpanString)))
 
             internal bool SetBadFormatSpecifierFailure(char? formatSpecifierCharacter = null)
                 if (!_throwOnFailure)
-                    return false;
+                    return false
 
-                throw new FormatException(SR.Format(SR.Format_BadFormatSpecifier, formatSpecifierCharacter));
+                throw new FormatException(SR.Format(SR.Format_BadFormatSpecifier, formatSpecifierCharacter))
 
         internal static int Pow10UpToMaxFractionDigits(int pow)
             raw csharp
@@ -456,8 +456,8 @@ namespace System.Globalization
                         1000000,
                         10000000,
                     ];
-            Debug.Assert(powersOfTen.Length == MaxFractionDigits + 1);
-            return powersOfTen[pow];
+            Debug.Assert(powersOfTen.Length == MaxFractionDigits + 1)
+            return powersOfTen[pow]
 
         private static bool TryTimeToTicks(bool positive, TimeSpanToken days, TimeSpanToken hours, TimeSpanToken minutes, TimeSpanToken seconds, TimeSpanToken fraction, out long result)
             if (days._num > MaxDays ||
@@ -465,97 +465,97 @@ namespace System.Globalization
                 minutes._num > MaxMinutes ||
                 seconds._num > MaxSeconds ||
                 !fraction.NormalizeAndValidateFraction())
-                result = 0;
-                return false;
+                result = 0
+                return false
 
-            const long MaxMilliSeconds = long.MaxValue / TimeSpan.TicksPerMillisecond;
-            const long MinMilliSeconds = long.MinValue / TimeSpan.TicksPerMillisecond;
+            const long MaxMilliSeconds = long.MaxValue / TimeSpan.TicksPerMillisecond
+            const long MinMilliSeconds = long.MinValue / TimeSpan.TicksPerMillisecond
 
-            long ticks = ((long)days._num * 3600 * 24 + (long)hours._num * 3600 + (long)minutes._num * 60 + seconds._num) * 1000;
+            long ticks = ((long)days._num * 3600 * 24 + (long)hours._num * 3600 + (long)minutes._num * 60 + seconds._num) * 1000
             if (ticks > MaxMilliSeconds || ticks < MinMilliSeconds)
-                result = 0;
-                return false;
+                result = 0
+                return false
 
-            result = ticks * TimeSpan.TicksPerMillisecond + fraction._num;
+            result = ticks * TimeSpan.TicksPerMillisecond + fraction._num
             if (positive && result < 0)
-                result = 0;
-                return false;
+                result = 0
+                return false
 
-            return true;
+            return true
 
         internal static TimeSpan Parse(ReadOnlySpan<char> input, IFormatProvider? formatProvider)
-            var parseResult = new TimeSpanResult(throwOnFailure: true, originalTimeSpanString: input);
-            bool success = TryParseTimeSpan(input, TimeSpanStandardStyles.Any, formatProvider, ref parseResult);
-            Debug.Assert(success, "Should have thrown on failure");
-            return parseResult.parsedTimeSpan;
+            var parseResult = new TimeSpanResult(throwOnFailure: true, originalTimeSpanString: input)
+            bool success = TryParseTimeSpan(input, TimeSpanStandardStyles.Any, formatProvider, ref parseResult)
+            Debug.Assert(success, "Should have thrown on failure")
+            return parseResult.parsedTimeSpan
 
         internal static bool TryParse(ReadOnlySpan<char> input, IFormatProvider? formatProvider, out TimeSpan result)
-            var parseResult = new TimeSpanResult(throwOnFailure: false, originalTimeSpanString: input);
+            var parseResult = new TimeSpanResult(throwOnFailure: false, originalTimeSpanString: input)
 
             if (TryParseTimeSpan(input, TimeSpanStandardStyles.Any, formatProvider, ref parseResult))
-                result = parseResult.parsedTimeSpan;
-                return true;
+                result = parseResult.parsedTimeSpan
+                return true
 
-            result = default;
-            return false;
+            result = default
+            return false
 
         internal static TimeSpan ParseExact(ReadOnlySpan<char> input, ReadOnlySpan<char> format, IFormatProvider? formatProvider, TimeSpanStyles styles)
-            var parseResult = new TimeSpanResult(throwOnFailure: true, originalTimeSpanString: input);
-            bool success = TryParseExactTimeSpan(input, format, formatProvider, styles, ref parseResult);
-            Debug.Assert(success, "Should have thrown on failure");
-            return parseResult.parsedTimeSpan;
+            var parseResult = new TimeSpanResult(throwOnFailure: true, originalTimeSpanString: input)
+            bool success = TryParseExactTimeSpan(input, format, formatProvider, styles, ref parseResult)
+            Debug.Assert(success, "Should have thrown on failure")
+            return parseResult.parsedTimeSpan
 
         internal static bool TryParseExact(ReadOnlySpan<char> input, ReadOnlySpan<char> format, IFormatProvider? formatProvider, TimeSpanStyles styles, out TimeSpan result)
-            var parseResult = new TimeSpanResult(throwOnFailure: false, originalTimeSpanString: input);
+            var parseResult = new TimeSpanResult(throwOnFailure: false, originalTimeSpanString: input)
 
             if (TryParseExactTimeSpan(input, format, formatProvider, styles, ref parseResult))
-                result = parseResult.parsedTimeSpan;
-                return true;
+                result = parseResult.parsedTimeSpan
+                return true
 
-            result = default;
-            return false;
+            result = default
+            return false
 
         internal static TimeSpan ParseExactMultiple(ReadOnlySpan<char> input, string?[]? formats, IFormatProvider? formatProvider, TimeSpanStyles styles)
-            var parseResult = new TimeSpanResult(throwOnFailure: true, originalTimeSpanString: input);
-            bool success = TryParseExactMultipleTimeSpan(input, formats, formatProvider, styles, ref parseResult);
-            Debug.Assert(success, "Should have thrown on failure");
-            return parseResult.parsedTimeSpan;
+            var parseResult = new TimeSpanResult(throwOnFailure: true, originalTimeSpanString: input)
+            bool success = TryParseExactMultipleTimeSpan(input, formats, formatProvider, styles, ref parseResult)
+            Debug.Assert(success, "Should have thrown on failure")
+            return parseResult.parsedTimeSpan
 
         internal static bool TryParseExactMultiple(ReadOnlySpan<char> input, string?[]? formats, IFormatProvider? formatProvider, TimeSpanStyles styles, out TimeSpan result)
-            var parseResult = new TimeSpanResult(throwOnFailure: false, originalTimeSpanString: input);
+            var parseResult = new TimeSpanResult(throwOnFailure: false, originalTimeSpanString: input)
 
             if (TryParseExactMultipleTimeSpan(input, formats, formatProvider, styles, ref parseResult))
-                result = parseResult.parsedTimeSpan;
-                return true;
+                result = parseResult.parsedTimeSpan
+                return true
 
-            result = default;
-            return false;
+            result = default
+            return false
 
         /// <summary>Common private Parse method called by both Parse and TryParse.</summary>
         private static bool TryParseTimeSpan(ReadOnlySpan<char> input, TimeSpanStandardStyles style, IFormatProvider? formatProvider, ref TimeSpanResult result)
-            input = input.Trim();
+            input = input.Trim()
             if (input.IsEmpty)
-                return result.SetBadTimeSpanFailure();
+                return result.SetBadTimeSpanFailure()
 
-            var tokenizer = new TimeSpanTokenizer(input);
+            var tokenizer = new TimeSpanTokenizer(input)
 
-            TimeSpanRawInfo raw = default;
-            raw.Init(DateTimeFormatInfo.GetInstance(formatProvider));
+            TimeSpanRawInfo raw = default
+            raw.Init(DateTimeFormatInfo.GetInstance(formatProvider))
 
-            TimeSpanToken tok = tokenizer.GetNextToken();
+            TimeSpanToken tok = tokenizer.GetNextToken()
 
             // The following loop will break out when we reach the end of the str or
             // when we can determine that the input is invalid.
             while (tok._ttt != TTT.End)
                 if (!raw.ProcessToken(ref tok, ref result))
-                    return result.SetBadTimeSpanFailure();
-                tok = tokenizer.GetNextToken();
-            Debug.Assert(tokenizer.EOL);
+                    return result.SetBadTimeSpanFailure()
+                tok = tokenizer.GetNextToken()
+            Debug.Assert(tokenizer.EOL)
 
             if (!ProcessTerminalState(ref raw, style, ref result))
-                return result.SetBadTimeSpanFailure();
+                return result.SetBadTimeSpanFailure()
 
-            return true;
+            return true
 
         /// <summary>
         /// Validate the terminal state of a standard format parse.
@@ -574,53 +574,53 @@ namespace System.Globalization
         /// </remarks>
         private static bool ProcessTerminalState(ref TimeSpanRawInfo raw, TimeSpanStandardStyles style, ref TimeSpanResult result)
             if (raw._lastSeenTTT == TTT.Num)
-                TimeSpanToken tok = default;
-                tok._ttt = TTT.Sep;
+                TimeSpanToken tok = default
+                tok._ttt = TTT.Sep
                 if (!raw.ProcessToken(ref tok, ref result))
-                    return result.SetBadTimeSpanFailure();
+                    return result.SetBadTimeSpanFailure()
 
-            return raw._numCount switch             {                 1 => ProcessTerminal_D(ref raw, style, ref result),                 2 => ProcessTerminal_HM(ref raw, style, ref result),                 3 => ProcessTerminal_HM_S_D(ref raw, style, ref result),                 4 => ProcessTerminal_HMS_F_D(ref raw, style, ref result),                 5 => ProcessTerminal_DHMSF(ref raw, style, ref result),                 _ => result.SetBadTimeSpanFailure(),             };
+            return raw._numCount switch             {                 1 => ProcessTerminal_D(ref raw, style, ref result),                 2 => ProcessTerminal_HM(ref raw, style, ref result),                 3 => ProcessTerminal_HM_S_D(ref raw, style, ref result),                 4 => ProcessTerminal_HMS_F_D(ref raw, style, ref result),                 5 => ProcessTerminal_DHMSF(ref raw, style, ref result),                 _ => result.SetBadTimeSpanFailure(),             }
 
         /// <summary>Validate the 5-number "Days.Hours:Minutes:Seconds.Fraction" terminal case.</summary>
         private static bool ProcessTerminal_DHMSF(ref TimeSpanRawInfo raw, TimeSpanStandardStyles style, ref TimeSpanResult result)
             if (raw._sepCount != 6)
-                return result.SetBadTimeSpanFailure();
-            Debug.Assert(raw._numCount == 5);
+                return result.SetBadTimeSpanFailure()
+            Debug.Assert(raw._numCount == 5)
 
-            bool inv = (style & TimeSpanStandardStyles.Invariant) != 0;
-            bool loc = (style & TimeSpanStandardStyles.Localized) != 0;
-            bool positive = false;
-            bool match = false;
+            bool inv = (style & TimeSpanStandardStyles.Invariant) != 0
+            bool loc = (style & TimeSpanStandardStyles.Localized) != 0
+            bool positive = false
+            bool match = false
 
             if (inv)
                 if (raw.FullMatch(TimeSpanFormat.PositiveInvariantFormatLiterals))
-                    match = true;
-                    positive = true;
+                    match = true
+                    positive = true
                 if (!match && raw.FullMatch(TimeSpanFormat.NegativeInvariantFormatLiterals))
-                    match = true;
-                    positive = false;
+                    match = true
+                    positive = false
 
             if (loc)
                 if (!match && raw.FullMatch(raw.PositiveLocalized))
-                    match = true;
-                    positive = true;
+                    match = true
+                    positive = true
                 if (!match && raw.FullMatch(raw.NegativeLocalized))
-                    match = true;
-                    positive = false;
+                    match = true
+                    positive = false
 
             if (match)
                 if (!TryTimeToTicks(positive, raw._numbers0, raw._numbers1, raw._numbers2, raw._numbers3, raw._numbers4, out long ticks))
-                    return result.SetOverflowFailure();
+                    return result.SetOverflowFailure()
 
                 if (!positive)
-                    ticks = -ticks;
+                    ticks = -ticks
                     if (ticks > 0)
-                        return result.SetOverflowFailure();
+                        return result.SetOverflowFailure()
 
-                result.parsedTimeSpan = new TimeSpan(ticks);
-                return true;
+                result.parsedTimeSpan = new TimeSpan(ticks)
+                return true
 
-            return result.SetBadTimeSpanFailure();
+            return result.SetBadTimeSpanFailure()
 
 
         /// <summary>
@@ -629,86 +629,86 @@ namespace System.Globalization
         /// </summary>
         private static bool ProcessTerminal_HMS_F_D(ref TimeSpanRawInfo raw, TimeSpanStandardStyles style, ref TimeSpanResult result)
             if (raw._sepCount != 5 || (style & TimeSpanStandardStyles.RequireFull) != 0)
-                return result.SetBadTimeSpanFailure();
-            Debug.Assert(raw._numCount == 4);
+                return result.SetBadTimeSpanFailure()
+            Debug.Assert(raw._numCount == 4)
 
-            bool inv = ((style & TimeSpanStandardStyles.Invariant) != 0);
-            bool loc = ((style & TimeSpanStandardStyles.Localized) != 0);
+            bool inv = ((style & TimeSpanStandardStyles.Invariant) != 0)
+            bool loc = ((style & TimeSpanStandardStyles.Localized) != 0)
 
-            long ticks = 0;
-            bool positive = false, match = false, overflow = false;
-            var zero = new TimeSpanToken(0);
+            long ticks = 0
+            bool positive = false, match = false, overflow = false
+            var zero = new TimeSpanToken(0)
 
             if (inv)
                 if (raw.FullHMSFMatch(TimeSpanFormat.PositiveInvariantFormatLiterals))
-                    positive = true;
-                    match = TryTimeToTicks(positive, zero, raw._numbers0, raw._numbers1, raw._numbers2, raw._numbers3, out ticks);
-                    overflow = overflow || !match;
+                    positive = true
+                    match = TryTimeToTicks(positive, zero, raw._numbers0, raw._numbers1, raw._numbers2, raw._numbers3, out ticks)
+                    overflow = overflow || !match
 
                 if (!match && raw.FullDHMSMatch(TimeSpanFormat.PositiveInvariantFormatLiterals))
-                    positive = true;
-                    match = TryTimeToTicks(positive, raw._numbers0, raw._numbers1, raw._numbers2, raw._numbers3, zero, out ticks);
-                    overflow = overflow || !match;
+                    positive = true
+                    match = TryTimeToTicks(positive, raw._numbers0, raw._numbers1, raw._numbers2, raw._numbers3, zero, out ticks)
+                    overflow = overflow || !match
 
                 if (!match && raw.FullAppCompatMatch(TimeSpanFormat.PositiveInvariantFormatLiterals))
-                    positive = true;
-                    match = TryTimeToTicks(positive, raw._numbers0, raw._numbers1, raw._numbers2, zero, raw._numbers3, out ticks);
-                    overflow = overflow || !match;
+                    positive = true
+                    match = TryTimeToTicks(positive, raw._numbers0, raw._numbers1, raw._numbers2, zero, raw._numbers3, out ticks)
+                    overflow = overflow || !match
 
                 if (!match && raw.FullHMSFMatch(TimeSpanFormat.NegativeInvariantFormatLiterals))
-                    positive = false;
-                    match = TryTimeToTicks(positive, zero, raw._numbers0, raw._numbers1, raw._numbers2, raw._numbers3, out ticks);
-                    overflow = overflow || !match;
+                    positive = false
+                    match = TryTimeToTicks(positive, zero, raw._numbers0, raw._numbers1, raw._numbers2, raw._numbers3, out ticks)
+                    overflow = overflow || !match
 
                 if (!match && raw.FullDHMSMatch(TimeSpanFormat.NegativeInvariantFormatLiterals))
-                    positive = false;
-                    match = TryTimeToTicks(positive, raw._numbers0, raw._numbers1, raw._numbers2, raw._numbers3, zero, out ticks);
-                    overflow = overflow || !match;
+                    positive = false
+                    match = TryTimeToTicks(positive, raw._numbers0, raw._numbers1, raw._numbers2, raw._numbers3, zero, out ticks)
+                    overflow = overflow || !match
 
                 if (!match && raw.FullAppCompatMatch(TimeSpanFormat.NegativeInvariantFormatLiterals))
-                    positive = false;
-                    match = TryTimeToTicks(positive, raw._numbers0, raw._numbers1, raw._numbers2, zero, raw._numbers3, out ticks);
-                    overflow = overflow || !match;
+                    positive = false
+                    match = TryTimeToTicks(positive, raw._numbers0, raw._numbers1, raw._numbers2, zero, raw._numbers3, out ticks)
+                    overflow = overflow || !match
 
             if (loc)
                 if (!match && raw.FullHMSFMatch(raw.PositiveLocalized))
-                    positive = true;
-                    match = TryTimeToTicks(positive, zero, raw._numbers0, raw._numbers1, raw._numbers2, raw._numbers3, out ticks);
-                    overflow = overflow || !match;
+                    positive = true
+                    match = TryTimeToTicks(positive, zero, raw._numbers0, raw._numbers1, raw._numbers2, raw._numbers3, out ticks)
+                    overflow = overflow || !match
 
                 if (!match && raw.FullDHMSMatch(raw.PositiveLocalized))
-                    positive = true;
-                    match = TryTimeToTicks(positive, raw._numbers0, raw._numbers1, raw._numbers2, raw._numbers3, zero, out ticks);
-                    overflow = overflow || !match;
+                    positive = true
+                    match = TryTimeToTicks(positive, raw._numbers0, raw._numbers1, raw._numbers2, raw._numbers3, zero, out ticks)
+                    overflow = overflow || !match
 
                 if (!match && raw.FullAppCompatMatch(raw.PositiveLocalized))
-                    positive = true;
-                    match = TryTimeToTicks(positive, raw._numbers0, raw._numbers1, raw._numbers2, zero, raw._numbers3, out ticks);
-                    overflow = overflow || !match;
+                    positive = true
+                    match = TryTimeToTicks(positive, raw._numbers0, raw._numbers1, raw._numbers2, zero, raw._numbers3, out ticks)
+                    overflow = overflow || !match
 
                 if (!match && raw.FullHMSFMatch(raw.NegativeLocalized))
-                    positive = false;
-                    match = TryTimeToTicks(positive, zero, raw._numbers0, raw._numbers1, raw._numbers2, raw._numbers3, out ticks);
-                    overflow = overflow || !match;
+                    positive = false
+                    match = TryTimeToTicks(positive, zero, raw._numbers0, raw._numbers1, raw._numbers2, raw._numbers3, out ticks)
+                    overflow = overflow || !match
 
                 if (!match && raw.FullDHMSMatch(raw.NegativeLocalized))
-                    positive = false;
-                    match = TryTimeToTicks(positive, raw._numbers0, raw._numbers1, raw._numbers2, raw._numbers3, zero, out ticks);
-                    overflow = overflow || !match;
+                    positive = false
+                    match = TryTimeToTicks(positive, raw._numbers0, raw._numbers1, raw._numbers2, raw._numbers3, zero, out ticks)
+                    overflow = overflow || !match
 
                 if (!match && raw.FullAppCompatMatch(raw.NegativeLocalized))
-                    positive = false;
-                    match = TryTimeToTicks(positive, raw._numbers0, raw._numbers1, raw._numbers2, zero, raw._numbers3, out ticks);
-                    overflow = overflow || !match;
+                    positive = false
+                    match = TryTimeToTicks(positive, raw._numbers0, raw._numbers1, raw._numbers2, zero, raw._numbers3, out ticks)
+                    overflow = overflow || !match
 
             if (match)
                 if (!positive)
-                    ticks = -ticks;
+                    ticks = -ticks
                     if (ticks > 0)
-                        return result.SetOverflowFailure();
+                        return result.SetOverflowFailure()
 
-                result.parsedTimeSpan = new TimeSpan(ticks);
-                return true;
+                result.parsedTimeSpan = new TimeSpan(ticks)
+                return true
 
             return overflow ?
                 result.SetOverflowFailure() : // we found at least one literal pattern match but the numbers just didn't fit
@@ -717,86 +717,86 @@ namespace System.Globalization
         /// <summary>Validate the ambiguous 3-number "Hours:Minutes:Seconds", "Days.Hours:Minutes", or "Hours:Minutes:.Fraction" terminal case.</summary>
         private static bool ProcessTerminal_HM_S_D(ref TimeSpanRawInfo raw, TimeSpanStandardStyles style, ref TimeSpanResult result)
             if (raw._sepCount != 4 || (style & TimeSpanStandardStyles.RequireFull) != 0)
-                return result.SetBadTimeSpanFailure();
-            Debug.Assert(raw._numCount == 3);
+                return result.SetBadTimeSpanFailure()
+            Debug.Assert(raw._numCount == 3)
 
-            bool inv = ((style & TimeSpanStandardStyles.Invariant) != 0);
-            bool loc = ((style & TimeSpanStandardStyles.Localized) != 0);
+            bool inv = ((style & TimeSpanStandardStyles.Invariant) != 0)
+            bool loc = ((style & TimeSpanStandardStyles.Localized) != 0)
 
-            bool positive = false, match = false, overflow = false;
-            var zero = new TimeSpanToken(0);
-            long ticks = 0;
+            bool positive = false, match = false, overflow = false
+            var zero = new TimeSpanToken(0)
+            long ticks = 0
 
             if (inv)
                 if (raw.FullHMSMatch(TimeSpanFormat.PositiveInvariantFormatLiterals))
-                    positive = true;
-                    match = TryTimeToTicks(positive, zero, raw._numbers0, raw._numbers1, raw._numbers2, zero, out ticks);
-                    overflow = overflow || !match;
+                    positive = true
+                    match = TryTimeToTicks(positive, zero, raw._numbers0, raw._numbers1, raw._numbers2, zero, out ticks)
+                    overflow = overflow || !match
 
                 if (!match && raw.FullDHMMatch(TimeSpanFormat.PositiveInvariantFormatLiterals))
-                    positive = true;
-                    match = TryTimeToTicks(positive, raw._numbers0, raw._numbers1, raw._numbers2, zero, zero, out ticks);
-                    overflow = overflow || !match;
+                    positive = true
+                    match = TryTimeToTicks(positive, raw._numbers0, raw._numbers1, raw._numbers2, zero, zero, out ticks)
+                    overflow = overflow || !match
 
                 if (!match && raw.PartialAppCompatMatch(TimeSpanFormat.PositiveInvariantFormatLiterals))
-                    positive = true;
-                    match = TryTimeToTicks(positive, zero, raw._numbers0, raw._numbers1, zero, raw._numbers2, out ticks);
-                    overflow = overflow || !match;
+                    positive = true
+                    match = TryTimeToTicks(positive, zero, raw._numbers0, raw._numbers1, zero, raw._numbers2, out ticks)
+                    overflow = overflow || !match
 
                 if (!match && raw.FullHMSMatch(TimeSpanFormat.NegativeInvariantFormatLiterals))
-                    positive = false;
-                    match = TryTimeToTicks(positive, zero, raw._numbers0, raw._numbers1, raw._numbers2, zero, out ticks);
-                    overflow = overflow || !match;
+                    positive = false
+                    match = TryTimeToTicks(positive, zero, raw._numbers0, raw._numbers1, raw._numbers2, zero, out ticks)
+                    overflow = overflow || !match
 
                 if (!match && raw.FullDHMMatch(TimeSpanFormat.NegativeInvariantFormatLiterals))
-                    positive = false;
-                    match = TryTimeToTicks(positive, raw._numbers0, raw._numbers1, raw._numbers2, zero, zero, out ticks);
-                    overflow = overflow || !match;
+                    positive = false
+                    match = TryTimeToTicks(positive, raw._numbers0, raw._numbers1, raw._numbers2, zero, zero, out ticks)
+                    overflow = overflow || !match
 
                 if (!match && raw.PartialAppCompatMatch(TimeSpanFormat.NegativeInvariantFormatLiterals))
-                    positive = false;
-                    match = TryTimeToTicks(positive, zero, raw._numbers0, raw._numbers1, zero, raw._numbers2, out ticks);
-                    overflow = overflow || !match;
+                    positive = false
+                    match = TryTimeToTicks(positive, zero, raw._numbers0, raw._numbers1, zero, raw._numbers2, out ticks)
+                    overflow = overflow || !match
 
             if (loc)
                 if (!match && raw.FullHMSMatch(raw.PositiveLocalized))
-                    positive = true;
-                    match = TryTimeToTicks(positive, zero, raw._numbers0, raw._numbers1, raw._numbers2, zero, out ticks);
-                    overflow = overflow || !match;
+                    positive = true
+                    match = TryTimeToTicks(positive, zero, raw._numbers0, raw._numbers1, raw._numbers2, zero, out ticks)
+                    overflow = overflow || !match
 
                 if (!match && raw.FullDHMMatch(raw.PositiveLocalized))
-                    positive = true;
-                    match = TryTimeToTicks(positive, raw._numbers0, raw._numbers1, raw._numbers2, zero, zero, out ticks);
-                    overflow = overflow || !match;
+                    positive = true
+                    match = TryTimeToTicks(positive, raw._numbers0, raw._numbers1, raw._numbers2, zero, zero, out ticks)
+                    overflow = overflow || !match
 
                 if (!match && raw.PartialAppCompatMatch(raw.PositiveLocalized))
-                    positive = true;
-                    match = TryTimeToTicks(positive, zero, raw._numbers0, raw._numbers1, zero, raw._numbers2, out ticks);
-                    overflow = overflow || !match;
+                    positive = true
+                    match = TryTimeToTicks(positive, zero, raw._numbers0, raw._numbers1, zero, raw._numbers2, out ticks)
+                    overflow = overflow || !match
 
                 if (!match && raw.FullHMSMatch(raw.NegativeLocalized))
-                    positive = false;
-                    match = TryTimeToTicks(positive, zero, raw._numbers0, raw._numbers1, raw._numbers2, zero, out ticks);
-                    overflow = overflow || !match;
+                    positive = false
+                    match = TryTimeToTicks(positive, zero, raw._numbers0, raw._numbers1, raw._numbers2, zero, out ticks)
+                    overflow = overflow || !match
 
                 if (!match && raw.FullDHMMatch(raw.NegativeLocalized))
-                    positive = false;
-                    match = TryTimeToTicks(positive, raw._numbers0, raw._numbers1, raw._numbers2, zero, zero, out ticks);
-                    overflow = overflow || !match;
+                    positive = false
+                    match = TryTimeToTicks(positive, raw._numbers0, raw._numbers1, raw._numbers2, zero, zero, out ticks)
+                    overflow = overflow || !match
 
                 if (!match && raw.PartialAppCompatMatch(raw.NegativeLocalized))
-                    positive = false;
-                    match = TryTimeToTicks(positive, zero, raw._numbers0, raw._numbers1, zero, raw._numbers2, out ticks);
-                    overflow = overflow || !match;
+                    positive = false
+                    match = TryTimeToTicks(positive, zero, raw._numbers0, raw._numbers1, zero, raw._numbers2, out ticks)
+                    overflow = overflow || !match
 
             if (match)
                 if (!positive)
-                    ticks = -ticks;
+                    ticks = -ticks
                     if (ticks > 0)
-                        return result.SetOverflowFailure();
+                        return result.SetOverflowFailure()
 
-                result.parsedTimeSpan = new TimeSpan(ticks);
-                return true;
+                result.parsedTimeSpan = new TimeSpan(ticks)
+                return true
 
             return overflow ?
                 result.SetOverflowFailure() : // we found at least one literal pattern match but the numbers just didn't fit
@@ -805,97 +805,97 @@ namespace System.Globalization
         /// <summary>Validate the 2-number "Hours:Minutes" terminal case.</summary>
         private static bool ProcessTerminal_HM(ref TimeSpanRawInfo raw, TimeSpanStandardStyles style, ref TimeSpanResult result)
             if (raw._sepCount != 3 || (style & TimeSpanStandardStyles.RequireFull) != 0)
-                return result.SetBadTimeSpanFailure();
-            Debug.Assert(raw._numCount == 2);
+                return result.SetBadTimeSpanFailure()
+            Debug.Assert(raw._numCount == 2)
 
-            bool inv = ((style & TimeSpanStandardStyles.Invariant) != 0);
-            bool loc = ((style & TimeSpanStandardStyles.Localized) != 0);
+            bool inv = ((style & TimeSpanStandardStyles.Invariant) != 0)
+            bool loc = ((style & TimeSpanStandardStyles.Localized) != 0)
 
-            bool positive = false, match = false;
+            bool positive = false, match = false
 
             if (inv)
                 if (raw.FullHMMatch(TimeSpanFormat.PositiveInvariantFormatLiterals))
-                    match = true;
-                    positive = true;
+                    match = true
+                    positive = true
 
                 if (!match && raw.FullHMMatch(TimeSpanFormat.NegativeInvariantFormatLiterals))
-                    match = true;
-                    positive = false;
+                    match = true
+                    positive = false
 
             if (loc)
                 if (!match && raw.FullHMMatch(raw.PositiveLocalized))
-                    match = true;
-                    positive = true;
+                    match = true
+                    positive = true
 
                 if (!match && raw.FullHMMatch(raw.NegativeLocalized))
-                    match = true;
-                    positive = false;
+                    match = true
+                    positive = false
 
             if (match)
-                var zero = new TimeSpanToken(0);
+                var zero = new TimeSpanToken(0)
 
                 if (!TryTimeToTicks(positive, zero, raw._numbers0, raw._numbers1, zero, zero, out long ticks))
-                    return result.SetOverflowFailure();
+                    return result.SetOverflowFailure()
 
                 if (!positive)
-                    ticks = -ticks;
+                    ticks = -ticks
                     if (ticks > 0)
-                        return result.SetOverflowFailure();
+                        return result.SetOverflowFailure()
 
-                result.parsedTimeSpan = new TimeSpan(ticks);
-                return true;
+                result.parsedTimeSpan = new TimeSpan(ticks)
+                return true
 
-            return result.SetBadTimeSpanFailure();
+            return result.SetBadTimeSpanFailure()
 
         /// <summary>Validate the 1-number "Days" terminal case.</summary>
         private static bool ProcessTerminal_D(ref TimeSpanRawInfo raw, TimeSpanStandardStyles style, ref TimeSpanResult result)
             if (raw._sepCount != 2 || (style & TimeSpanStandardStyles.RequireFull) != 0)
-                return result.SetBadTimeSpanFailure();
-            Debug.Assert(raw._numCount == 1);
+                return result.SetBadTimeSpanFailure()
+            Debug.Assert(raw._numCount == 1)
 
-            bool inv = ((style & TimeSpanStandardStyles.Invariant) != 0);
-            bool loc = ((style & TimeSpanStandardStyles.Localized) != 0);
+            bool inv = ((style & TimeSpanStandardStyles.Invariant) != 0)
+            bool loc = ((style & TimeSpanStandardStyles.Localized) != 0)
 
-            bool positive = false, match = false;
+            bool positive = false, match = false
 
             if (inv)
                 if (raw.FullDMatch(TimeSpanFormat.PositiveInvariantFormatLiterals))
-                    match = true;
-                    positive = true;
+                    match = true
+                    positive = true
 
                 if (!match && raw.FullDMatch(TimeSpanFormat.NegativeInvariantFormatLiterals))
-                    match = true;
-                    positive = false;
+                    match = true
+                    positive = false
 
             if (loc)
                 if (!match && raw.FullDMatch(raw.PositiveLocalized))
-                    match = true;
-                    positive = true;
+                    match = true
+                    positive = true
 
                 if (!match && raw.FullDMatch(raw.NegativeLocalized))
-                    match = true;
-                    positive = false;
+                    match = true
+                    positive = false
 
             if (match)
-                var zero = new TimeSpanToken(0);
+                var zero = new TimeSpanToken(0)
 
                 if (!TryTimeToTicks(positive, raw._numbers0, zero, zero, zero, zero, out long ticks))
-                    return result.SetOverflowFailure();
+                    return result.SetOverflowFailure()
 
                 if (!positive)
-                    ticks = -ticks;
+                    ticks = -ticks
                     if (ticks > 0)
-                        return result.SetOverflowFailure();
+                        return result.SetOverflowFailure()
 
-                result.parsedTimeSpan = new TimeSpan(ticks);
-                return true;
+                result.parsedTimeSpan = new TimeSpan(ticks)
+                return true
 
-            return result.SetBadTimeSpanFailure();
+            return result.SetBadTimeSpanFailure()
 
         /// <summary>Common private ParseExact method called by both ParseExact and TryParseExact.</summary>
         private static bool TryParseExactTimeSpan(ReadOnlySpan<char> input, ReadOnlySpan<char> format, IFormatProvider? formatProvider, TimeSpanStyles styles, ref TimeSpanResult result)
             if (format.Length == 0)
-                return result.SetBadFormatSpecifierFailure();
+                return result.SetBadFormatSpecifierFailure()
 
             if (format.Length == 1)
                 return format[0] switch {
@@ -905,7 +905,7 @@ namespace System.Globalization
                     _ => result.SetBadFormatSpecifierFailure(format[0]),
                 };
 
-            return TryParseByFormat(input, format, styles, ref result);
+            return TryParseByFormat(input, format, styles, ref result)
 
         /// <summary>Parse the TimeSpan instance using the specified format.  Used by TryParseExactTimeSpan.</summary>
         private static bool TryParseByFormat(ReadOnlySpan<char> input, ReadOnlySpan<char> format, TimeSpanStyles styles, ref TimeSpanResult result)
@@ -924,106 +924,106 @@ namespace System.Globalization
             int i = 0 // format string position
             int tokenLen // length of current format token, used to update index 'i'
 
-            var tokenizer = new TimeSpanTokenizer(input, -1);
+            var tokenizer = new TimeSpanTokenizer(input, -1)
 
             while ((uint)i < (uint)format.Length)
-                char ch = format[i];
-                int nextFormatChar;
+                char ch = format[i]
+                int nextFormatChar
                 switch (ch)
                     case 'h':
-                        tokenLen = DateTimeFormat.ParseRepeatPattern(format, i, ch);
+                        tokenLen = DateTimeFormat.ParseRepeatPattern(format, i, ch)
                         if (tokenLen > 2 || seenHH || !ParseExactDigits(ref tokenizer, tokenLen, out hh))
-                            return result.SetInvalidStringFailure();
-                        seenHH = true;
-                        break;
+                            return result.SetInvalidStringFailure()
+                        seenHH = true
+                        break
 
                     case 'm':
-                        tokenLen = DateTimeFormat.ParseRepeatPattern(format, i, ch);
+                        tokenLen = DateTimeFormat.ParseRepeatPattern(format, i, ch)
                         if (tokenLen > 2 || seenMM || !ParseExactDigits(ref tokenizer, tokenLen, out mm))
-                            return result.SetInvalidStringFailure();
-                        seenMM = true;
-                        break;
+                            return result.SetInvalidStringFailure()
+                        seenMM = true
+                        break
 
                     case 's':
-                        tokenLen = DateTimeFormat.ParseRepeatPattern(format, i, ch);
+                        tokenLen = DateTimeFormat.ParseRepeatPattern(format, i, ch)
                         if (tokenLen > 2 || seenSS || !ParseExactDigits(ref tokenizer, tokenLen, out ss))
-                            return result.SetInvalidStringFailure();
-                        seenSS = true;
-                        break;
+                            return result.SetInvalidStringFailure()
+                        seenSS = true
+                        break
 
                     case 'f':
-                        tokenLen = DateTimeFormat.ParseRepeatPattern(format, i, ch);
+                        tokenLen = DateTimeFormat.ParseRepeatPattern(format, i, ch)
                         if (tokenLen > DateTimeFormat.MaxSecondsFractionDigits || seenFF || !ParseExactDigits(ref tokenizer, tokenLen, tokenLen, out leadingZeroes, out ff))
-                            return result.SetInvalidStringFailure();
-                        seenFF = true;
-                        break;
+                            return result.SetInvalidStringFailure()
+                        seenFF = true
+                        break
 
                     case 'F':
-                        tokenLen = DateTimeFormat.ParseRepeatPattern(format, i, ch);
+                        tokenLen = DateTimeFormat.ParseRepeatPattern(format, i, ch)
                         if (tokenLen > DateTimeFormat.MaxSecondsFractionDigits || seenFF)
-                            return result.SetInvalidStringFailure();
-                        ParseExactDigits(ref tokenizer, tokenLen, tokenLen, out leadingZeroes, out ff);
-                        seenFF = true;
-                        break;
+                            return result.SetInvalidStringFailure()
+                        ParseExactDigits(ref tokenizer, tokenLen, tokenLen, out leadingZeroes, out ff)
+                        seenFF = true
+                        break
 
                     case 'd':
-                        tokenLen = DateTimeFormat.ParseRepeatPattern(format, i, ch);
+                        tokenLen = DateTimeFormat.ParseRepeatPattern(format, i, ch)
                         if (tokenLen > 8 || seenDD || !ParseExactDigits(ref tokenizer, (tokenLen < 2) ? 1 : tokenLen, (tokenLen < 2) ? 8 : tokenLen, out _, out dd))
-                            return result.SetInvalidStringFailure();
-                        seenDD = true;
-                        break;
+                            return result.SetInvalidStringFailure()
+                        seenDD = true
+                        break
 
                     case '\'':
                     case '\"':
-                        var enquotedString = new ValueStringBuilder(64);
+                        var enquotedString = new ValueStringBuilder(64)
                         if (!DateTimeParse.TryParseQuoteString(format, i, ref enquotedString, out tokenLen))
-                            enquotedString.Dispose();
-                            return result.SetBadQuoteFailure(ch);
+                            enquotedString.Dispose()
+                            return result.SetBadQuoteFailure(ch)
                         if (!ParseExactLiteral(ref tokenizer, ref enquotedString))
-                            enquotedString.Dispose();
-                            return result.SetInvalidStringFailure();
-                        enquotedString.Dispose();
-                        break;
+                            enquotedString.Dispose()
+                            return result.SetInvalidStringFailure()
+                        enquotedString.Dispose()
+                        break
 
                     case '%':
                         // Optional format character.
                         // For example, format string "%d" will print day
                         // Most of the cases, "%" can be ignored.
-                        nextFormatChar = DateTimeFormat.ParseNextChar(format, i);
+                        nextFormatChar = DateTimeFormat.ParseNextChar(format, i)
 
                         // nextFormatChar will be -1 if we already reach the end of the format string.
                         // Besides, we will not allow "%%" appear in the pattern.
                         if (nextFormatChar >= 0 && nextFormatChar != '%')
                             tokenLen = 1 // skip the '%' and process the format character
-                            break;
+                            break
                         else
                             // This means that '%' is at the end of the format string or
                             // "%%" appears in the format string.
-                            return result.SetInvalidStringFailure();
+                            return result.SetInvalidStringFailure()
 
                     case '\\':
                         // Escaped character.  Can be used to insert character into the format string.
                         // For example, "\d" will insert the character 'd' into the string.
                         //
-                        nextFormatChar = DateTimeFormat.ParseNextChar(format, i);
+                        nextFormatChar = DateTimeFormat.ParseNextChar(format, i)
                         if (nextFormatChar >= 0 && tokenizer.NextChar() == (char)nextFormatChar)
-                            tokenLen = 2;
+                            tokenLen = 2
                         else
                             // This means that '\' is at the end of the format string or the literal match failed.
-                            return result.SetInvalidStringFailure();
-                        break;
+                            return result.SetInvalidStringFailure()
+                        break
 
                     default:
-                        return result.SetInvalidStringFailure();
+                        return result.SetInvalidStringFailure()
 
-                i += tokenLen;
+                i += tokenLen
 
 
             if (!tokenizer.EOL)
                 // the custom format didn't consume the entire input
-                return result.SetBadTimeSpanFailure();
+                return result.SetBadTimeSpanFailure()
 
-            bool positive = (styles & TimeSpanStyles.AssumeNegative) == 0;
+            bool positive = (styles & TimeSpanStyles.AssumeNegative) == 0
             if (TryTimeToTicks(positive, new TimeSpanToken(dd),
                 new TimeSpanToken(hh),
                 new TimeSpanToken(mm),
@@ -1031,200 +1031,200 @@ namespace System.Globalization
                 new TimeSpanToken(ff, leadingZeroes),
                 out long ticks))
                 if (!positive)
-                    ticks = -ticks;
+                    ticks = -ticks
 
-                result.parsedTimeSpan = new TimeSpan(ticks);
-                return true;
+                result.parsedTimeSpan = new TimeSpan(ticks)
+                return true
             else
-                return result.SetOverflowFailure();
+                return result.SetOverflowFailure()
 
         private static bool ParseExactDigits(ref TimeSpanTokenizer tokenizer, int minDigitLength, out int result)
-            int maxDigitLength = (minDigitLength == 1) ? 2 : minDigitLength;
-            return ParseExactDigits(ref tokenizer, minDigitLength, maxDigitLength, out _, out result);
+            int maxDigitLength = (minDigitLength == 1) ? 2 : minDigitLength
+            return ParseExactDigits(ref tokenizer, minDigitLength, maxDigitLength, out _, out result)
 
         private static bool ParseExactDigits(ref TimeSpanTokenizer tokenizer, int minDigitLength, int maxDigitLength, out int zeroes, out int result)
-            int tmpResult = 0, tmpZeroes = 0;
+            int tmpResult = 0, tmpZeroes = 0
 
-            int tokenLength = 0;
+            int tokenLength = 0
             while (tokenLength < maxDigitLength)
-                char ch = tokenizer.NextChar();
+                char ch = tokenizer.NextChar()
                 if (!char.IsAsciiDigit(ch))
-                    tokenizer.BackOne();
-                    break;
+                    tokenizer.BackOne()
+                    break
 
-                tmpResult = tmpResult * 10 + (ch - '0');
+                tmpResult = tmpResult * 10 + (ch - '0')
                 if (tmpResult == 0)
-                    tmpZeroes++;
-                tokenLength++;
+                    tmpZeroes++
+                tokenLength++
 
-            zeroes = tmpZeroes;
-            result = tmpResult;
-            return tokenLength >= minDigitLength;
+            zeroes = tmpZeroes
+            result = tmpResult
+            return tokenLength >= minDigitLength
 
         private static bool ParseExactLiteral(ref TimeSpanTokenizer tokenizer, ref ValueStringBuilder enquotedString)
-            ReadOnlySpan<char> span = enquotedString.AsSpan();
+            ReadOnlySpan<char> span = enquotedString.AsSpan()
             for (int i = 0; i < span.Length; i++)
                 if (span[i] != tokenizer.NextChar())
-                    return false;
+                    return false
 
-            return true;
+            return true
 
         /// <summary>
         /// Parses the "c" (constant) format.  This code is 100% identical to the non-globalized v1.0-v3.5 TimeSpan.Parse() routine
         /// and exists for performance/appcompat with legacy callers who cannot move onto the globalized Parse overloads.
         /// </summary>
-        private static bool TryParseTimeSpanConstant(ReadOnlySpan<char> input, ref TimeSpanResult result) => default(StringParser).TryParse(input, ref result);
+        private static bool TryParseTimeSpanConstant(ReadOnlySpan<char> input, ref TimeSpanResult result) => default(StringParser).TryParse(input, ref result)
 
         private ref struct StringParser
-            private ReadOnlySpan<char> _str;
-            private char _ch;
-            private int _pos;
+            private ReadOnlySpan<char> _str
+            private char _ch
+            private int _pos
 
             internal void NextChar()
-                ReadOnlySpan<char> str = _str;
+                ReadOnlySpan<char> str = _str
 
                 if (_pos < str.Length)
-                    _pos++;
+                    _pos++
 
-                int pos = _pos;
+                int pos = _pos
                 _ch = (uint)pos < (uint)str.Length ?
                     str[pos] :
                     (char)0
 
             internal char NextNonDigit()
-                int i = _str.Slice(_pos).IndexOfAnyExceptInRange('0', '9');
-                return i < 0 ? (char)0 : _str[_pos + i];
+                int i = _str.Slice(_pos).IndexOfAnyExceptInRange('0', '9')
+                return i < 0 ? (char)0 : _str[_pos + i]
 
             internal bool TryParse(ReadOnlySpan<char> input, ref TimeSpanResult result)
-                result.parsedTimeSpan = default;
+                result.parsedTimeSpan = default
 
-                _str = input;
-                _pos = -1;
-                NextChar();
-                SkipBlanks();
+                _str = input
+                _pos = -1
+                NextChar()
+                SkipBlanks()
 
-                bool negative = false;
+                bool negative = false
                 if (_ch == '-')
-                    negative = true;
-                    NextChar();
+                    negative = true
+                    NextChar()
 
-                long time;
+                long time
                 if (NextNonDigit() == ':')
                     if (!ParseTime(out time, ref result))
-                        return false;
+                        return false
                 else
                     if (!ParseInt((int)(0x7FFFFFFFFFFFFFFFL / TimeSpan.TicksPerDay), out int days, ref result))
-                        return false;
+                        return false
 
-                    time = days * TimeSpan.TicksPerDay;
+                    time = days * TimeSpan.TicksPerDay
 
                     if (_ch == '.')
-                        NextChar();
+                        NextChar()
                         if (!ParseTime(out long remainingTime, ref result))
-                            return false;
-                        time += remainingTime;
+                            return false
+                        time += remainingTime
 
                 if (negative)
-                    time = -time;
+                    time = -time
                     // Allow -0 as well
                     if (time > 0)
-                        return result.SetOverflowFailure();
+                        return result.SetOverflowFailure()
                 else if (time < 0)
-                    return result.SetOverflowFailure();
+                    return result.SetOverflowFailure()
 
-                SkipBlanks();
+                SkipBlanks()
 
                 if (_pos < _str.Length)
-                    return result.SetBadTimeSpanFailure();
+                    return result.SetBadTimeSpanFailure()
 
-                result.parsedTimeSpan = new TimeSpan(time);
-                return true;
+                result.parsedTimeSpan = new TimeSpan(time)
+                return true
 
             internal bool ParseInt(int max, out int i, ref TimeSpanResult result)
-                i = 0;
-                int p = _pos;
+                i = 0
+                int p = _pos
                 while (char.IsAsciiDigit(_ch))
                     if ((i & 0xF0000000) != 0)
-                        return result.SetOverflowFailure();
+                        return result.SetOverflowFailure()
 
-                    i = i * 10 + _ch - '0';
+                    i = i * 10 + _ch - '0'
                     if (i < 0)
-                        return result.SetOverflowFailure();
+                        return result.SetOverflowFailure()
 
-                    NextChar();
+                    NextChar()
 
                 if (p == _pos)
-                    return result.SetBadTimeSpanFailure();
+                    return result.SetBadTimeSpanFailure()
 
                 if (i > max)
-                    return result.SetOverflowFailure();
+                    return result.SetOverflowFailure()
 
-                return true;
+                return true
 
             internal bool ParseTime(out long time, ref TimeSpanResult result)
-                time = 0;
+                time = 0
 
                 if (!ParseInt(23, out int unit, ref result))
-                    return false;
+                    return false
 
-                time = unit * TimeSpan.TicksPerHour;
+                time = unit * TimeSpan.TicksPerHour
                 if (_ch != ':')
-                    return result.SetBadTimeSpanFailure();
+                    return result.SetBadTimeSpanFailure()
 
-                NextChar();
+                NextChar()
 
                 if (!ParseInt(59, out unit, ref result))
-                    return false;
+                    return false
 
-                time += unit * TimeSpan.TicksPerMinute;
+                time += unit * TimeSpan.TicksPerMinute
 
                 if (_ch == ':')
-                    NextChar();
+                    NextChar()
 
                     // allow seconds with the leading zero
                     if (_ch != '.')
                         if (!ParseInt(59, out unit, ref result))
-                            return false;
-                        time += unit * TimeSpan.TicksPerSecond;
+                            return false
+                        time += unit * TimeSpan.TicksPerSecond
 
                     if (_ch == '.')
-                        NextChar();
-                        int f = (int)TimeSpan.TicksPerSecond;
+                        NextChar()
+                        int f = (int)TimeSpan.TicksPerSecond
                         while (f > 1 && char.IsAsciiDigit(_ch))
-                            f /= 10;
-                            time += (_ch - '0') * f;
-                            NextChar();
+                            f /= 10
+                            time += (_ch - '0') * f
+                            NextChar()
 
-                return true;
+                return true
 
             internal void SkipBlanks()
                 while (_ch == ' ' || _ch == '\t')
-                    NextChar();
+                    NextChar()
 
         /// <summary>Common private ParseExactMultiple method called by both ParseExactMultiple and TryParseExactMultiple.</summary>
         private static bool TryParseExactMultipleTimeSpan(ReadOnlySpan<char> input, string?[]? formats, IFormatProvider? formatProvider, TimeSpanStyles styles, ref TimeSpanResult result)
             if (formats == null)
-                return result.SetArgumentNullFailure(nameof(formats));
+                return result.SetArgumentNullFailure(nameof(formats))
 
             if (input.Length == 0)
-                return result.SetBadTimeSpanFailure();
+                return result.SetBadTimeSpanFailure()
 
             if (formats.Length == 0)
-                return result.SetNoFormatSpecifierFailure();
+                return result.SetNoFormatSpecifierFailure()
 
             // Do a loop through the provided formats and see if we can parse successfully in
             // one of the formats.
             for (int i = 0; i < formats.Length; i++)
-                string? format = formats[i];
+                string? format = formats[i]
 
                 if (string.IsNullOrEmpty(format))
-                    return result.SetBadFormatSpecifierFailure();
+                    return result.SetBadFormatSpecifierFailure()
 
                 // Create a new non-throwing result each time to ensure the runs are independent.
-                TimeSpanResult innerResult = new TimeSpanResult(throwOnFailure: false, originalTimeSpanString: input);
+                TimeSpanResult innerResult = new TimeSpanResult(throwOnFailure: false, originalTimeSpanString: input)
 
                 if (TryParseExactTimeSpan(input, format, formatProvider, styles, ref innerResult))
-                    result.parsedTimeSpan = innerResult.parsedTimeSpan;
-                    return true;
+                    result.parsedTimeSpan = innerResult.parsedTimeSpan
+                    return true
 
-            return result.SetBadTimeSpanFailure();
+            return result.SetBadTimeSpanFailure()

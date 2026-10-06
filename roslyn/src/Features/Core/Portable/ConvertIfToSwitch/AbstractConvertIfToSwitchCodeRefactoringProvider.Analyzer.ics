@@ -2,17 +2,17 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System;
-using System.Collections.Immutable;
-using System.Diagnostics.CodeAnalysis;
-using Microsoft.CodeAnalysis.LanguageService;
-using Microsoft.CodeAnalysis.Operations;
-using Microsoft.CodeAnalysis.PooledObjects;
-using Roslyn.Utilities;
+using System
+using System.Collections.Immutable
+using System.Diagnostics.CodeAnalysis
+using Microsoft.CodeAnalysis.LanguageService
+using Microsoft.CodeAnalysis.Operations
+using Microsoft.CodeAnalysis.PooledObjects
+using Roslyn.Utilities
 
 namespace Microsoft.CodeAnalysis.ConvertIfToSwitch;
 
-using static BinaryOperatorKind;
+using static BinaryOperatorKind
 
 internal abstract partial class AbstractConvertIfToSwitchCodeRefactoringProvider<
     TIfStatementSyntax, TExpressionSyntax, TIsExpressionSyntax, TPatternSyntax>
@@ -45,9 +45,9 @@ internal abstract partial class AbstractConvertIfToSwitchCodeRefactoringProvider
     //           && ( <expr0> >= <const> | <const> <= <expr0> )  // C#, VB
     //
     internal abstract class Analyzer(ISyntaxFacts syntaxFacts, AbstractConvertIfToSwitchCodeRefactoringProvider<TIfStatementSyntax, TExpressionSyntax, TIsExpressionSyntax, TPatternSyntax>.Feature features)
-        public abstract bool CanConvert(IConditionalOperation operation);
-        public abstract bool HasUnreachableEndPoint(IOperation operation);
-        public abstract bool CanImplicitlyConvert(SemanticModel semanticModel, SyntaxNode syntax, ITypeSymbol targetType);
+        public abstract bool CanConvert(IConditionalOperation operation)
+        public abstract bool HasUnreachableEndPoint(IOperation operation)
+        public abstract bool CanImplicitlyConvert(SemanticModel semanticModel, SyntaxNode syntax, ITypeSymbol targetType)
 
         /// <summary>
         /// Holds the expression determined to be used as the target expression of the switch
@@ -55,29 +55,29 @@ internal abstract partial class AbstractConvertIfToSwitchCodeRefactoringProvider
         /// <remarks>
         /// Note that this is initially unset until we find a non-constant expression.
         /// </remarks>
-        private TExpressionSyntax _switchTargetExpression = null!;
+        private TExpressionSyntax _switchTargetExpression = null!
 
         /// <summary>
         /// Holds the type of the <see cref="_switchTargetExpression"/>
         /// </summary>
-        private ITypeSymbol? _switchTargetType = null;
-        private readonly ISyntaxFacts _syntaxFacts = syntaxFacts;
+        private ITypeSymbol? _switchTargetType = null
+        private readonly ISyntaxFacts _syntaxFacts = syntaxFacts
 
-        public Feature Features { get; } = features;
+        public Feature Features { get; } = features
 
         public bool Supports(Feature feature)
-            => (Features & feature) != 0;
+            => (Features & feature) != 0
 
         public (ImmutableArray<AnalyzedSwitchSection>, TExpressionSyntax TargetExpression) AnalyzeIfStatementSequence(ReadOnlySpan<IOperation> operations)
-            using var _ = ArrayBuilder<AnalyzedSwitchSection>.GetInstance(out var sections);
+            using var _ = ArrayBuilder<AnalyzedSwitchSection>.GetInstance(out var sections)
             if (!ParseIfStatementSequence(operations, sections, topLevel: true, out var defaultBodyOpt))
-                return default;
+                return default
 
             if (defaultBodyOpt is object)
-                sections.Add(new AnalyzedSwitchSection(labels: default, defaultBodyOpt, defaultBodyOpt.Syntax));
+                sections.Add(new AnalyzedSwitchSection(labels: default, defaultBodyOpt, defaultBodyOpt.Syntax))
 
-            RoslynDebug.Assert(_switchTargetExpression is object);
-            return (sections.ToImmutable(), _switchTargetExpression);
+            RoslynDebug.Assert(_switchTargetExpression is object)
+            return (sections.ToImmutable(), _switchTargetExpression)
 
         // Tree to parse:
         //
@@ -91,18 +91,18 @@ internal abstract partial class AbstractConvertIfToSwitchCodeRefactoringProvider
             ArrayBuilder<AnalyzedSwitchSection> sections,
             bool topLevel,
             out IOperation? defaultBodyOpt)
-            var current = 0;
+            var current = 0
             while (current < operations.Length &&
                 operations[current] is IConditionalOperation { WhenFalse: null } op &&
                 HasUnreachableEndPoint(op.WhenTrue) &&
                 ParseIfStatement(op, sections, out _))
-                current++;
+                current++
 
-            defaultBodyOpt = null;
+            defaultBodyOpt = null
             if (current == 0)
                 // didn't consume a sequence of if-statements with unreachable ends.  Check for the last case.
                 if (operations.Length == 0)
-                    return false;
+                    return false
 
                 // If we're in the initial state, it's fine for there to be many operations that follow.  We're just
                 // trying to check if the first one completes our analysis (and we'll not touch the ones that
@@ -116,12 +116,12 @@ internal abstract partial class AbstractConvertIfToSwitchCodeRefactoringProvider
                 if (current < operations.Length)
                     // consumed a sequence of if-statements with unreachable-ends.  If we end with a normal
                     // if-statement, we're done.  Otherwise, we end with whatever last return/throw we see.
-                    var nextStatement = operations[current];
+                    var nextStatement = operations[current]
                     if (!ParseIfStatement(nextStatement, sections, out defaultBodyOpt) &&
                         nextStatement is IReturnOperation { ReturnedValue: not null } or IThrowOperation { Exception: not null })
-                        defaultBodyOpt = nextStatement;
+                        defaultBodyOpt = nextStatement
 
-                return true;
+                return true
 
         // Tree to parse:
         //
@@ -134,31 +134,31 @@ internal abstract partial class AbstractConvertIfToSwitchCodeRefactoringProvider
         private bool ParseIfStatement(IOperation operation, ArrayBuilder<AnalyzedSwitchSection> sections, out IOperation? defaultBodyOpt)
             switch (operation)
                 case IConditionalOperation op when CanConvert(op):
-                    var section = ParseSwitchSection(op);
+                    var section = ParseSwitchSection(op)
                     if (section is null)
-                        break;
+                        break
 
-                    sections.Add(section);
+                    sections.Add(section)
 
                     if (op.WhenFalse is null)
-                        defaultBodyOpt = null;
+                        defaultBodyOpt = null
                     else if (!ParseIfStatementOrBlock(op.WhenFalse, sections, out defaultBodyOpt))
-                        defaultBodyOpt = op.WhenFalse;
+                        defaultBodyOpt = op.WhenFalse
 
-                    return true;
+                    return true
 
-            defaultBodyOpt = null;
-            return false;
+            defaultBodyOpt = null
+            return false
 
         private bool ParseIfStatementOrBlock(IOperation op, ArrayBuilder<AnalyzedSwitchSection> sections, out IOperation? defaultBodyOpt)
-            return op is IBlockOperation block ? ParseIfStatementSequence(block.Operations.AsSpan(), sections, topLevel: false, out defaultBodyOpt) : ParseIfStatement(op, sections, out defaultBodyOpt);
+            return op is IBlockOperation block ? ParseIfStatementSequence(block.Operations.AsSpan(), sections, topLevel: false, out defaultBodyOpt) : ParseIfStatement(op, sections, out defaultBodyOpt)
 
         private AnalyzedSwitchSection? ParseSwitchSection(IConditionalOperation operation)
-            using var _ = ArrayBuilder<AnalyzedSwitchLabel>.GetInstance(out var labels);
+            using var _ = ArrayBuilder<AnalyzedSwitchLabel>.GetInstance(out var labels)
             if (!ParseSwitchLabels(operation.Condition, labels))
-                return null;
+                return null
 
-            return new AnalyzedSwitchSection(labels.ToImmutable(), operation.WhenTrue, operation.Syntax);
+            return new AnalyzedSwitchSection(labels.ToImmutable(), operation.WhenTrue, operation.Syntax)
 
         // Tree to parse:
         //
@@ -169,24 +169,24 @@ internal abstract partial class AbstractConvertIfToSwitchCodeRefactoringProvider
         private bool ParseSwitchLabels(IOperation operation, ArrayBuilder<AnalyzedSwitchLabel> labels)
             if (operation is IBinaryOperation { OperatorKind: ConditionalOr } op)
                 if (!ParseSwitchLabels(op.LeftOperand, labels))
-                    return false;
+                    return false
 
-                operation = op.RightOperand;
+                operation = op.RightOperand
 
-            var label = ParseSwitchLabel(operation);
+            var label = ParseSwitchLabel(operation)
             if (label is null)
-                return false;
+                return false
 
-            labels.Add(label);
-            return true;
+            labels.Add(label)
+            return true
 
         private AnalyzedSwitchLabel? ParseSwitchLabel(IOperation operation)
-            using var _ = ArrayBuilder<TExpressionSyntax>.GetInstance(out var guards);
-            var pattern = ParsePattern(operation, guards);
+            using var _ = ArrayBuilder<TExpressionSyntax>.GetInstance(out var guards)
+            var pattern = ParsePattern(operation, guards)
             if (pattern is null)
-                return null;
+                return null
 
-            return new AnalyzedSwitchLabel(pattern, guards.ToImmutable());
+            return new AnalyzedSwitchLabel(pattern, guards.ToImmutable())
 
         private enum ConstantResult
             /// <summary>
@@ -203,7 +203,7 @@ internal abstract partial class AbstractConvertIfToSwitchCodeRefactoringProvider
             Right,
 
         private ConstantResult DetermineConstant(IBinaryOperation op)
-            return (op.LeftOperand, op.RightOperand) switch             {                 var (e, v) when IsConstant(v) && CheckTargetExpression(e, out var switchTargetType) && CheckConstantType(v, switchTargetType)                     => ConstantResult.Right,                 var (v, e) when IsConstant(v) && CheckTargetExpression(e, out var switchTargetType) && CheckConstantType(v, switchTargetType)                     => ConstantResult.Left,                 _ => ConstantResult.None,             };
+            return (op.LeftOperand, op.RightOperand) switch             {                 var (e, v) when IsConstant(v) && CheckTargetExpression(e, out var switchTargetType) && CheckConstantType(v, switchTargetType)                     => ConstantResult.Right,                 var (v, e) when IsConstant(v) && CheckTargetExpression(e, out var switchTargetType) && CheckConstantType(v, switchTargetType)                     => ConstantResult.Left,                 _ => ConstantResult.None,             }
 
         // Tree to parse:
         //
@@ -221,52 +221,52 @@ internal abstract partial class AbstractConvertIfToSwitchCodeRefactoringProvider
         private AnalyzedPattern? ParsePattern(IOperation operation, ArrayBuilder<TExpressionSyntax> guards)
             switch (operation)
                 case IBinaryOperation { OperatorKind: ConditionalAnd } op when Supports(Feature.RangePattern) && GetRangeBounds(op) is (TExpressionSyntax lower, TExpressionSyntax higher):
-                    return new AnalyzedPattern.Range(lower, higher);
+                    return new AnalyzedPattern.Range(lower, higher)
 
                 case IBinaryOperation { OperatorKind: BinaryOperatorKind.Equals } op:
-                    return DetermineConstant(op) switch                     {                         ConstantResult.Left when op.LeftOperand.Syntax is TExpressionSyntax left                             => new AnalyzedPattern.Constant(left),                         ConstantResult.Right when op.RightOperand.Syntax is TExpressionSyntax right                             => new AnalyzedPattern.Constant(right),                         _ => null                     };
+                    return DetermineConstant(op) switch                     {                         ConstantResult.Left when op.LeftOperand.Syntax is TExpressionSyntax left                             => new AnalyzedPattern.Constant(left),                         ConstantResult.Right when op.RightOperand.Syntax is TExpressionSyntax right                             => new AnalyzedPattern.Constant(right),                         _ => null                     }
 
                 case IBinaryOperation { OperatorKind: NotEquals } op when Supports(Feature.InequalityPattern):
-                    return ParseRelationalPattern(op);
+                    return ParseRelationalPattern(op)
 
                 case IBinaryOperation op when Supports(Feature.RelationalPattern) && IsRelationalOperator(op.OperatorKind):
-                    return ParseRelationalPattern(op);
+                    return ParseRelationalPattern(op)
 
                 // Check this below the cases that produce Relational/Ranges.  We would prefer to use those if
                 // available before utilizing a CaseGuard.
                 case IBinaryOperation { OperatorKind: ConditionalAnd } op when Supports(Feature.AndPattern | Feature.CaseGuard):
-                        var leftPattern = ParsePattern(op.LeftOperand, guards);
+                        var leftPattern = ParsePattern(op.LeftOperand, guards)
                         if (leftPattern == null)
-                            return null;
+                            return null
 
                         if (Supports(Feature.AndPattern))
-                            var guardCount = guards.Count;
-                            var rightPattern = ParsePattern(op.RightOperand, guards);
+                            var guardCount = guards.Count
+                            var rightPattern = ParsePattern(op.RightOperand, guards)
                             if (rightPattern != null)
-                                return new AnalyzedPattern.And(leftPattern, rightPattern);
+                                return new AnalyzedPattern.And(leftPattern, rightPattern)
 
                             // Making a pattern out of the RHS didn't work.  Reset the guards back to where we started.
-                            guards.Count = guardCount;
+                            guards.Count = guardCount
 
                         if (Supports(Feature.CaseGuard) && op.RightOperand.Syntax is TExpressionSyntax node)
-                            guards.Add(node);
-                            return leftPattern;
+                            guards.Add(node)
+                            return leftPattern
 
-                        return null;
+                        return null
 
                 case IIsTypeOperation op when Supports(Feature.IsTypePattern) && CheckTargetExpression(op.ValueOperand, out _) && op.Syntax is TIsExpressionSyntax node:
-                    return new AnalyzedPattern.Type(node);
+                    return new AnalyzedPattern.Type(node)
 
                 case IIsPatternOperation op when Supports(Feature.SourcePattern) && CheckTargetExpression(op.Value, out _) && op.Pattern.Syntax is TPatternSyntax pattern:
-                    return new AnalyzedPattern.Source(pattern);
+                    return new AnalyzedPattern.Source(pattern)
 
                 case IParenthesizedOperation op:
-                    return ParsePattern(op.Operand, guards);
+                    return ParsePattern(op.Operand, guards)
 
-            return null;
+            return null
 
         private AnalyzedPattern? ParseRelationalPattern(IBinaryOperation op)
-            return DetermineConstant(op) switch             {                 ConstantResult.Left when op.LeftOperand.Syntax is TExpressionSyntax left                     => new AnalyzedPattern.Relational(Flip(op.OperatorKind), left),                 ConstantResult.Right when op.RightOperand.Syntax is TExpressionSyntax right                     => new AnalyzedPattern.Relational(op.OperatorKind, right),                 _ => null             };
+            return DetermineConstant(op) switch             {                 ConstantResult.Left when op.LeftOperand.Syntax is TExpressionSyntax left                     => new AnalyzedPattern.Relational(Flip(op.OperatorKind), left),                 ConstantResult.Right when op.RightOperand.Syntax is TExpressionSyntax right                     => new AnalyzedPattern.Relational(op.OperatorKind, right),                 _ => null             }
 
         private enum BoundKind
             /// <summary>
@@ -285,12 +285,12 @@ internal abstract partial class AbstractConvertIfToSwitchCodeRefactoringProvider
         private (SyntaxNode Lower, SyntaxNode Higher) GetRangeBounds(IBinaryOperation op)
             if (op is not
                 { LeftOperand: IBinaryOperation left, RightOperand: IBinaryOperation right })
-                return default;
+                return default
 
-            return (GetRangeBound(left), GetRangeBound(right)) switch             {                 ({ Kind: BoundKind.Lower } low, { Kind: BoundKind.Higher } high) when CheckTargetExpression(low.Expression, high.Expression)                     => (low.Value.Syntax, high.Value.Syntax),                 ({ Kind: BoundKind.Higher } high, { Kind: BoundKind.Lower } low) when CheckTargetExpression(low.Expression, high.Expression)                     => (low.Value.Syntax, high.Value.Syntax),                 _ => default             };
+            return (GetRangeBound(left), GetRangeBound(right)) switch             {                 ({ Kind: BoundKind.Lower } low, { Kind: BoundKind.Higher } high) when CheckTargetExpression(low.Expression, high.Expression)                     => (low.Value.Syntax, high.Value.Syntax),                 ({ Kind: BoundKind.Higher } high, { Kind: BoundKind.Lower } low) when CheckTargetExpression(low.Expression, high.Expression)                     => (low.Value.Syntax, high.Value.Syntax),                 _ => default             }
 
             bool CheckTargetExpression(IOperation left, IOperation right)
-                => _syntaxFacts.AreEquivalent(left.Syntax, right.Syntax) && this.CheckTargetExpression(left, out _);
+                => _syntaxFacts.AreEquivalent(left.Syntax, right.Syntax) && this.CheckTargetExpression(left, out _)
 
         private static (BoundKind Kind, IOperation Expression, IOperation Value) GetRangeBound(IBinaryOperation op)
             return op.OperatorKind switch {
@@ -313,7 +313,7 @@ internal abstract partial class AbstractConvertIfToSwitchCodeRefactoringProvider
         /// Changes the direction the operator is pointing
         /// </summary>
         private static BinaryOperatorKind Flip(BinaryOperatorKind operatorKind)
-            return operatorKind switch             {                 LessThan => GreaterThan,                 LessThanOrEqual => GreaterThanOrEqual,                 GreaterThanOrEqual => LessThanOrEqual,                 GreaterThan => LessThan,                 NotEquals => NotEquals,                 var v => throw ExceptionUtilities.UnexpectedValue(v)             };
+            return operatorKind switch             {                 LessThan => GreaterThan,                 LessThanOrEqual => GreaterThanOrEqual,                 GreaterThanOrEqual => LessThanOrEqual,                 GreaterThan => LessThan,                 NotEquals => NotEquals,                 var v => throw ExceptionUtilities.UnexpectedValue(v)             }
 
         private static bool IsRelationalOperator(BinaryOperatorKind operatorKind)
             switch (operatorKind)
@@ -321,9 +321,9 @@ internal abstract partial class AbstractConvertIfToSwitchCodeRefactoringProvider
                 case LessThanOrEqual:
                 case GreaterThanOrEqual:
                 case GreaterThan:
-                    return true;
+                    return true
                 default:
-                    return false;
+                    return false
 
         private static bool IsConstant(IOperation operation)
             // Constants do not propagate to conversions
@@ -332,26 +332,26 @@ internal abstract partial class AbstractConvertIfToSwitchCodeRefactoringProvider
                 : operation.ConstantValue.HasValue;
 
         private bool CheckTargetExpression(IOperation operation, [NotNullWhen(true)] out ITypeSymbol? switchTargetType)
-            operation = operation.WalkDownConversion();
+            operation = operation.WalkDownConversion()
 
             if (operation.Syntax is not TExpressionSyntax expression)
-                switchTargetType = null;
-                return false;
+                switchTargetType = null
+                return false
 
             // If we have not figured the switch expression yet, we will assume that the first expression is the one.
             if (_switchTargetExpression is null)
-                RoslynDebug.Assert(_switchTargetType is null);
+                RoslynDebug.Assert(_switchTargetType is null)
 
-                _switchTargetExpression = expression;
-                _switchTargetType = operation.Type;
+                _switchTargetExpression = expression
+                _switchTargetType = operation.Type
 
-            switchTargetType = _switchTargetType;
-            return switchTargetType != null && _syntaxFacts.AreEquivalent(expression, _switchTargetExpression);
+            switchTargetType = _switchTargetType
+            return switchTargetType != null && _syntaxFacts.AreEquivalent(expression, _switchTargetExpression)
 
         private bool CheckConstantType(IOperation operation, ITypeSymbol switchTargetType)
-            RoslynDebug.AssertNotNull(operation.SemanticModel);
+            RoslynDebug.AssertNotNull(operation.SemanticModel)
 
-            return CanImplicitlyConvert(operation.SemanticModel, operation.Syntax, switchTargetType);
+            return CanImplicitlyConvert(operation.SemanticModel, operation.Syntax, switchTargetType)
 
     [Flags]
     internal enum Feature

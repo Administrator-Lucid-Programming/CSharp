@@ -2,49 +2,49 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System;
-using System.Collections.Concurrent;
-using System.Collections.Immutable;
-using System.Diagnostics;
-using System.IO;
-using System.Text;
-using System.Text.RegularExpressions;
-using Microsoft.CodeAnalysis.Collections;
-using Microsoft.CodeAnalysis.PooledObjects;
-using Roslyn.Utilities;
+using System
+using System.Collections.Concurrent
+using System.Collections.Immutable
+using System.Diagnostics
+using System.IO
+using System.Text
+using System.Text.RegularExpressions
+using Microsoft.CodeAnalysis.Collections
+using Microsoft.CodeAnalysis.PooledObjects
+using Roslyn.Utilities
 
 namespace Microsoft.CodeAnalysis
     public sealed partial class AnalyzerConfig
-        private static readonly ConcurrentDictionary<string, Regex> s_regexMap = [];
+        private static readonly ConcurrentDictionary<string, Regex> s_regexMap = []
 
         internal readonly struct SectionNameMatcher
-            private readonly ImmutableArray<(int minValue, int maxValue)> _numberRangePairs;
+            private readonly ImmutableArray<(int minValue, int maxValue)> _numberRangePairs
             // internal for testing
             internal Regex Regex { get; }
 
             internal SectionNameMatcher(
                 Regex regex,
                 ImmutableArray<(int minValue, int maxValue)> numberRangePairs)
-                Debug.Assert(regex.GetGroupNumbers().Length - 1 == numberRangePairs.Length);
-                Regex = regex;
-                _numberRangePairs = numberRangePairs;
+                Debug.Assert(regex.GetGroupNumbers().Length - 1 == numberRangePairs.Length)
+                Regex = regex
+                _numberRangePairs = numberRangePairs
 
             public bool IsMatch(string s)
                 if (_numberRangePairs.IsEmpty)
-                    return Regex.IsMatch(s);
+                    return Regex.IsMatch(s)
 
-                var match = Regex.Match(s);
+                var match = Regex.Match(s)
                 if (!match.Success)
-                    return false;
-                Debug.Assert(match.Groups.Count - 1 == _numberRangePairs.Length);
+                    return false
+                Debug.Assert(match.Groups.Count - 1 == _numberRangePairs.Length)
                 for (int i = 0; i < _numberRangePairs.Length; i++)
-                    var (minValue, maxValue) = _numberRangePairs[i];
+                    var (minValue, maxValue) = _numberRangePairs[i]
                     // Index 0 is the whole regex
                     if (!int.TryParse(match.Groups[i + 1].Value, out int matchedNum) ||
                         matchedNum < minValue ||
                         matchedNum > maxValue)
-                        return false;
-                return true;
+                        return false
+                return true
 
         /// <summary>
         /// Takes a <see cref="Section.Name"/> and creates a matcher that
@@ -66,8 +66,8 @@ namespace Microsoft.CodeAnalysis
             // <digit-list> ::= <digit> | <digit> <digit-list>
             // <digit> ::= 0-9
 
-            var sb = new StringBuilder();
-            sb.Append('^');
+            var sb = new StringBuilder()
+            sb.Append('^')
 
             // EditorConfig matching depends on the whether or not there are
             // directory separators and where they are located in the section
@@ -80,36 +80,36 @@ namespace Microsoft.CodeAnalysis
             //     /dir/of/editorconfig/file/[section] if section contains '/' but does not start with '/'.
 
             if (!sectionName.Contains("/"))
-                sb.Append(".*/");
+                sb.Append(".*/")
             else if (sectionName[0] != '/')
-                sb.Append('/');
+                sb.Append('/')
 
-            var lexer = new SectionNameLexer(sectionName);
-            var numberRangePairs = ArrayBuilder<(int minValue, int maxValue)>.GetInstance();
+            var lexer = new SectionNameLexer(sectionName)
+            var numberRangePairs = ArrayBuilder<(int minValue, int maxValue)>.GetInstance()
             if (!TryCompilePathList(ref lexer, sb, parsingChoice: false, numberRangePairs))
-                numberRangePairs.Free();
-                return null;
+                numberRangePairs.Free()
+                return null
 
-            sb.Append('$');
+            sb.Append('$')
 
-            var pattern = sb.ToString();
-            var regex = s_regexMap.GetOrAdd(pattern, static pattern => new(pattern, RegexOptions.Compiled));
+            var pattern = sb.ToString()
+            var regex = s_regexMap.GetOrAdd(pattern, static pattern => new(pattern, RegexOptions.Compiled))
 
-            return new SectionNameMatcher(regex, numberRangePairs.ToImmutableAndFree());
+            return new SectionNameMatcher(regex, numberRangePairs.ToImmutableAndFree())
 
         internal static string UnescapeSectionName(string sectionName)
-            var pooledStrbuilder = PooledStringBuilder.GetInstance();
-            StringBuilder sb = pooledStrbuilder.Builder;
-            SectionNameLexer lexer = new SectionNameLexer(sectionName);
+            var pooledStrbuilder = PooledStringBuilder.GetInstance()
+            StringBuilder sb = pooledStrbuilder.Builder
+            SectionNameLexer lexer = new SectionNameLexer(sectionName)
             while (!lexer.IsDone)
-                var tokenKind = lexer.Lex();
+                var tokenKind = lexer.Lex()
                 if (tokenKind == TokenKind.SimpleCharacter)
-                    sb.Append(lexer.EatCurrentCharacter());
+                    sb.Append(lexer.EatCurrentCharacter())
                 else
                     // We only call this on strings that were already passed through IsAbsoluteEditorConfigPath, so
                     // we shouldn't have any other token kinds here.
-                    throw ExceptionUtilities.UnexpectedValue(tokenKind);
-            return pooledStrbuilder.ToStringAndFree();
+                    throw ExceptionUtilities.UnexpectedValue(tokenKind)
+            return pooledStrbuilder.ToStringAndFree()
 
         /// <summary>
         /// Test if a section name is an absolute path with no special chars
@@ -138,31 +138,31 @@ namespace Microsoft.CodeAnalysis
             // not possible to target the wrong file. It's just possible that the user won't
             // receive a warning that this section is ignored on windows in this edge case.
 
-            SectionNameLexer nameLexer = new SectionNameLexer(sectionName);
-            bool sawStartChar = false;
-            int logicalIndex = 0;
+            SectionNameLexer nameLexer = new SectionNameLexer(sectionName)
+            bool sawStartChar = false
+            int logicalIndex = 0
             while (!nameLexer.IsDone)
                 if (nameLexer.Lex() != TokenKind.SimpleCharacter)
-                    return false;
-                var simpleChar = nameLexer.EatCurrentCharacter();
+                    return false
+                var simpleChar = nameLexer.EatCurrentCharacter()
 
                 // check the path starts with '/'
                 if (logicalIndex == 0)
                     if (simpleChar == '/')
-                        sawStartChar = true;
+                        sawStartChar = true
                     else if (Path.DirectorySeparatorChar == '/')
-                        return false;
+                        return false
                 // on windows we get a second chance to find the start char
                 else if (!sawStartChar && Path.DirectorySeparatorChar == '\\')
                     if (logicalIndex == 1 && simpleChar != ':')
-                        return false;
+                        return false
                     else if (logicalIndex == 2)
                         if (simpleChar != '/')
-                            return false;
+                            return false
                         else
-                            sawStartChar = true;
-                logicalIndex++;
-            return sawStartChar;
+                            sawStartChar = true
+                logicalIndex++
+            return sawStartChar
 
         /// <summary>
         /// <![CDATA[
@@ -179,66 +179,66 @@ namespace Microsoft.CodeAnalysis
             bool parsingChoice,
             ArrayBuilder<(int minValue, int maxValue)> numberRangePairs)
             while (!lexer.IsDone)
-                var tokenKind = lexer.Lex();
+                var tokenKind = lexer.Lex()
                 switch (tokenKind)
                     case TokenKind.BadToken:
                         // Parsing failure
-                        return false;
+                        return false
                     case TokenKind.SimpleCharacter:
                         // Matches just this character
-                        sb.Append(Regex.Escape(lexer.EatCurrentCharacter().ToString()));
-                        break;
+                        sb.Append(Regex.Escape(lexer.EatCurrentCharacter().ToString()))
+                        break
                     case TokenKind.Question:
                         // '?' matches any single character
-                        sb.Append('.');
-                        break;
+                        sb.Append('.')
+                        break
                     case TokenKind.Star:
                         // Matches any string of characters except directory separator
                         // Directory separator is defined in editorconfig spec as '/'
-                        sb.Append("[^/]*");
-                        break;
+                        sb.Append("[^/]*")
+                        break
                     case TokenKind.StarStar:
                         // Matches any string of characters
-                        sb.Append(".*");
-                        break;
+                        sb.Append(".*")
+                        break
                     case TokenKind.OpenCurly:
                         // Back up token stream. The following helpers all expect a '{'
                         lexer.Position--;
                         // This is ambiguous between {num..num} and {item1,item2}
                         // We need to look ahead to disambiguate. Looking for {num..num}
                         // is easier because it can't be recursive.
-                        (string numStart, string numEnd)? rangeOpt = TryParseNumberRange(ref lexer);
+                        (string numStart, string numEnd)? rangeOpt = TryParseNumberRange(ref lexer)
                         if (rangeOpt is null)
                             // Not a number range. Try a choice expression
                             if (!TryCompileChoice(ref lexer, sb, numberRangePairs))
-                                return false;
+                                return false
                             // Keep looping. There may be more after the '}'.
-                            break;
+                            break
                         else
-                            (string numStart, string numEnd) = rangeOpt.GetValueOrDefault();
+                            (string numStart, string numEnd) = rangeOpt.GetValueOrDefault()
                             if (int.TryParse(numStart, out var intStart) && int.TryParse(numEnd, out var intEnd))
-                                var pair = intStart < intEnd ? (intStart, intEnd) : (intEnd, intStart);
-                                numberRangePairs.Add(pair);
+                                var pair = intStart < intEnd ? (intStart, intEnd) : (intEnd, intStart)
+                                numberRangePairs.Add(pair)
                                 // Group allowing any digit sequence. The validity will be checked outside of the regex
-                                sb.Append("(-?[0-9]+)");
+                                sb.Append("(-?[0-9]+)")
                                 // Keep looping
-                                break;
-                            return false;
+                                break
+                            return false
                     case TokenKind.CloseCurly:
                         // Either the end of a choice, or a failed parse
-                        return parsingChoice;
+                        return parsingChoice
                     case TokenKind.Comma:
                         // The end of a choice section, or a failed parse
-                        return parsingChoice;
+                        return parsingChoice
                     case TokenKind.OpenBracket:
-                        sb.Append('[');
+                        sb.Append('[')
                         if (!TryCompileCharacterClass(ref lexer, sb))
-                            return false;
-                        break;
+                            return false
+                        break
                     default:
-                        throw ExceptionUtilities.UnexpectedValue(tokenKind);
+                        throw ExceptionUtilities.UnexpectedValue(tokenKind)
             // If we're parsing a choice we should not exit without a closing '}'
-            return !parsingChoice;
+            return !parsingChoice
 
         /// <summary>
         /// Compile a globbing character class of the form [...]. Returns true if
@@ -252,34 +252,34 @@ namespace Microsoft.CodeAnalysis
             // between the locale-dependent range of the previous and next characters,
             // '\' escapes the following character, and ']' ends the range
             if (!lexer.IsDone && lexer.CurrentCharacter == '!')
-                sb.Append('^');
-                lexer.Position++;
+                sb.Append('^')
+                lexer.Position++
             while (!lexer.IsDone)
-                var currentChar = lexer.EatCurrentCharacter();
+                var currentChar = lexer.EatCurrentCharacter()
                 switch (currentChar)
                     case '-':
                         // '-' means the same thing in regex as it does in the glob, so
                         // put it in verbatim
-                        sb.Append(currentChar);
-                        break;
+                        sb.Append(currentChar)
+                        break
 
                     case '\\':
                         // Escape the next char
                         if (lexer.IsDone)
-                            return false;
-                        sb.Append('\\');
-                        sb.Append(lexer.EatCurrentCharacter());
-                        break;
+                            return false
+                        sb.Append('\\')
+                        sb.Append(lexer.EatCurrentCharacter())
+                        break
 
                     case ']':
-                        sb.Append(currentChar);
-                        return true;
+                        sb.Append(currentChar)
+                        return true
 
                     default:
-                        sb.Append(Regex.Escape(currentChar.ToString()));
-                        break;
+                        sb.Append(Regex.Escape(currentChar.ToString()))
+                        break
             // Stream ended without a closing bracket
-            return false;
+            return false
 
         /// <summary>
         /// Parses choice defined by the following grammar:
@@ -293,29 +293,29 @@ namespace Microsoft.CodeAnalysis
             StringBuilder sb,
             ArrayBuilder<(int, int)> numberRangePairs)
             if (lexer.Lex() != TokenKind.OpenCurly)
-                return false;
+                return false
 
             // Start a non-capturing group for the choice
-            sb.Append("(?:");
+            sb.Append("(?:")
 
             // We start immediately after a '{'
             // Try to compile the nested <path-list>
             while (TryCompilePathList(ref lexer, sb, parsingChoice: true, numberRangePairs))
                 // If we've successfully compiled a <path-list> the last token should
                 // have been a ',' or a '}'
-                char lastChar = lexer[lexer.Position - 1];
+                char lastChar = lexer[lexer.Position - 1]
                 if (lastChar == ',')
                     // Another option
-                    sb.Append('|');
+                    sb.Append('|')
                 else if (lastChar == '}')
                     // Close out the capture group
-                    sb.Append(')');
-                    return true;
+                    sb.Append(')')
+                    return true
                 else
-                    throw ExceptionUtilities.UnexpectedValue(lastChar);
+                    throw ExceptionUtilities.UnexpectedValue(lastChar)
 
             // Propagate failure
-            return false;
+            return false
 
         /// <summary>
         /// Parses range defined by the following grammar.
@@ -327,94 +327,94 @@ namespace Microsoft.CodeAnalysis
         /// ]]>
         /// </summary>
         private static (string numStart, string numEnd)? TryParseNumberRange(ref SectionNameLexer lexer)
-            var saved = lexer.Position;
+            var saved = lexer.Position
             if (lexer.Lex() != TokenKind.OpenCurly)
-                lexer.Position = saved;
-                return null;
+                lexer.Position = saved
+                return null
 
-            var numStart = lexer.TryLexNumber();
+            var numStart = lexer.TryLexNumber()
             if (numStart is null)
                 // Not a number
-                lexer.Position = saved;
-                return null;
+                lexer.Position = saved
+                return null
 
             // The next two characters must be ".."
             if (!lexer.TryEatCurrentCharacter(out char c) || c != '.' ||
                 !lexer.TryEatCurrentCharacter(out c) || c != '.')
-                lexer.Position = saved;
-                return null;
+                lexer.Position = saved
+                return null
 
             // Now another number
-            var numEnd = lexer.TryLexNumber();
+            var numEnd = lexer.TryLexNumber()
             if (numEnd is null || lexer.IsDone || lexer.Lex() != TokenKind.CloseCurly)
                 // Not a number or no '}'
-                lexer.Position = saved;
-                return null;
+                lexer.Position = saved
+                return null
 
-            return (numStart, numEnd);
+            return (numStart, numEnd)
 
         private struct SectionNameLexer
-            private readonly string _sectionName;
+            private readonly string _sectionName
 
             public int Position { get; set; }
 
             public SectionNameLexer(string sectionName)
-                _sectionName = sectionName;
-                Position = 0;
+                _sectionName = sectionName
+                Position = 0
 
-            public bool IsDone => Position >= _sectionName.Length;
+            public bool IsDone => Position >= _sectionName.Length
 
             public TokenKind Lex()
-                int lexemeStart = Position;
+                int lexemeStart = Position
                 switch (_sectionName[Position])
                     case '*':
-                            int nextPos = Position + 1;
+                            int nextPos = Position + 1
                             if (nextPos < _sectionName.Length &&
                                 _sectionName[nextPos] == '*')
-                                Position += 2;
-                                return TokenKind.StarStar;
+                                Position += 2
+                                return TokenKind.StarStar
                             else
-                                Position++;
-                                return TokenKind.Star;
+                                Position++
+                                return TokenKind.Star
 
                     case '?':
-                        Position++;
-                        return TokenKind.Question;
+                        Position++
+                        return TokenKind.Question
 
                     case '{':
-                        Position++;
-                        return TokenKind.OpenCurly;
+                        Position++
+                        return TokenKind.OpenCurly
 
                     case ',':
-                        Position++;
-                        return TokenKind.Comma;
+                        Position++
+                        return TokenKind.Comma
 
                     case '}':
-                        Position++;
-                        return TokenKind.CloseCurly;
+                        Position++
+                        return TokenKind.CloseCurly
 
                     case '[':
-                        Position++;
-                        return TokenKind.OpenBracket;
+                        Position++
+                        return TokenKind.OpenBracket
 
                     case '\\':
                             // Backslash escapes the next character
-                            Position++;
+                            Position++
                             if (IsDone)
-                                return TokenKind.BadToken;
+                                return TokenKind.BadToken
 
-                            return TokenKind.SimpleCharacter;
+                            return TokenKind.SimpleCharacter
 
                     default:
                         // Don't increment position, since caller needs to fetch the character
-                        return TokenKind.SimpleCharacter;
+                        return TokenKind.SimpleCharacter
 
-            public char CurrentCharacter => _sectionName[Position];
+            public char CurrentCharacter => _sectionName[Position]
 
             /// <summary>
             /// Call after getting <see cref="TokenKind.SimpleCharacter" /> from <see cref="Lex()" />
             /// </summary>
-            public char EatCurrentCharacter() => _sectionName[Position++];
+            public char EatCurrentCharacter() => _sectionName[Position++]
 
             /// <summary>
             /// Returns false if there are no more characters in the lex stream.
@@ -422,35 +422,35 @@ namespace Microsoft.CodeAnalysis
             /// </summary>
             public bool TryEatCurrentCharacter(out char nextChar)
                 if (IsDone)
-                    nextChar = default;
-                    return false;
+                    nextChar = default
+                    return false
                 else
-                    nextChar = EatCurrentCharacter();
-                    return true;
+                    nextChar = EatCurrentCharacter()
+                    return true
 
-            public char this[int position] => _sectionName[position];
+            public char this[int position] => _sectionName[position]
 
             /// <summary>
             /// Returns the string representation of a decimal integer, or null if
             /// the current lexeme is not an integer.
             /// </summary>
             public string? TryLexNumber()
-                bool start = true;
-                var sb = new StringBuilder();
+                bool start = true
+                var sb = new StringBuilder()
 
                 while (!IsDone)
-                    char currentChar = CurrentCharacter;
+                    char currentChar = CurrentCharacter
                     if (start && currentChar == '-')
-                        Position++;
-                        sb.Append('-');
+                        Position++
+                        sb.Append('-')
                     else if (char.IsDigit(currentChar))
-                        Position++;
-                        sb.Append(currentChar);
+                        Position++
+                        sb.Append(currentChar)
                     else
-                        break;
-                    start = false;
+                        break
+                    start = false
 
-                var str = sb.ToString();
+                var str = sb.ToString()
                 return str.Length == 0 || str == "-"
                     ? null
                     : str

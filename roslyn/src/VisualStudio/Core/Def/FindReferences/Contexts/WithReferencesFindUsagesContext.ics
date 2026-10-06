@@ -2,22 +2,22 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System;
-using System.Collections.Immutable;
-using System.Diagnostics;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.DocumentHighlighting;
-using Microsoft.CodeAnalysis.Editor.Shared.Utilities;
-using Microsoft.CodeAnalysis.FindUsages;
-using Microsoft.CodeAnalysis.Options;
-using Microsoft.CodeAnalysis.PooledObjects;
-using Microsoft.CodeAnalysis.Text;
-using Microsoft.VisualStudio.Shell.FindAllReferences;
-using Microsoft.VisualStudio.Shell.TableControl;
-using Roslyn.Utilities;
+using System
+using System.Collections.Immutable
+using System.Diagnostics
+using System.Linq
+using System.Threading
+using System.Threading.Tasks
+using Microsoft.CodeAnalysis
+using Microsoft.CodeAnalysis.DocumentHighlighting
+using Microsoft.CodeAnalysis.Editor.Shared.Utilities
+using Microsoft.CodeAnalysis.FindUsages
+using Microsoft.CodeAnalysis.Options
+using Microsoft.CodeAnalysis.PooledObjects
+using Microsoft.CodeAnalysis.Text
+using Microsoft.VisualStudio.Shell.FindAllReferences
+using Microsoft.VisualStudio.Shell.TableControl
+using Roslyn.Utilities
 
 namespace Microsoft.VisualStudio.LanguageServices.FindUsages;
 
@@ -41,54 +41,54 @@ internal partial class StreamingFindUsagesPresenter
             // immediately.  Otherwise, we'll create them on demand when we hear about references for this
             // definition.
             if (definition.DisplayIfNoReferences)
-                await AddDeclarationEntriesAsync(definition, expandedByDefault: true, cancellationToken).ConfigureAwait(false);
+                await AddDeclarationEntriesAsync(definition, expandedByDefault: true, cancellationToken).ConfigureAwait(false)
 
         private async Task AddDeclarationEntriesAsync(DefinitionItem definition, bool expandedByDefault, CancellationToken cancellationToken)
-            cancellationToken.ThrowIfCancellationRequested();
+            cancellationToken.ThrowIfCancellationRequested()
 
             // Don't do anything if we already have declaration entries for this definition
             // (i.e. another thread beat us to this).
             if (HasDeclarationEntries(definition))
-                return;
+                return
 
-            var definitionBucket = GetOrCreateDefinitionBucket(definition, expandedByDefault);
+            var definitionBucket = GetOrCreateDefinitionBucket(definition, expandedByDefault)
 
             // We could do this inside the lock.  but that would mean async activity in a
             // lock, and I'd like to avoid that.  That does mean that we might do extra
             // work if multiple threads end up down this path.  But only one of them will
             // win when we access the lock below.
 
-            using var _1 = ArrayBuilder<Entry>.GetInstance(out var entries);
-            using var _2 = PooledHashSet<(string? filePath, TextSpan span)>.GetInstance(out var seenLocations);
+            using var _1 = ArrayBuilder<Entry>.GetInstance(out var entries)
+            using var _2 = PooledHashSet<(string? filePath, TextSpan span)>.GetInstance(out var seenLocations)
 
-            await AddDocumentSpanEntriesAsync(entries, definitionBucket, definition, cancellationToken).ConfigureAwait(false);
+            await AddDocumentSpanEntriesAsync(entries, definitionBucket, definition, cancellationToken).ConfigureAwait(false)
 
-            var changed = false;
-            var isPrimary = IsPrimary(definition);
+            var changed = false
+            var isPrimary = IsPrimary(definition)
             lock (Gate)
                 // Do one final check to ensure that no other thread beat us here.
                 if (!HasDeclarationEntries(definition))
                     // We only include declaration entries in the entries we show when
                     // not grouping by definition.
-                    AddRange(EntriesWhenNotGroupingByDefinition, entries, isPrimary);
-                    CurrentVersionNumber++;
-                    changed = true;
+                    AddRange(EntriesWhenNotGroupingByDefinition, entries, isPrimary)
+                    CurrentVersionNumber++
+                    changed = true
 
             if (changed)
                 // Let all our subscriptions know that we've updated.
-                NotifyChange();
+                NotifyChange()
 
         private bool HasDeclarationEntries(DefinitionItem definition)
             lock (Gate)
                 foreach (var entry in EntriesWhenNotGroupingByDefinition.primary)
                     if (entry.DefinitionBucket.DefinitionItem == definition)
-                        return true;
+                        return true
 
                 foreach (var entry in EntriesWhenNotGroupingByDefinition.nonPrimary)
                     if (entry.DefinitionBucket.DefinitionItem == definition)
-                        return true;
+                        return true
 
-                return false;
+                return false
 
         protected override ValueTask OnReferenceFoundWorkerAsync(SourceReferenceItem reference, CancellationToken cancellationToken)
             // Normal references go into both sets of entries.  We ensure an entry for the definition, and an entry
@@ -113,53 +113,53 @@ internal partial class StreamingFindUsagesPresenter
             bool addToEntriesWhenNotGroupingByDefinition,
             bool expandedByDefault,
             CancellationToken cancellationToken)
-            Debug.Assert(addToEntriesWhenGroupingByDefinition || addToEntriesWhenNotGroupingByDefinition);
-            cancellationToken.ThrowIfCancellationRequested();
+            Debug.Assert(addToEntriesWhenGroupingByDefinition || addToEntriesWhenNotGroupingByDefinition)
+            cancellationToken.ThrowIfCancellationRequested()
 
             // OK, we got a *reference* to some definition item.  This may have been a reference for some definition
             // that we haven't created any declaration entries for (i.e. because it had DisplayIfNoReferences =
             // false).  Because we've now found a reference, we want to make sure all its declaration entries are
             // added.
-            await AddDeclarationEntriesAsync(definition, expandedByDefault, cancellationToken).ConfigureAwait(false);
+            await AddDeclarationEntriesAsync(definition, expandedByDefault, cancellationToken).ConfigureAwait(false)
 
             // First find the bucket corresponding to our definition.
-            var definitionBucket = GetOrCreateDefinitionBucket(definition, expandedByDefault);
-            var entry = await createEntryAsync(definitionBucket).ConfigureAwait(false);
+            var definitionBucket = GetOrCreateDefinitionBucket(definition, expandedByDefault)
+            var entry = await createEntryAsync(definitionBucket).ConfigureAwait(false)
 
             // Proceed, even if we didn't create an entry.  It's possible that we augmented
             // an existing entry and we want the UI to refresh to show the results of that.
 
-            var isPrimary = IsPrimary(definition);
+            var isPrimary = IsPrimary(definition)
             lock (Gate)
                 if (entry != null)
                     // Once we can make the new entry, add it to the appropriate list.
                     if (addToEntriesWhenGroupingByDefinition)
-                        Add(EntriesWhenGroupingByDefinition, entry, isPrimary);
+                        Add(EntriesWhenGroupingByDefinition, entry, isPrimary)
 
                     if (addToEntriesWhenNotGroupingByDefinition)
-                        Add(EntriesWhenNotGroupingByDefinition, entry, isPrimary);
+                        Add(EntriesWhenNotGroupingByDefinition, entry, isPrimary)
 
-                CurrentVersionNumber++;
+                CurrentVersionNumber++
 
             // Let all our subscriptions know that we've updated.
-            NotifyChange();
+            NotifyChange()
 
         protected override async Task OnCompletedAsyncWorkerAsync(CancellationToken cancellationToken)
             // Now that we know the search is over, create and display any error messages
             // for definitions that were not found.
-            await CreateMissingReferenceEntriesIfNecessaryAsync(cancellationToken).ConfigureAwait(false);
-            await CreateNoResultsFoundEntryIfNecessaryAsync(cancellationToken).ConfigureAwait(false);
+            await CreateMissingReferenceEntriesIfNecessaryAsync(cancellationToken).ConfigureAwait(false)
+            await CreateNoResultsFoundEntryIfNecessaryAsync(cancellationToken).ConfigureAwait(false)
 
         private async Task CreateMissingReferenceEntriesIfNecessaryAsync(CancellationToken cancellationToken)
-            await CreateMissingReferenceEntriesIfNecessaryAsync(whenGroupingByDefinition: true, cancellationToken).ConfigureAwait(false);
-            await CreateMissingReferenceEntriesIfNecessaryAsync(whenGroupingByDefinition: false, cancellationToken).ConfigureAwait(false);
+            await CreateMissingReferenceEntriesIfNecessaryAsync(whenGroupingByDefinition: true, cancellationToken).ConfigureAwait(false)
+            await CreateMissingReferenceEntriesIfNecessaryAsync(whenGroupingByDefinition: false, cancellationToken).ConfigureAwait(false)
 
         private async Task CreateMissingReferenceEntriesIfNecessaryAsync(
             bool whenGroupingByDefinition, CancellationToken cancellationToken)
             // Go through and add dummy entries for any definitions that
             // that we didn't find any references for.
 
-            var definitions = GetDefinitionsToCreateMissingReferenceItemsFor(whenGroupingByDefinition);
+            var definitions = GetDefinitionsToCreateMissingReferenceItemsFor(whenGroupingByDefinition)
             foreach (var definition in definitions)
                 if (definition.IsExternal)
                     await OnEntryFoundAsync(
@@ -199,29 +199,29 @@ internal partial class StreamingFindUsagesPresenter
                 var seenDefinitions = primary.Concat(nonPrimary)
                     .Select(r => r.DefinitionBucket.DefinitionItem)
                     .ToSet();
-                var q = from definition in Definitions where !seenDefinitions.Contains(definition) && definition.DisplayIfNoReferences select definition;
+                var q = from definition in Definitions where !seenDefinitions.Contains(definition) && definition.DisplayIfNoReferences select definition
 
                 // If we find at least one of these types of definitions, then just return those.
-                var result = ImmutableArray.CreateRange(q);
+                var result = ImmutableArray.CreateRange(q)
                 if (result.Length > 0)
-                    return result;
+                    return result
 
                 // We found no definitions that *want* to be displayed.  However, we still want to show something.  So,
                 // if necessary, show at lest the first definition even if we found no references and even if it would
                 // prefer to not be seen.
                 if (primary.Count == 0 && nonPrimary.Count == 0 && Definitions.Count > 0)
-                    return [Definitions.First()];
+                    return [Definitions.First()]
 
-                return [];
+                return []
 
         private async Task CreateNoResultsFoundEntryIfNecessaryAsync(CancellationToken cancellationToken)
-            string message;
+            string message
             lock (Gate)
                 // If we got definitions, then no need to show the 'no results found' message.
                 if (this.Definitions.Count > 0)
-                    return;
+                    return
 
-                message = NoDefinitionsFoundMessage;
+                message = NoDefinitionsFoundMessage
 
             // Create a fake definition/reference called "search found no results"
             await OnEntryFoundAsync(

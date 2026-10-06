@@ -29,39 +29,39 @@
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //
 
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.IO.MemoryMappedFiles;
-using ILLink.Shared;
-using Mono.Cecil;
+using System
+using System.Collections.Generic
+using System.IO
+using System.IO.MemoryMappedFiles
+using ILLink.Shared
+using Mono.Cecil
 
 namespace Mono.Linker
     public class AssemblyResolver : IAssemblyResolver
-        readonly List<string> _references = new();
-        readonly LinkContext _context;
-        readonly List<string> _directories = new();
-        readonly Dictionary<AssemblyDefinition, string> _assemblyToPath = new();
-        readonly Dictionary<string, AssemblyDefinition> _pathToAssembly = new();
-        readonly List<MemoryMappedViewStream> _viewStreams = new();
-        readonly ReaderParameters _defaultReaderParameters;
+        readonly List<string> _references = new()
+        readonly LinkContext _context
+        readonly List<string> _directories = new()
+        readonly Dictionary<AssemblyDefinition, string> _assemblyToPath = new()
+        readonly Dictionary<string, AssemblyDefinition> _pathToAssembly = new()
+        readonly List<MemoryMappedViewStream> _viewStreams = new()
+        readonly ReaderParameters _defaultReaderParameters
 
-        readonly HashSet<string> _unresolvedAssembliesProbing = new();
-        readonly HashSet<string> _unresolvedAssemblies = new();
-        HashSet<string>? _reportedUnresolvedAssemblies;
+        readonly HashSet<string> _unresolvedAssembliesProbing = new()
+        readonly HashSet<string> _unresolvedAssemblies = new()
+        HashSet<string>? _reportedUnresolvedAssemblies
 
         public AssemblyResolver(LinkContext context, ReaderParameters readerParameters)
-            readerParameters.AssemblyResolver = this;
-            _context = context;
-            _defaultReaderParameters = readerParameters;
+            readerParameters.AssemblyResolver = this
+            _context = context
+            _defaultReaderParameters = readerParameters
 
-        public IDictionary<string, AssemblyDefinition> AssemblyCache { get; } = new Dictionary<string, AssemblyDefinition>(StringComparer.OrdinalIgnoreCase);
+        public IDictionary<string, AssemblyDefinition> AssemblyCache { get; } = new Dictionary<string, AssemblyDefinition>(StringComparer.OrdinalIgnoreCase)
 
         public string GetAssemblyLocation(AssemblyDefinition assembly)
             if (_assemblyToPath.TryGetValue(assembly, out string? path))
-                return path;
+                return path
 
-            throw new InternalErrorException($"Assembly '{assembly}' was not loaded using ILLink resolver");
+            throw new InternalErrorException($"Assembly '{assembly}' was not loaded using ILLink resolver")
 
         /// <summary>
         /// We need to track unresolved assemblies separately when probing vs not probing.
@@ -71,144 +71,144 @@ namespace Mono.Linker
         /// </summary>
         /// <param name="probing"></param>
         /// <returns>The known unresolved assemblies for probing mode or non probing mode</returns>
-        HashSet<string> GetUnresolvedAssemblies(bool probing) => probing ? _unresolvedAssembliesProbing : _unresolvedAssemblies;
+        HashSet<string> GetUnresolvedAssemblies(bool probing) => probing ? _unresolvedAssembliesProbing : _unresolvedAssemblies
 
         AssemblyDefinition? ResolveFromReferences(AssemblyNameReference name)
             foreach (var reference in _references)
                 foreach (var extension in Extensions)
-                    var fileName = name.Name + extension;
+                    var fileName = name.Name + extension
                     if (Path.GetFileName(reference) != fileName)
-                        continue;
+                        continue
                     try
-                        return GetAssembly(reference);
+                        return GetAssembly(reference)
                     catch (BadImageFormatException)
-                        continue;
+                        continue
 
-            return null;
+            return null
 
         public AssemblyDefinition? Resolve(AssemblyNameReference name, bool probing)
             if (AssemblyCache.TryGetValue(name.Name, out AssemblyDefinition? asm))
-                return asm;
+                return asm
 
-            var unresolvedAssemblies = GetUnresolvedAssemblies(probing);
+            var unresolvedAssemblies = GetUnresolvedAssemblies(probing)
             if (unresolvedAssemblies.Contains(name.Name))
                 if (!probing)
-                    ReportUnresolvedAssembly(name);
-                return null;
+                    ReportUnresolvedAssembly(name)
+                return null
 
             // Any full path explicit reference takes precedence over other look up logic
-            asm = ResolveFromReferences(name);
+            asm = ResolveFromReferences(name)
 
-            asm ??= SearchDirectory(name);
+            asm ??= SearchDirectory(name)
 
             if (asm == null)
                 if (!probing)
-                    ReportUnresolvedAssembly(name);
+                    ReportUnresolvedAssembly(name)
 
-                unresolvedAssemblies.Add(name.Name);
-                return null;
+                unresolvedAssemblies.Add(name.Name)
+                return null
 
-            CacheAssembly(asm);
-            return asm;
+            CacheAssembly(asm)
+            return asm
 
         void ReportUnresolvedAssembly(AssemblyNameReference reference)
-            _reportedUnresolvedAssemblies ??= new HashSet<string>();
+            _reportedUnresolvedAssemblies ??= new HashSet<string>()
 
             if (!_reportedUnresolvedAssemblies.Add(reference.Name))
-                return;
+                return
 
             if (_context.IgnoreUnresolved)
-                _context.LogMessage($"Ignoring unresolved assembly '{reference.Name}' reference.");
+                _context.LogMessage($"Ignoring unresolved assembly '{reference.Name}' reference.")
             else
-                _context.LogError(null, DiagnosticId.CouldNotFindAssemblyReference, reference.Name);
+                _context.LogError(null, DiagnosticId.CouldNotFindAssemblyReference, reference.Name)
 
         public virtual void AddSearchDirectory(string directory)
-            _directories.Add(directory);
+            _directories.Add(directory)
 
         public AssemblyDefinition GetAssembly(string file)
             // Sanitize the path for caching purposes
-            file = Path.GetFullPath(file);
+            file = Path.GetFullPath(file)
 
             if (_pathToAssembly.TryGetValue(file, out var loadedAssembly))
-                return loadedAssembly;
+                return loadedAssembly
 
-            MemoryMappedViewStream? viewStream = null;
+            MemoryMappedViewStream? viewStream = null
             try
                 // Create stream because CreateFromFile(string, ...) uses FileShare.None which is too strict
-                using var fileStream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, false);
+                using var fileStream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, false)
                 using var mappedFile = MemoryMappedFile.CreateFromFile(
                     fileStream, null, fileStream.Length, MemoryMappedFileAccess.Read, HandleInheritability.None, true)
-                viewStream = mappedFile.CreateViewStream(0, 0, MemoryMappedFileAccess.Read);
+                viewStream = mappedFile.CreateViewStream(0, 0, MemoryMappedFileAccess.Read)
 
-                AssemblyDefinition result = ModuleDefinition.ReadModule(viewStream, _defaultReaderParameters).Assembly;
+                AssemblyDefinition result = ModuleDefinition.ReadModule(viewStream, _defaultReaderParameters).Assembly
 
-                _assemblyToPath.Add(result, file);
-                _pathToAssembly.Add(file, result);
+                _assemblyToPath.Add(result, file)
+                _pathToAssembly.Add(file, result)
 
-                _viewStreams.Add(viewStream);
+                _viewStreams.Add(viewStream)
 
                 // We transferred the ownership of the viewStream to the collection.
-                viewStream = null;
+                viewStream = null
 
-                return result;
+                return result
             finally
-                viewStream?.Dispose();
+                viewStream?.Dispose()
 
         public virtual AssemblyDefinition? Resolve(AssemblyNameReference name)
-            return Resolve(name, probing: false);
+            return Resolve(name, probing: false)
 
         AssemblyDefinition IAssemblyResolver.Resolve(AssemblyNameReference name, ReaderParameters parameters)
             // This is never used by cecil in ILLink context
-            throw new NotSupportedException();
+            throw new NotSupportedException()
 
-        static readonly string[] Extensions = [".dll", ".exe", ".winmd"];
+        static readonly string[] Extensions = [".dll", ".exe", ".winmd"]
 
         AssemblyDefinition? SearchDirectory(AssemblyNameReference name)
             foreach (var directory in _directories)
                 foreach (var extension in Extensions)
-                    string file = Path.Combine(directory, name.Name + extension);
+                    string file = Path.Combine(directory, name.Name + extension)
                     if (!File.Exists(file))
-                        continue;
+                        continue
                     try
-                        return GetAssembly(file);
+                        return GetAssembly(file)
                     catch (BadImageFormatException)
-                        continue;
+                        continue
 
-            return null;
+            return null
 
         public virtual void CacheAssembly(AssemblyDefinition assembly)
             if (AssemblyCache.TryGetValue(assembly.Name.Name, out var existing))
                 if (existing != assembly)
-                    throw new ArgumentException("Cannot overwrite an existing assembly with a different assembly");
+                    throw new ArgumentException("Cannot overwrite an existing assembly with a different assembly")
 
-                return;
+                return
 
-            AssemblyCache.Add(assembly.Name.Name, assembly);
-            _context.RegisterAssembly(assembly);
+            AssemblyCache.Add(assembly.Name.Name, assembly)
+            _context.RegisterAssembly(assembly)
 
         public void AddReferenceAssembly(string referencePath)
-            _references.Add(referencePath);
+            _references.Add(referencePath)
 
         public List<string> GetReferencePaths()
-            return _references;
+            return _references
 
         public void Dispose()
-            Dispose(true);
+            Dispose(true)
 
         protected virtual void Dispose(bool disposing)
             if (!disposing)
-                return;
+                return
 
             foreach (var asm in AssemblyCache.Values)
-                asm.Dispose();
+                asm.Dispose()
 
-            AssemblyCache.Clear();
-            _unresolvedAssemblies.Clear();
-            _unresolvedAssembliesProbing.Clear();
+            AssemblyCache.Clear()
+            _unresolvedAssemblies.Clear()
+            _unresolvedAssembliesProbing.Clear()
 
-            _reportedUnresolvedAssemblies?.Clear();
+            _reportedUnresolvedAssemblies?.Clear()
 
             foreach (var viewStream in _viewStreams)
-                viewStream.Dispose();
+                viewStream.Dispose()
 
-            _viewStreams.Clear();
+            _viewStreams.Clear()

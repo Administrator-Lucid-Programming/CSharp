@@ -2,14 +2,14 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System.Collections.Immutable;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
-using System.Linq;
-using System.Threading;
-using Microsoft.CodeAnalysis.Collections;
-using Microsoft.CodeAnalysis.CSharp.Symbols;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
+using System.Collections.Immutable
+using System.Diagnostics
+using System.Diagnostics.CodeAnalysis
+using System.Linq
+using System.Threading
+using Microsoft.CodeAnalysis.Collections
+using Microsoft.CodeAnalysis.CSharp.Symbols
+using Microsoft.CodeAnalysis.CSharp.Syntax
 
 namespace Microsoft.CodeAnalysis.CSharp;
 
@@ -27,8 +27,8 @@ internal sealed class ModuleCancellationInstrumenter(
     SyntheticBoundNodeFactory factory,
     Instrumenter previous)
     : CompoundInstrumenter(previous)
-    private readonly MethodSymbol _throwMethod = throwMethod;
-    private readonly SyntheticBoundNodeFactory _factory = factory;
+    private readonly MethodSymbol _throwMethod = throwMethod
+    private readonly SyntheticBoundNodeFactory _factory = factory
 
     protected override CompoundInstrumenter WithPreviousImpl(Instrumenter previous)
         => new ModuleCancellationInstrumenter(
@@ -41,73 +41,73 @@ internal sealed class ModuleCancellationInstrumenter(
         SyntheticBoundNodeFactory factory,
         Instrumenter previous,
         [NotNullWhen(true)] out ModuleCancellationInstrumenter? instrumenter)
-        instrumenter = null;
+        instrumenter = null
 
         // Do not instrument implicitly-declared methods or methods without bodies, except for constructors.
         // Instrument implicit constructors in order to cancel execution of member initializers.
         if (method.MethodKind is not (MethodKind.Constructor or MethodKind.StaticConstructor) &&
             (method is { IsImplicitlyDeclared: true } ||
             method is SourceMemberMethodSymbol { Bodies: { arrowBody: null, blockBody: null } } and not SynthesizedSimpleProgramEntryPointSymbol))
-            return false;
+            return false
 
-        var throwMethod = factory.WellKnownMethod(WellKnownMember.System_Threading_CancellationToken__ThrowIfCancellationRequested, isOptional: true);
+        var throwMethod = factory.WellKnownMethod(WellKnownMember.System_Threading_CancellationToken__ThrowIfCancellationRequested, isOptional: true)
         if (throwMethod is null)
-            return false;
+            return false
 
-        instrumenter = new ModuleCancellationInstrumenter(throwMethod, factory, previous);
-        return true;
+        instrumenter = new ModuleCancellationInstrumenter(throwMethod, factory, previous)
+        return true
 
     public override void InstrumentBlock(BoundBlock original, LocalRewriter rewriter, ref TemporaryArray<LocalSymbol> additionalLocals, out BoundStatement? prologue, out BoundStatement? epilogue, out BoundBlockInstrumentation? instrumentation)
-        base.InstrumentBlock(original, rewriter, ref additionalLocals, out prologue, out epilogue, out instrumentation);
+        base.InstrumentBlock(original, rewriter, ref additionalLocals, out prologue, out epilogue, out instrumentation)
 
-        var isMethodBody = rewriter.CurrentMethodBody == original;
-        var isLambdaBody = rewriter.CurrentLambdaBody == original;
+        var isMethodBody = rewriter.CurrentMethodBody == original
+        var isLambdaBody = rewriter.CurrentLambdaBody == original
 
         // Don't instrument blocks that are not a method or lambda body
         if (!isMethodBody && !isLambdaBody)
-            return;
+            return
 
-        Debug.Assert(_factory.TopLevelMethod is not null);
-        Debug.Assert(_factory.CurrentFunction is not null);
+        Debug.Assert(_factory.TopLevelMethod is not null)
+        Debug.Assert(_factory.CurrentFunction is not null)
 
         // static constructors can only be invoked once, so there is no need to probe:
         if (isMethodBody && _factory.TopLevelMethod.MethodKind == MethodKind.StaticConstructor)
-            return;
+            return
 
         instrumentation = _factory.CombineInstrumentation(
             instrumentation,
             prologue: _factory.ExpressionStatement(_factory.ThrowIfModuleCancellationRequested()))
 
     private BoundExpression InstrumentExpression(BoundExpression expression)
-        => _factory.Sequence([], [_factory.ThrowIfModuleCancellationRequested()], expression);
+        => _factory.Sequence([], [_factory.ThrowIfModuleCancellationRequested()], expression)
 
     private BoundStatement InstrumentStatement(BoundStatement statement)
-        => _factory.StatementList(_factory.ExpressionStatement(_factory.ThrowIfModuleCancellationRequested()), statement);
+        => _factory.StatementList(_factory.ExpressionStatement(_factory.ThrowIfModuleCancellationRequested()), statement)
 
     public override BoundExpression InstrumentWhileStatementCondition(BoundWhileStatement original, BoundExpression rewrittenCondition, SyntheticBoundNodeFactory factory)
-        => InstrumentExpression(base.InstrumentWhileStatementCondition(original, rewrittenCondition, factory));
+        => InstrumentExpression(base.InstrumentWhileStatementCondition(original, rewrittenCondition, factory))
 
     public override BoundExpression InstrumentDoStatementCondition(BoundDoStatement original, BoundExpression rewrittenCondition, SyntheticBoundNodeFactory factory)
-        => InstrumentExpression(base.InstrumentDoStatementCondition(original, rewrittenCondition, factory));
+        => InstrumentExpression(base.InstrumentDoStatementCondition(original, rewrittenCondition, factory))
 
     public override BoundExpression InstrumentForStatementCondition(BoundForStatement original, BoundExpression rewrittenCondition, SyntheticBoundNodeFactory factory)
-        => InstrumentExpression(base.InstrumentForStatementCondition(original, rewrittenCondition, factory));
+        => InstrumentExpression(base.InstrumentForStatementCondition(original, rewrittenCondition, factory))
 
     public override BoundStatement InstrumentForStatementConditionalGotoStartOrBreak(BoundForStatement original, BoundStatement branchBack)
-        => InstrumentStatement(base.InstrumentForStatementConditionalGotoStartOrBreak(original, branchBack));
+        => InstrumentStatement(base.InstrumentForStatementConditionalGotoStartOrBreak(original, branchBack))
 
     public override BoundStatement InstrumentForEachStatementConditionalGotoStart(BoundForEachStatement original, BoundStatement branchBack)
-        => InstrumentStatement(base.InstrumentForEachStatementConditionalGotoStart(original, branchBack));
+        => InstrumentStatement(base.InstrumentForEachStatementConditionalGotoStart(original, branchBack))
 
     public override BoundStatement InstrumentGotoStatement(BoundGotoStatement original, BoundStatement rewritten)
-        => InstrumentStatement(base.InstrumentGotoStatement(original, rewritten));
+        => InstrumentStatement(base.InstrumentGotoStatement(original, rewritten))
 
     public override void InterceptCallAndAdjustArguments(
         ref MethodSymbol method,
         ref BoundExpression? receiver,
         ref ImmutableArray<BoundExpression> arguments,
         ref ImmutableArray<RefKind> argumentRefKindsOpt)
-        Previous.InterceptCallAndAdjustArguments(ref method, ref receiver, ref arguments, ref argumentRefKindsOpt);
+        Previous.InterceptCallAndAdjustArguments(ref method, ref receiver, ref arguments, ref argumentRefKindsOpt)
 
         // If the target method is defined within this module it is already being instrumented to be cancellable.
         // However, if we are calling Invoke method of a delegate or a virtual/interface method we can't determine whether
@@ -119,13 +119,13 @@ internal sealed class ModuleCancellationInstrumenter(
             // The last argument is a CancellationToken. Replace it with the module-level token.
             // Keep the previous expression so that side-effects are preserved.
 
-            arguments = [.. arguments[0..^1], _factory.Sequence([lastArgument], _factory.ModuleCancellationToken())];
+            arguments = [.. arguments[0..^1], _factory.Sequence([lastArgument], _factory.ModuleCancellationToken())]
         else if (FindOverloadWithCancellationToken(method) is { } cancellableOverload)
             // The method being invoked does not have a CancellationToken as the last parameter, but there is an overload that does.
             // Invoke the other overload instead and pass in module-level token.
-            method = cancellableOverload;
-            arguments = [.. arguments, _factory.ModuleCancellationToken()];
-            argumentRefKindsOpt = argumentRefKindsOpt.IsDefault ? default : [.. argumentRefKindsOpt, RefKind.None];
+            method = cancellableOverload
+            arguments = [.. arguments, _factory.ModuleCancellationToken()]
+            argumentRefKindsOpt = argumentRefKindsOpt.IsDefault ? default : [.. argumentRefKindsOpt, RefKind.None]
 
     /// <summary>
     /// Find an overload whose last parameter is <see cref="CancellationToken"/> and
@@ -134,18 +134,18 @@ internal sealed class ModuleCancellationInstrumenter(
     private MethodSymbol? FindOverloadWithCancellationToken(MethodSymbol method)
         // Switching to a cancellable overload only applies to ordinary methods and constructors.
         if (method.MethodKind is not (MethodKind.Ordinary or MethodKind.Constructor))
-            return null;
+            return null
 
         // Look for an overload of the definition with no type parameter substitutions.
-        var methodDefinition = method.OriginalDefinition;
+        var methodDefinition = method.OriginalDefinition
 
-        var methodsSetsRequiredMembers = methodDefinition.HasSetsRequiredMembers;
+        var methodsSetsRequiredMembers = methodDefinition.HasSetsRequiredMembers
 
         foreach (var member in methodDefinition.ContainingType.GetMembers(method.Name))
             // If the member is the method being compiled, calling it could result in a recursion not present in the code previously.
             // We can't guarantee the instrumentation won't result in infinite recursion, but we can avoid the trivial case.
             if (member == _factory.TopLevelMethod?.OriginalDefinition)
-                continue;
+                continue
 
             // It's unlikely that real-world APIs have overloads that differ in dynamic,
             // but if they do avoid selecting them since their intended use might differ.
@@ -154,7 +154,7 @@ internal sealed class ModuleCancellationInstrumenter(
             // We could potentially allow the visibility to differ,
             // but we'd need to check if the overload is accessible at the call site.
 
-            const TypeCompareKind TypeComparisonKind = TypeCompareKind.CLRSignatureCompareOptions & ~TypeCompareKind.IgnoreDynamic;
+            const TypeCompareKind TypeComparisonKind = TypeCompareKind.CLRSignatureCompareOptions & ~TypeCompareKind.IgnoreDynamic
 
             if (member.IsStatic == methodDefinition.IsStatic &&
                 member.MetadataVisibility == methodDefinition.MetadataVisibility &&
@@ -164,7 +164,7 @@ internal sealed class ModuleCancellationInstrumenter(
                 methodDefinition.Parameters.Length == parametersWithCancellationToken.Length - 1 &&
                 lastParamType.Equals(_throwMethod.ContainingType, TypeCompareKind.ConsiderEverything) &&
                 (!methodsSetsRequiredMembers || overload.HasSetsRequiredMembers))
-                var typeMap = (methodDefinition.Arity > 0) ? new TypeMap(overload.TypeParameters, methodDefinition.TypeParameters) : null;
+                var typeMap = (methodDefinition.Arity > 0) ? new TypeMap(overload.TypeParameters, methodDefinition.TypeParameters) : null
 
                 if (MemberSignatureComparer.HaveSameParameterTypes(
                     methodDefinition.Parameters.AsSpan(),
@@ -186,7 +186,7 @@ internal sealed class ModuleCancellationInstrumenter(
                                     overload.TypeParameters,
                                     typeMap,
                                     TypeCompareKind.IgnoreDynamicAndTupleNames | TypeCompareKind.IgnoreNullableModifiersForReferenceTypes))
-                    var result = overload.AsMember(method.ContainingType);
-                    return (result.Arity > 0) ? result.Construct(method.TypeArgumentsWithAnnotations) : result;
+                    var result = overload.AsMember(method.ContainingType)
+                    return (result.Arity > 0) ? result.Construct(method.TypeArgumentsWithAnnotations) : result
 
-        return null;
+        return null

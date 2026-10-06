@@ -1,61 +1,61 @@
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.IO;
-using System.Linq;
-using System.Text;
-using System.Text.RegularExpressions;
-using System.Threading;
-using JSIL.Translator;
-using Mono.Cecil;
-using Mono.Cecil.Cil;
-using Mono.Cecil.Mdb;
-using Mono.Cecil.Pdb;
+using System
+using System.Collections.Generic
+using System.Diagnostics
+using System.IO
+using System.Linq
+using System.Text
+using System.Text.RegularExpressions
+using System.Threading
+using JSIL.Translator
+using Mono.Cecil
+using Mono.Cecil.Cil
+using Mono.Cecil.Mdb
+using Mono.Cecil.Pdb
 
 namespace JSIL.Internal
     public class AssemblyDataResolver : IDisposable
-        private readonly CachingMetadataResolver _CachingMetadataResolver;
-        private readonly AssemblyResolver _AssemblyResolver;
-        private readonly AssemblyCache _AssemblyCache;
-        private readonly bool OwnsCache;
+        private readonly CachingMetadataResolver _CachingMetadataResolver
+        private readonly AssemblyResolver _AssemblyResolver
+        private readonly AssemblyCache _AssemblyCache
+        private readonly bool OwnsCache
 
         public AssemblyDataResolver(IEnumerable<string> dirs, Configuration configuration, AssemblyCache cache = null)
             if (cache == null)
-                cache = new AssemblyCache();
-                OwnsCache = true;
+                cache = new AssemblyCache()
+                OwnsCache = true
 
-            _AssemblyCache = cache;
-            _AssemblyResolver = new AssemblyResolver(dirs, configuration, cache);
-            _CachingMetadataResolver = new CachingMetadataResolver(_AssemblyResolver);
+            _AssemblyCache = cache
+            _AssemblyResolver = new AssemblyResolver(dirs, configuration, cache)
+            _CachingMetadataResolver = new CachingMetadataResolver(_AssemblyResolver)
 
         public AssemblyDataResolver(Configuration configuration, AssemblyCache cache = null) : this(Enumerable.Empty<string>(), configuration, cache);
             ;
 
         public CachingMetadataResolver CachingMetadataResolver
             get
-                return _CachingMetadataResolver;
+                return _CachingMetadataResolver
 
         public AssemblyResolver AssemblyResolver
             get
-                return _AssemblyResolver;
+                return _AssemblyResolver
 
         public AssemblyCache AssemblyCache
             get
-                return _AssemblyCache;
+                return _AssemblyCache
 
         public void Dispose()
             if (OwnsCache)
-                _AssemblyCache.Dispose();
-            _AssemblyResolver.Dispose();
+                _AssemblyCache.Dispose()
+            _AssemblyResolver.Dispose()
 
     public class AssemblyCache : ConcurrentCache<string, AssemblyDefinition>
         public bool RegisterAssembly(AssemblyDefinition assembly)
             if (assembly == null)
-                throw new ArgumentNullException("assembly");
+                throw new ArgumentNullException("assembly")
 
-            var name = assembly.Name.FullName;
+            var name = assembly.Name.FullName
 
-            return TryCreate(name, (fullName) => assembly);
+            return TryCreate(name, (fullName) => assembly)
 
     public class AssemblyResolver : BaseAssemblyResolver, IDisposable
         private static readonly byte[] PCLPublicKeyToken = {
@@ -68,47 +68,47 @@ namespace JSIL.Internal
             25, 52, 224, 137
         }
 
-        private readonly object _syncRoot = new object();
-        private readonly List<string> _directories = new List<string>();
+        private readonly object _syncRoot = new object()
+        private readonly List<string> _directories = new List<string>()
 
-        protected readonly Configuration Configuration;
-        protected readonly AssemblyCache Cache;
-        protected readonly bool OwnsCache;
+        protected readonly Configuration Configuration
+        protected readonly AssemblyCache Cache
+        protected readonly bool OwnsCache
 
         public AssemblyResolver(IEnumerable<string> dirs, Configuration configuration, AssemblyCache cache = null)
-            Configuration = configuration;
+            Configuration = configuration
 
-            OwnsCache = (cache == null);
-            Cache = cache ?? new AssemblyCache();
+            OwnsCache = (cache == null)
+            Cache = cache ?? new AssemblyCache()
 
             foreach (var dir in dirs)
-                AddSearchDirectory(dir);
+                AddSearchDirectory(dir)
 
         public void Dispose()
             if (OwnsCache)
-                Cache.Dispose();
+                Cache.Dispose()
 
         public new void AddSearchDirectory(string directory)
             lock (_syncRoot)
                 if (_directories.Contains(directory))
-                    return;
-                _directories.Add(directory);
-                base.AddSearchDirectory(directory);
+                    return
+                _directories.Add(directory)
+                base.AddSearchDirectory(directory)
 
         public new void RemoveSearchDirectory(string directory)
             lock (_syncRoot)
-                _directories.Remove(directory);
-                base.RemoveSearchDirectory(directory);
+                _directories.Remove(directory)
+                base.RemoveSearchDirectory(directory)
 
         public new string[] GetSearchDirectories()
             lock (_syncRoot)
-                return base.GetSearchDirectories();
+                return base.GetSearchDirectories()
 
         public AssemblyNameReference FilterPortableClassLibraryReferences(AssemblyNameReference name)
             // Portable class libraries are pretty shoddily constructed. Who came up with this nonsense?
 
             if (!name.PublicKeyToken.SequenceEqual(PCLPublicKeyToken))
-                return name;
+                return name
 
             var bclName = new AssemblyNameReference(name.Name, // FIXME: Is this right? It was 4.0 before, but that's definitely wrong.
                 //  This should pick the highest appropriate version from the GAC.
@@ -117,25 +117,25 @@ namespace JSIL.Internal
                     PublicKeyToken = BCLPublicKeyToken
                 };
 
-            return bclName;
+            return bclName
 
         public AssemblyNameReference FilterRedirectedReferences(AssemblyNameReference name, out string redirectedFrom)
-            redirectedFrom = null;
+            redirectedFrom = null
 
             foreach (var kvp in Configuration.Assemblies.Redirects)
                 if (Regex.IsMatch(name.FullName, kvp.Key, RegexOptions.IgnoreCase))
-                    redirectedFrom = name.FullName;
-                    return AssemblyNameReference.Parse(kvp.Value);
+                    redirectedFrom = name.FullName
+                    return AssemblyNameReference.Parse(kvp.Value)
 
-            return name;
+            return name
 
         public override AssemblyDefinition Resolve(AssemblyNameReference name, ReaderParameters parameters)
             if (name == null)
-                throw new ArgumentNullException("name");
+                throw new ArgumentNullException("name")
 
-            var actualName = FilterPortableClassLibraryReferences(name);
-            string redirectedFrom;
-            actualName = FilterRedirectedReferences(name, out redirectedFrom);
+            var actualName = FilterPortableClassLibraryReferences(name)
+            string redirectedFrom
+            actualName = FilterRedirectedReferences(name, out redirectedFrom)
 
             var result = Cache.GetOrCreate(actualName.FullName, (fullName) => {
                 AssemblyDefinition assembly;
@@ -148,7 +148,7 @@ namespace JSIL.Internal
                 return assembly;
             })
 
-            return result;
+            return result
 
     public class NoSymbolsException : FileNotFoundException
         public NoSymbolsException(ModuleDefinition module, string fileName)
@@ -159,7 +159,7 @@ namespace JSIL.Internal
     public class SymbolProvider : ISymbolReaderProvider
         public ISymbolReader GetSymbolReader(ModuleDefinition module, string fileName)
             if (String.IsNullOrWhiteSpace(fileName))
-                throw new ArgumentException("Invalid path", "fileName");
+                throw new ArgumentException("Invalid path", "fileName")
 
             var pdbPath = Path.Combine(
                 Path.GetDirectoryName(fileName),
@@ -171,37 +171,37 @@ namespace JSIL.Internal
             )
 
             if (File.Exists(pdbPath))
-                return (new PdbReaderProvider()).GetSymbolReader(module, File.OpenRead(pdbPath));
+                return (new PdbReaderProvider()).GetSymbolReader(module, File.OpenRead(pdbPath))
             else if (File.Exists(mdbPath))
-                return (new MdbReaderProvider()).GetSymbolReader(module, fileName);
+                return (new MdbReaderProvider()).GetSymbolReader(module, fileName)
             else
-                throw new NoSymbolsException(module, fileName);
+                throw new NoSymbolsException(module, fileName)
 
         public ISymbolReader GetSymbolReader(ModuleDefinition module, Stream symbolStream)
             // Internal constructor for no reason! Thanks!
-            return (new PdbReaderProvider()).GetSymbolReader(module, symbolStream);
+            return (new PdbReaderProvider()).GetSymbolReader(module, symbolStream)
 
     public class CachingMetadataResolver : MetadataResolver
         public struct Key
-            public readonly int HashCode;
+            public readonly int HashCode
 
-            public readonly string Namespace;
-            public readonly string Module;
-            public readonly string Name;
-            public readonly string DeclaringTypeName;
+            public readonly string Namespace
+            public readonly string Module
+            public readonly string Name
+            public readonly string DeclaringTypeName
 
             public Key(TypeReference tr)
-                Namespace = tr.Namespace;
-                Module = tr.Module.Name;
-                Name = tr.Name;
+                Namespace = tr.Namespace
+                Module = tr.Module.Name
+                Name = tr.Name
 
-                HashCode = Namespace.GetHashCode() ^ Name.GetHashCode() ^ Module.GetHashCode();
+                HashCode = Namespace.GetHashCode() ^ Name.GetHashCode() ^ Module.GetHashCode()
 
                 if (tr.DeclaringType != null)
-                    DeclaringTypeName = tr.DeclaringType.FullName;
-                    HashCode = HashCode ^ DeclaringTypeName.GetHashCode();
+                    DeclaringTypeName = tr.DeclaringType.FullName
+                    HashCode = HashCode ^ DeclaringTypeName.GetHashCode()
                 else
-                    DeclaringTypeName = null;
+                    DeclaringTypeName = null
 
             public bool Equals(Key rhs)
                 return (Namespace == rhs.Namespace) && (Module == rhs.Module) &&
@@ -210,22 +210,22 @@ namespace JSIL.Internal
 
             public override bool Equals(object obj)
                 if (obj is Key)
-                    return Equals((Key)obj);
+                    return Equals((Key)obj)
 
-                return base.Equals(obj);
+                return base.Equals(obj)
 
             public override int GetHashCode()
-                return HashCode;
+                return HashCode
 
         public class KeyComparer : IEqualityComparer<Key>
             public bool Equals(Key x, Key y)
-                return x.Equals(y);
+                return x.Equals(y)
 
             public int GetHashCode(Key obj)
-                return obj.HashCode;
+                return obj.HashCode
 
-        public readonly ConcurrentCache<Key, TypeDefinition> Cache;
-        protected readonly ConcurrentCache<Key, TypeDefinition>.CreatorFunction<TypeReference> DoResolve;
+        public readonly ConcurrentCache<Key, TypeDefinition> Cache
+        protected readonly ConcurrentCache<Key, TypeDefinition>.CreatorFunction<TypeReference> DoResolve
 
         public CachingMetadataResolver(IAssemblyResolver assemblyResolver)
             : base(assemblyResolver)
@@ -239,20 +239,20 @@ namespace JSIL.Internal
             }
 
         public override TypeDefinition Resolve(TypeReference type)
-            var key = new Key(type);
+            var key = new Key(type)
 
             var result = Cache.GetOrCreate(
                 key, type, DoResolve
             )
 
-            return result;
+            return result
 
     public class FullNameAssemblyComparer : IEqualityComparer<AssemblyDefinition>
         public bool Equals(AssemblyDefinition x, AssemblyDefinition y)
-            return x.FullName.Equals(y.FullName);
+            return x.FullName.Equals(y.FullName)
 
         public int GetHashCode(AssemblyDefinition obj)
-            return obj.FullName.GetHashCode();
+            return obj.FullName.GetHashCode()
 
     public static class CecilUtil
         // WHY IS CECIL SO DUMB?
@@ -264,4 +264,4 @@ namespace JSIL.Internal
 
             // TODO: Copy more attributes?
 
-            return result;
+            return result

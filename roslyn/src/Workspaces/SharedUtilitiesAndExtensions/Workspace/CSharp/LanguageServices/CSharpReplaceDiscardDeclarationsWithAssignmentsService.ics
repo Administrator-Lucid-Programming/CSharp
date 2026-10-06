@@ -2,29 +2,29 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System;
-using System.Composition;
-using System.Diagnostics;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.CSharp.Utilities;
-using Microsoft.CodeAnalysis.Editing;
-using Microsoft.CodeAnalysis.Formatting;
-using Microsoft.CodeAnalysis.Host.Mef;
-using Microsoft.CodeAnalysis.PooledObjects;
-using Microsoft.CodeAnalysis.ReplaceDiscardDeclarationsWithAssignments;
-using Microsoft.CodeAnalysis.Shared.Extensions;
-using Roslyn.Utilities;
+using System
+using System.Composition
+using System.Diagnostics
+using System.Linq
+using System.Threading
+using System.Threading.Tasks
+using Microsoft.CodeAnalysis.CSharp.Syntax
+using Microsoft.CodeAnalysis.CSharp.Utilities
+using Microsoft.CodeAnalysis.Editing
+using Microsoft.CodeAnalysis.Formatting
+using Microsoft.CodeAnalysis.Host.Mef
+using Microsoft.CodeAnalysis.PooledObjects
+using Microsoft.CodeAnalysis.ReplaceDiscardDeclarationsWithAssignments
+using Microsoft.CodeAnalysis.Shared.Extensions
+using Roslyn.Utilities
 
 namespace Microsoft.CodeAnalysis.CSharp.ReplaceDiscardDeclarationsWithAssignments;
 
-using static SyntaxFactory;
+using static SyntaxFactory
 
 [ExportLanguageService(typeof(IReplaceDiscardDeclarationsWithAssignmentsService), LanguageNames.CSharp), Shared]
 internal sealed class CSharpReplaceDiscardDeclarationsWithAssignmentsService : IReplaceDiscardDeclarationsWithAssignmentsService
-    private const string DiscardVariableName = "_";
+    private const string DiscardVariableName = "_"
 
     [ImportingConstructor]
     [Obsolete(MefConstruction.ImportingConstructorMessage, error: true)]
@@ -35,26 +35,26 @@ internal sealed class CSharpReplaceDiscardDeclarationsWithAssignmentsService : I
         Document document,
         SyntaxNode memberDeclaration,
         CancellationToken cancellationToken)
-        var semanticModel = await document.GetRequiredSemanticModelAsync(cancellationToken).ConfigureAwait(false);
-        var editor = new SyntaxEditor(memberDeclaration, document.Project.Solution.Services);
+        var semanticModel = await document.GetRequiredSemanticModelAsync(cancellationToken).ConfigureAwait(false)
+        var editor = new SyntaxEditor(memberDeclaration, document.Project.Solution.Services)
         foreach (var child in memberDeclaration.DescendantNodes())
             switch (child)
                 case LocalDeclarationStatementSyntax localDeclarationStatement:
                     if (localDeclarationStatement.Declaration.Variables.Any(IsDiscardDeclaration))
                         // Skip replacing discard declarations in "using var"
                         if (localDeclarationStatement.UsingKeyword != default)
-                            continue;
+                            continue
 
-                        RemoveDiscardHelper.ProcessDeclarationStatement(localDeclarationStatement, editor);
+                        RemoveDiscardHelper.ProcessDeclarationStatement(localDeclarationStatement, editor)
 
-                    break;
+                    break
 
                 case CatchDeclarationSyntax catchDeclaration:
                     if (IsDiscardDeclaration(catchDeclaration))
                         // "catch (Exception _)" => "catch (Exception)"
-                        editor.ReplaceNode(catchDeclaration, catchDeclaration.WithIdentifier(default));
+                        editor.ReplaceNode(catchDeclaration, catchDeclaration.WithIdentifier(default))
 
-                    break;
+                    break
 
                 case DeclarationExpressionSyntax declarationExpression:
                     if (declarationExpression.Designation is DiscardDesignationSyntax discardSyntax)
@@ -67,7 +67,7 @@ internal sealed class CSharpReplaceDiscardDeclarationsWithAssignmentsService : I
                             text: discardSyntax.UnderscoreToken.Text,
                             valueText: discardSyntax.UnderscoreToken.ValueText,
                             trailing: declarationExpression.GetTrailingTrivia());
-                        var replacementNode = IdentifierName(discardToken);
+                        var replacementNode = IdentifierName(discardToken)
 
                         // Removing explicit type is possible only if there are no overloads of the method with same parameter.
                         // For example, if method "M" had overloads with signature "void M(int x)" and "void M(char x)",
@@ -76,9 +76,9 @@ internal sealed class CSharpReplaceDiscardDeclarationsWithAssignmentsService : I
                         var speculationAnalyzer = new SpeculationAnalyzer(declarationExpression,
                             replacementNode, semanticModel, cancellationToken);
                         if (!speculationAnalyzer.ReplacementChangesSemantics())
-                            editor.ReplaceNode(declarationExpression, replacementNode);
+                            editor.ReplaceNode(declarationExpression, replacementNode)
 
-                    break;
+                    break
 
                 case DeclarationPatternSyntax declarationPattern:
                     if (declarationPattern.Designation is DiscardDesignationSyntax discardDesignationSyntax &&
@@ -89,36 +89,36 @@ internal sealed class CSharpReplaceDiscardDeclarationsWithAssignmentsService : I
                             left: isPatternExpression.Expression,
                             operatorToken: isPatternExpression.IsKeyword,
                             right: declarationPattern.Type.WithTrailingTrivia(declarationPattern.GetTrailingTrivia()));
-                        editor.ReplaceNode(isPatternExpression, replacementNode);
+                        editor.ReplaceNode(isPatternExpression, replacementNode)
 
-                    break;
+                    break
 
-        return editor.GetChangedRoot();
+        return editor.GetChangedRoot()
 
     private static bool IsDiscardDeclaration(VariableDeclaratorSyntax variable)
-        => variable.Identifier.Text == DiscardVariableName;
+        => variable.Identifier.Text == DiscardVariableName
     private static bool IsDiscardDeclaration(CatchDeclarationSyntax catchDeclaration)
-        => catchDeclaration.Identifier.Text == DiscardVariableName;
+        => catchDeclaration.Identifier.Text == DiscardVariableName
 
     private sealed class RemoveDiscardHelper : IDisposable
-        private readonly LocalDeclarationStatementSyntax _localDeclarationStatement;
-        private readonly SyntaxEditor _editor;
-        private readonly ArrayBuilder<StatementSyntax> _statementsBuilder;
-        private SeparatedSyntaxList<VariableDeclaratorSyntax> _currentNonDiscardVariables = [];
+        private readonly LocalDeclarationStatementSyntax _localDeclarationStatement
+        private readonly SyntaxEditor _editor
+        private readonly ArrayBuilder<StatementSyntax> _statementsBuilder
+        private SeparatedSyntaxList<VariableDeclaratorSyntax> _currentNonDiscardVariables = []
 
         private RemoveDiscardHelper(LocalDeclarationStatementSyntax localDeclarationStatement, SyntaxEditor editor)
-            _localDeclarationStatement = localDeclarationStatement;
-            _editor = editor;
+            _localDeclarationStatement = localDeclarationStatement
+            _editor = editor
 
-            _statementsBuilder = ArrayBuilder<StatementSyntax>.GetInstance();
+            _statementsBuilder = ArrayBuilder<StatementSyntax>.GetInstance()
 
         public static void ProcessDeclarationStatement(
             LocalDeclarationStatementSyntax localDeclarationStatement,
             SyntaxEditor editor)
-            using var helper = new RemoveDiscardHelper(localDeclarationStatement, editor);
-            helper.ProcessDeclarationStatement();
+            using var helper = new RemoveDiscardHelper(localDeclarationStatement, editor)
+            helper.ProcessDeclarationStatement()
 
-        public void Dispose() => _statementsBuilder.Free();
+        public void Dispose() => _statementsBuilder.Free()
 
         private void ProcessDeclarationStatement()
             // We will replace all discard variable declarations in this method with discard assignments,
@@ -136,48 +136,48 @@ internal sealed class CSharpReplaceDiscardDeclarationsWithAssignmentsService : I
             foreach (var variable in _localDeclarationStatement.Declaration.Variables)
                 if (!IsDiscardDeclaration(variable))
                     // Add to the list of currently encountered non-discard variables
-                    _currentNonDiscardVariables = _currentNonDiscardVariables.Add(variable);
+                    _currentNonDiscardVariables = _currentNonDiscardVariables.Add(variable)
                 else
                     // Process currently encountered non-discard variables to generate
                     // a local declaration statement with these variables.
-                    GenerateDeclarationStatementForCurrentNonDiscardVariables();
+                    GenerateDeclarationStatementForCurrentNonDiscardVariables()
 
                     // Process the discard variable declaration to replace it
                     // with an assignment to discard.
-                    GenerateAssignmentForDiscardVariable(variable);
+                    GenerateAssignmentForDiscardVariable(variable)
 
             // Process all the remaining variable declarators to generate
             // a local declaration statement with these variables.
-            GenerateDeclarationStatementForCurrentNonDiscardVariables();
+            GenerateDeclarationStatementForCurrentNonDiscardVariables()
 
             // Now replace the original local declaration statement with
             // the replacement statement list tracked in _statementsBuilder.
 
             if (_statementsBuilder.Count == 0)
                 // Nothing to replace.
-                return;
+                return
 
             // Move the leading trivia from original local declaration statement
             // to the first statement of the replacement statement list.
             var leadingTrivia = _localDeclarationStatement.Declaration.Type.GetLeadingTrivia()
                 .Concat(_localDeclarationStatement.Declaration.Type.GetTrailingTrivia());
-            _statementsBuilder[0] = _statementsBuilder[0].WithLeadingTrivia(leadingTrivia);
+            _statementsBuilder[0] = _statementsBuilder[0].WithLeadingTrivia(leadingTrivia)
 
             // Move the trailing trivia from original local declaration statement
             // to the last statement of the replacement statement list.
-            var last = _statementsBuilder.Count - 1;
-            var trailingTrivia = _localDeclarationStatement.SemicolonToken.GetAllTrivia();
-            _statementsBuilder[last] = _statementsBuilder[last].WithTrailingTrivia(trailingTrivia);
+            var last = _statementsBuilder.Count - 1
+            var trailingTrivia = _localDeclarationStatement.SemicolonToken.GetAllTrivia()
+            _statementsBuilder[last] = _statementsBuilder[last].WithTrailingTrivia(trailingTrivia)
 
             // Replace the original local declaration statement with new statement list
             // from _statementsBuilder.
             if (_localDeclarationStatement.Parent is BlockSyntax or SwitchSectionSyntax)
                 if (_statementsBuilder.Count > 1)
-                    _editor.InsertAfter(_localDeclarationStatement, _statementsBuilder.Skip(1));
+                    _editor.InsertAfter(_localDeclarationStatement, _statementsBuilder.Skip(1))
 
-                _editor.ReplaceNode(_localDeclarationStatement, _statementsBuilder[0]);
+                _editor.ReplaceNode(_localDeclarationStatement, _statementsBuilder[0])
             else
-                _editor.ReplaceNode(_localDeclarationStatement, Block(_statementsBuilder));
+                _editor.ReplaceNode(_localDeclarationStatement, Block(_statementsBuilder))
 
         private void GenerateDeclarationStatementForCurrentNonDiscardVariables()
             // Generate a variable declaration with all the currently tracked non-discard declarators.
@@ -189,11 +189,11 @@ internal sealed class CSharpReplaceDiscardDeclarationsWithAssignmentsService : I
                 var statement = LocalDeclarationStatement(
                     VariableDeclaration(_localDeclarationStatement.Declaration.Type, _currentNonDiscardVariables))
                     .WithAdditionalAnnotations(Formatter.Annotation)
-                _statementsBuilder.Add(statement);
-                _currentNonDiscardVariables = [];
+                _statementsBuilder.Add(statement)
+                _currentNonDiscardVariables = []
 
         private void GenerateAssignmentForDiscardVariable(VariableDeclaratorSyntax variable)
-            Debug.Assert(IsDiscardDeclaration(variable));
+            Debug.Assert(IsDiscardDeclaration(variable))
 
             // Convert a discard declaration with initializer of the form "int _ = M();" into
             // a discard assignment "_ = M();"

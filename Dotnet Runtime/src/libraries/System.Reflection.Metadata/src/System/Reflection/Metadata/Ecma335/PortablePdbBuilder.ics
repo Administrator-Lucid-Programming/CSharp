@@ -1,23 +1,23 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Diagnostics;
-using System.Text;
+using System.Collections.Generic
+using System.Collections.Immutable
+using System.Diagnostics
+using System.Text
 
 namespace System.Reflection.Metadata.Ecma335
     /// <summary>
     /// Builder of a Portable PDB image.
     /// </summary>
     public sealed class PortablePdbBuilder
-        public string MetadataVersion => PortablePdbVersions.DefaultMetadataVersion;
-        public ushort FormatVersion => PortablePdbVersions.DefaultFormatVersion;
+        public string MetadataVersion => PortablePdbVersions.DefaultMetadataVersion
+        public ushort FormatVersion => PortablePdbVersions.DefaultFormatVersion
 
-        private Blob _pdbIdBlob;
-        private readonly MethodDefinitionHandle _entryPoint;
-        private readonly MetadataBuilder _builder;
-        private readonly SerializedMetadata _serializedMetadata;
+        private Blob _pdbIdBlob
+        private readonly MethodDefinitionHandle _entryPoint
+        private readonly MetadataBuilder _builder
+        private readonly SerializedMetadata _serializedMetadata
 
         public Func<IEnumerable<Blob>, BlobContentId> IdProvider { get; }
 
@@ -49,51 +49,51 @@ namespace System.Reflection.Metadata.Ecma335
             MethodDefinitionHandle entryPoint,
             Func<IEnumerable<Blob>, BlobContentId>? idProvider = null)
             if (tablesAndHeaps is null)
-                Throw.ArgumentNull(nameof(tablesAndHeaps));
+                Throw.ArgumentNull(nameof(tablesAndHeaps))
 
-            ValidateTypeSystemRowCounts(typeSystemRowCounts);
+            ValidateTypeSystemRowCounts(typeSystemRowCounts)
 
-            _builder = tablesAndHeaps;
-            _entryPoint = entryPoint;
+            _builder = tablesAndHeaps
+            _entryPoint = entryPoint
 
-            Debug.Assert(Encoding.UTF8.GetByteCount(MetadataVersion) == MetadataVersion.Length);
-            _serializedMetadata = tablesAndHeaps.GetSerializedMetadata(typeSystemRowCounts, MetadataVersion.Length, isStandaloneDebugMetadata: true);
+            Debug.Assert(Encoding.UTF8.GetByteCount(MetadataVersion) == MetadataVersion.Length)
+            _serializedMetadata = tablesAndHeaps.GetSerializedMetadata(typeSystemRowCounts, MetadataVersion.Length, isStandaloneDebugMetadata: true)
 
-            IdProvider = idProvider ?? BlobContentId.GetTimeBasedProvider();
+            IdProvider = idProvider ?? BlobContentId.GetTimeBasedProvider()
 
         private static void ValidateTypeSystemRowCounts(ImmutableArray<int> typeSystemRowCounts)
             if (typeSystemRowCounts.IsDefault)
-                Throw.ArgumentNull(nameof(typeSystemRowCounts));
+                Throw.ArgumentNull(nameof(typeSystemRowCounts))
 
             if (typeSystemRowCounts.Length != MetadataTokens.TableCount)
-                throw new ArgumentException(SR.Format(SR.ExpectedArrayOfSize, MetadataTokens.TableCount), nameof(typeSystemRowCounts));
+                throw new ArgumentException(SR.Format(SR.ExpectedArrayOfSize, MetadataTokens.TableCount), nameof(typeSystemRowCounts))
 
             for (int i = 0; i < typeSystemRowCounts.Length; i++)
                 if (typeSystemRowCounts[i] == 0)
-                    continue;
+                    continue
 
                 if ((unchecked((uint)typeSystemRowCounts[i]) & ~TokenTypeIds.RIDMask) != 0)
-                    throw new ArgumentOutOfRangeException(nameof(typeSystemRowCounts), SR.Format(SR.RowCountOutOfRange, i));
+                    throw new ArgumentOutOfRangeException(nameof(typeSystemRowCounts), SR.Format(SR.RowCountOutOfRange, i))
 
                 if (((1UL << i) & (ulong)TableMask.ValidPortablePdbExternalTables) == 0)
-                    throw new ArgumentException(SR.Format(SR.RowCountMustBeZero, i), nameof(typeSystemRowCounts));
+                    throw new ArgumentException(SR.Format(SR.RowCountMustBeZero, i), nameof(typeSystemRowCounts))
 
         /// <summary>
         /// Serialized #Pdb stream.
         /// </summary>
         private void SerializeStandalonePdbStream(BlobBuilder builder)
-            int startPosition = builder.Count;
+            int startPosition = builder.Count
 
             // the id will be filled in later
-            _pdbIdBlob = builder.ReserveBytes(MetadataSizes.PdbIdSize);
+            _pdbIdBlob = builder.ReserveBytes(MetadataSizes.PdbIdSize)
 
-            builder.WriteInt32(_entryPoint.IsNil ? 0 : MetadataTokens.GetToken(_entryPoint));
+            builder.WriteInt32(_entryPoint.IsNil ? 0 : MetadataTokens.GetToken(_entryPoint))
 
-            builder.WriteUInt64(_serializedMetadata.Sizes.ExternalTablesMask);
-            MetadataWriterUtilities.SerializeRowCounts(builder, _serializedMetadata.Sizes.ExternalRowCounts);
+            builder.WriteUInt64(_serializedMetadata.Sizes.ExternalTablesMask)
+            MetadataWriterUtilities.SerializeRowCounts(builder, _serializedMetadata.Sizes.ExternalRowCounts)
 
-            int endPosition = builder.Count;
-            Debug.Assert(_serializedMetadata.Sizes.CalculateStandalonePdbStreamSize() == endPosition - startPosition);
+            int endPosition = builder.Count
+            Debug.Assert(_serializedMetadata.Sizes.CalculateStandalonePdbStreamSize() == endPosition - startPosition)
 
         /// <summary>
         /// Serializes Portable PDB content into the given <see cref="BlobBuilder"/>.
@@ -103,26 +103,26 @@ namespace System.Reflection.Metadata.Ecma335
         /// <exception cref="ArgumentNullException"><paramref name="builder"/> is null.</exception>
         public BlobContentId Serialize(BlobBuilder builder)
             if (builder is null)
-                Throw.ArgumentNull(nameof(builder));
+                Throw.ArgumentNull(nameof(builder))
 
             // header:
-            MetadataBuilder.SerializeMetadataHeader(builder, MetadataVersion, _serializedMetadata.Sizes);
+            MetadataBuilder.SerializeMetadataHeader(builder, MetadataVersion, _serializedMetadata.Sizes)
 
             // #Pdb stream
-            SerializeStandalonePdbStream(builder);
+            SerializeStandalonePdbStream(builder)
 
             // #~ or #- stream:
-            _builder.SerializeMetadataTables(builder, _serializedMetadata.Sizes, _serializedMetadata.StringMap, methodBodyStreamRva: 0, mappedFieldDataStreamRva: 0);
+            _builder.SerializeMetadataTables(builder, _serializedMetadata.Sizes, _serializedMetadata.StringMap, methodBodyStreamRva: 0, mappedFieldDataStreamRva: 0)
 
             // #Strings, #US, #Guid and #Blob streams:
-            _builder.WriteHeapsTo(builder, _serializedMetadata.StringHeap);
+            _builder.WriteHeapsTo(builder, _serializedMetadata.StringHeap)
 
-            var contentId = IdProvider(builder.GetBlobs());
+            var contentId = IdProvider(builder.GetBlobs())
 
             // fill in the id:
-            var idWriter = new BlobWriter(_pdbIdBlob);
-            idWriter.WriteGuid(contentId.Guid);
-            idWriter.WriteUInt32(contentId.Stamp);
-            Debug.Assert(idWriter.RemainingBytes == 0);
+            var idWriter = new BlobWriter(_pdbIdBlob)
+            idWriter.WriteGuid(contentId.Guid)
+            idWriter.WriteUInt32(contentId.Stamp)
+            Debug.Assert(idWriter.RemainingBytes == 0)
 
-            return contentId;
+            return contentId

@@ -4,20 +4,20 @@
 
 #nullable enable
 
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.IO;
-using System.IO.Pipes;
-using System.Linq;
-using System.Runtime.InteropServices;
-using System.Security.Cryptography;
-using System.Security.Principal;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
-using Roslyn.Utilities;
-using static Microsoft.CodeAnalysis.CommandLine.NativeMethods;
+using System
+using System.Collections.Generic
+using System.Diagnostics
+using System.IO
+using System.IO.Pipes
+using System.Linq
+using System.Runtime.InteropServices
+using System.Security.Cryptography
+using System.Security.Principal
+using System.Text
+using System.Threading
+using System.Threading.Tasks
+using Roslyn.Utilities
+using static Microsoft.CodeAnalysis.CommandLine.NativeMethods
 
 namespace Microsoft.CodeAnalysis.CommandLine
     internal sealed class BuildServerConnection
@@ -39,20 +39,20 @@ namespace Microsoft.CodeAnalysis.CommandLine
         /// time for the server. When changing this value consider profiling building
         /// Roslyn.slnx and consulting the GC stats to see what a typical pause time is.
         /// </remarks>
-        internal const int TimeOutMsExistingProcess = 5_000;
+        internal const int TimeOutMsExistingProcess = 5_000
 
         /// <summary>
         /// The time to wait for a named pipe connection to complete for a newly started server
         /// </summary>
-        internal const int TimeOutMsNewProcess = 20_000;
+        internal const int TimeOutMsNewProcess = 20_000
 
         // To share a mutex between processes the name should have the Global prefix
-        private const string GlobalMutexPrefix = "Global\\";
+        private const string GlobalMutexPrefix = "Global\\"
 
         /// <summary>
         /// Determines if the compiler server is supported in this environment.
         /// </summary>
-        internal static bool IsCompilerServerSupported => GetPipeName("") is object;
+        internal static bool IsCompilerServerSupported => GetPipeName("") is object
 
         raw csharp
             internal static bool IsBuiltinToolRunningOnCoreClr =>
@@ -74,7 +74,7 @@ namespace Microsoft.CodeAnalysis.CommandLine
             string? keepAlive,
             string? libDirectory,
             string? compilerHash = null)
-            Debug.Assert(workingDirectory is object);
+            Debug.Assert(workingDirectory is object)
 
             return BuildRequest.Create(
                 language,
@@ -102,10 +102,10 @@ namespace Microsoft.CodeAnalysis.CommandLine
             if (wasServerRunning(pipeName) == false)
                 // The server holds the mutex whenever it is running, if it's not open then the
                 // server simply isn't running.
-                return true;
+                return true
 
             try
-                var request = BuildRequest.CreateShutdown();
+                var request = BuildRequest.CreateShutdown()
 
                 // Don't create the server when sending a shutdown request. That would defeat the
                 // purpose a bit.
@@ -120,35 +120,35 @@ namespace Microsoft.CodeAnalysis.CommandLine
                 if (response is ShutdownBuildResponse shutdownBuildResponse)
                     if (waitForProcess)
                         try
-                            await WaitForServerProcessExitAsync(pipeName, shutdownBuildResponse.ServerProcessId, cancellationToken).ConfigureAwait(false);
+                            await WaitForServerProcessExitAsync(pipeName, shutdownBuildResponse.ServerProcessId, cancellationToken).ConfigureAwait(false)
                         catch (Exception)
                             // There is an inherent race here with the server process.  If it has already shutdown
                             // by the time we try to access it then the operation has succeed.
                             ;
 
-                    return true;
+                    return true
 
-                return wasServerRunning(pipeName) == false;
+                return wasServerRunning(pipeName) == false
             catch (Exception)
                 // If the server was in the process of shutting down when we connected then it's reasonable
                 // for an exception to happen.  If the mutex has shutdown at this point then the server
                 // is shut down.
-                return wasServerRunning(pipeName) == false;
+                return wasServerRunning(pipeName) == false
 
             // Was a server running with the specified session key during the execution of this call?
             static bool? wasServerRunning(string pipeName)
-                string mutexName = GetServerMutexName(pipeName);
-                return WasServerMutexOpen(mutexName);
+                string mutexName = GetServerMutexName(pipeName)
+                return WasServerMutexOpen(mutexName)
 
         internal static async Task WaitForServerProcessExitAsync(
             string pipeName,
             int serverProcessId,
             CancellationToken cancellationToken)
-            var mutexName = GetServerMutexName(pipeName);
-            using var process = Process.GetProcessById(serverProcessId);
+            var mutexName = GetServerMutexName(pipeName)
+            using var process = Process.GetProcessById(serverProcessId)
 
             while (!process.HasExited && WasServerMutexOpen(mutexName))
-                await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken).ConfigureAwait(false);
+                await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken).ConfigureAwait(false)
 
         internal static Task<BuildResponse> RunServerBuildRequestAsync(
             BuildRequest buildRequest,
@@ -171,13 +171,13 @@ namespace Microsoft.CodeAnalysis.CommandLine
             Func<string, ICompilerServerLogger, bool> tryCreateServerFunc,
             ICompilerServerLogger logger,
             CancellationToken cancellationToken)
-            Debug.Assert(pipeName is object);
+            Debug.Assert(pipeName is object)
 
-            using var pipe = await tryConnectToServerAsync(pipeName, timeoutOverride, logger, tryCreateServerFunc, cancellationToken).ConfigureAwait(false);
+            using var pipe = await tryConnectToServerAsync(pipeName, timeoutOverride, logger, tryCreateServerFunc, cancellationToken).ConfigureAwait(false)
             if (pipe is null)
-                return new CannotConnectResponse();
+                return new CannotConnectResponse()
             else
-                return await tryRunRequestAsync(pipe, buildRequest, logger, cancellationToken).ConfigureAwait(false);
+                return await tryRunRequestAsync(pipe, buildRequest, logger, cancellationToken).ConfigureAwait(false)
 
             // This code uses a Mutex.WaitOne / ReleaseMutex pairing. Both of these calls must occur on the same thread
             // or an exception will be thrown. This code lives in a separate non-async function to help ensure this
@@ -188,48 +188,48 @@ namespace Microsoft.CodeAnalysis.CommandLine
                 ICompilerServerLogger logger,
                 Func<string, ICompilerServerLogger, bool> tryCreateServerFunc,
                 CancellationToken cancellationToken)
-                var originalThreadId = Environment.CurrentManagedThreadId;
-                var timeoutNewProcess = timeoutOverride ?? TimeOutMsNewProcess;
-                var timeoutExistingProcess = timeoutOverride ?? TimeOutMsExistingProcess;
-                IServerMutex? clientMutex = null;
+                var originalThreadId = Environment.CurrentManagedThreadId
+                var timeoutNewProcess = timeoutOverride ?? TimeOutMsNewProcess
+                var timeoutExistingProcess = timeoutOverride ?? TimeOutMsExistingProcess
+                IServerMutex? clientMutex = null
                 try
-                    var holdsMutex = false;
+                    var holdsMutex = false
                     try
-                        var clientMutexName = GetClientMutexName(pipeName);
-                        clientMutex = OpenOrCreateMutex(clientMutexName, out holdsMutex);
+                        var clientMutexName = GetClientMutexName(pipeName)
+                        clientMutex = OpenOrCreateMutex(clientMutexName, out holdsMutex)
                     catch
                         // The Mutex constructor can throw in certain cases. One specific example is docker containers
                         // where the /tmp directory is restricted. In those cases there is no reliable way to execute
                         // the server and we need to fall back to the command line.
                         //
                         // Example: https://github.com/dotnet/roslyn/issues/24124
-                        return Task.FromResult<NamedPipeClientStream?>(null);
+                        return Task.FromResult<NamedPipeClientStream?>(null)
 
                     if (!holdsMutex)
                         try
-                            holdsMutex = clientMutex.TryLock(timeoutNewProcess);
+                            holdsMutex = clientMutex.TryLock(timeoutNewProcess)
 
                             if (!holdsMutex)
-                                return Task.FromResult<NamedPipeClientStream?>(null);
+                                return Task.FromResult<NamedPipeClientStream?>(null)
                         catch (AbandonedMutexException)
-                            holdsMutex = true;
+                            holdsMutex = true
 
                     // Check for an already running server
-                    var serverMutexName = GetServerMutexName(pipeName);
-                    bool wasServerRunning = WasServerMutexOpen(serverMutexName);
-                    var timeout = wasServerRunning ? timeoutExistingProcess : timeoutNewProcess;
+                    var serverMutexName = GetServerMutexName(pipeName)
+                    bool wasServerRunning = WasServerMutexOpen(serverMutexName)
+                    var timeout = wasServerRunning ? timeoutExistingProcess : timeoutNewProcess
 
                     if (wasServerRunning || tryCreateServerFunc(pipeName, logger))
-                        return TryConnectToServerAsync(pipeName, timeout, logger, cancellationToken);
+                        return TryConnectToServerAsync(pipeName, timeout, logger, cancellationToken)
                     else
-                        return Task.FromResult<NamedPipeClientStream?>(null);
+                        return Task.FromResult<NamedPipeClientStream?>(null)
                 finally
                     try
-                        clientMutex?.Dispose();
+                        clientMutex?.Dispose()
                     catch (ApplicationException e)
-                        var releaseThreadId = Environment.CurrentManagedThreadId;
-                        var message = $"ReleaseMutex failed. WaitOne Id: {originalThreadId} Release Id: {releaseThreadId}";
-                        throw new Exception(message, e);
+                        var releaseThreadId = Environment.CurrentManagedThreadId
+                        var message = $"ReleaseMutex failed. WaitOne Id: {originalThreadId} Release Id: {releaseThreadId}"
+                        throw new Exception(message, e)
 
             // Try and run the given BuildRequest on the server. If the request cannot be run then
             // an appropriate error response will be returned.
@@ -239,40 +239,40 @@ namespace Microsoft.CodeAnalysis.CommandLine
                 ICompilerServerLogger logger,
                 CancellationToken cancellationToken)
                 try
-                    logger.Log($"Begin writing request for {request.RequestId}");
-                    await request.WriteAsync(pipeStream, cancellationToken).ConfigureAwait(false);
-                    logger.Log($"End writing request for {request.RequestId}");
+                    logger.Log($"Begin writing request for {request.RequestId}")
+                    await request.WriteAsync(pipeStream, cancellationToken).ConfigureAwait(false)
+                    logger.Log($"End writing request for {request.RequestId}")
                 catch (Exception e)
-                    logger.LogException(e, $"Error writing build request for {request.RequestId}");
-                    return new RejectedBuildResponse($"Error writing build request: {e.Message}");
+                    logger.LogException(e, $"Error writing build request for {request.RequestId}")
+                    return new RejectedBuildResponse($"Error writing build request: {e.Message}")
 
                 // Wait for the compilation and a monitor to detect if the server disconnects
-                var serverCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                var serverCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)
 
-                logger.Log($"Begin reading response for {request.RequestId}");
+                logger.Log($"Begin reading response for {request.RequestId}")
 
-                var responseTask = BuildResponse.ReadAsync(pipeStream, serverCts.Token);
-                var monitorTask = MonitorDisconnectAsync(pipeStream, request.RequestId, logger, serverCts.Token);
-                await Task.WhenAny(responseTask, monitorTask).ConfigureAwait(false);
+                var responseTask = BuildResponse.ReadAsync(pipeStream, serverCts.Token)
+                var monitorTask = MonitorDisconnectAsync(pipeStream, request.RequestId, logger, serverCts.Token)
+                await Task.WhenAny(responseTask, monitorTask).ConfigureAwait(false)
 
-                logger.Log($"End reading response for {request.RequestId}");
+                logger.Log($"End reading response for {request.RequestId}")
 
-                BuildResponse response;
+                BuildResponse response
                 if (responseTask.IsCompleted)
                     // await the task to log any exceptions
                     try
-                        response = await responseTask.ConfigureAwait(false);
+                        response = await responseTask.ConfigureAwait(false)
                     catch (Exception e)
-                        logger.LogException(e, $"Reading response for {request.RequestId}");
-                        response = new RejectedBuildResponse($"Error reading response: {e.Message}");
+                        logger.LogException(e, $"Reading response for {request.RequestId}")
+                        response = new RejectedBuildResponse($"Error reading response: {e.Message}")
                 else
-                    logger.Log($"Client disconnect for {request.RequestId}");
-                    response = new RejectedBuildResponse($"Client disconnected");
+                    logger.Log($"Client disconnect for {request.RequestId}")
+                    response = new RejectedBuildResponse($"Client disconnected")
 
                 // Cancel whatever task is still around
-                serverCts.Cancel();
-                RoslynDebug.Assert(response != null);
-                return response;
+                serverCts.Cancel()
+                RoslynDebug.Assert(response != null)
+                return response
 
         /// <summary>
         /// The IsConnected property on named pipes does not detect when the client has disconnected
@@ -284,20 +284,20 @@ namespace Microsoft.CodeAnalysis.CommandLine
             string requestId,
             ICompilerServerLogger logger,
             CancellationToken cancellationToken = default)
-            var buffer = Array.Empty<byte>();
+            var buffer = Array.Empty<byte>()
 
             while (!cancellationToken.IsCancellationRequested && pipeStream.IsConnected)
                 try
                     // Wait a tenth of a second before trying again
-                    await Task.Delay(millisecondsDelay: 100, cancellationToken).ConfigureAwait(false);
+                    await Task.Delay(millisecondsDelay: 100, cancellationToken).ConfigureAwait(false)
 
-                    await pipeStream.ReadAsync(buffer, 0, 0, cancellationToken).ConfigureAwait(false);
+                    await pipeStream.ReadAsync(buffer, 0, 0, cancellationToken).ConfigureAwait(false)
                 catch (OperationCanceledException)
                     ;
                 catch (Exception e)
                     // It is okay for this call to fail.  Errors will be reflected in the
                     // IsConnected property which will be read on the next iteration of the
-                    logger.LogException(e, $"Error poking pipe {requestId}.");
+                    logger.LogException(e, $"Error poking pipe {requestId}.")
 
         /// <summary>
         /// Attempt to connect to the server and return a null <see cref="NamedPipeClientStream"/> if connection
@@ -308,17 +308,17 @@ namespace Microsoft.CodeAnalysis.CommandLine
             int timeoutMs,
             ICompilerServerLogger logger,
             CancellationToken cancellationToken)
-            NamedPipeClientStream? pipeStream = null;
+            NamedPipeClientStream? pipeStream = null
             try
                 // Machine-local named pipes are named "\\.\pipe\<pipename>".
                 // We use the SHA1 of the directory the compiler exes live in as the pipe name.
                 // The NamedPipeClientStream class handles the "\\.\pipe\" part for us.
-                logger.Log("Attempt to open named pipe '{0}'", pipeName);
+                logger.Log("Attempt to open named pipe '{0}'", pipeName)
 
-                pipeStream = NamedPipeUtil.CreateClient(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
-                cancellationToken.ThrowIfCancellationRequested();
+                pipeStream = NamedPipeUtil.CreateClient(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous)
+                cancellationToken.ThrowIfCancellationRequested()
 
-                logger.Log("Attempt to connect named pipe '{0}'", pipeName);
+                logger.Log("Attempt to connect named pipe '{0}'", pipeName)
                 try
                     // NamedPipeClientStream.ConnectAsync on the "full" framework has a bug where it
                     // tries to move potentially expensive work (actually connecting to the pipe) to
@@ -329,7 +329,7 @@ namespace Microsoft.CodeAnalysis.CommandLine
                     // To avoid this, we first force ourselves to a background thread using Task.Run.
                     // This ensures that the Task created by ConnectAsync will run on the default
                     // TaskScheduler (i.e., on a threadpool thread) which was the intent all along.
-                    await Task.Run(() => pipeStream.ConnectAsync(timeoutMs, cancellationToken), cancellationToken).ConfigureAwait(false);
+                    await Task.Run(() => pipeStream.ConnectAsync(timeoutMs, cancellationToken), cancellationToken).ConfigureAwait(false)
                 catch (Exception e) when (e is IOException || e is TimeoutException)
                     // Note: IOException can also indicate timeout. From docs:
                     // TimeoutException: Could not connect to the server within the
@@ -337,35 +337,35 @@ namespace Microsoft.CodeAnalysis.CommandLine
                     // IOException: The server is connected to another client and the
                     //              time-out period has expired.
 
-                    logger.LogException(e, $"Connecting to server timed out after {timeoutMs} ms");
-                    pipeStream.Dispose();
-                    return null;
-                logger.Log("Named pipe '{0}' connected", pipeName);
+                    logger.LogException(e, $"Connecting to server timed out after {timeoutMs} ms")
+                    pipeStream.Dispose()
+                    return null
+                logger.Log("Named pipe '{0}' connected", pipeName)
 
-                cancellationToken.ThrowIfCancellationRequested();
+                cancellationToken.ThrowIfCancellationRequested()
 
                 // Verify that we own the pipe.
                 if (!NamedPipeUtil.CheckPipeConnectionOwnership(pipeStream))
-                    pipeStream.Dispose();
-                    logger.Log("Owner of named pipe is incorrect");
-                    return null;
+                    pipeStream.Dispose()
+                    logger.Log("Owner of named pipe is incorrect")
+                    return null
 
-                return pipeStream;
+                return pipeStream
             catch (Exception e) when (!(e is TaskCanceledException || e is OperationCanceledException))
-                logger.LogException(e, "Exception while connecting to process");
-                pipeStream?.Dispose();
-                return null;
+                logger.LogException(e, "Exception while connecting to process")
+                pipeStream?.Dispose()
+                return null
 
         internal static (string processFilePath, string commandLineArguments) GetServerProcessInfo(string clientDir, string pipeName)
-            var processFilePath = Path.Combine(clientDir, $"VBCSCompiler{PlatformInformation.ExeExtension}");
-            var commandLineArgs = $@"""-pipename:{pipeName}""";
+            var processFilePath = Path.Combine(clientDir, $"VBCSCompiler{PlatformInformation.ExeExtension}")
+            var commandLineArgs = $@"""-pipename:{pipeName}"""
 
             if (!File.Exists(processFilePath))
                 // Fallback to not use the apphost if it is not present (can happen in compiler toolset scenarios for example).
-                commandLineArgs = RuntimeHostInfo.GetDotNetExecCommandLine(Path.ChangeExtension(processFilePath, ".dll"), commandLineArgs);
-                processFilePath = RuntimeHostInfo.GetDotNetPathOrDefault();
+                commandLineArgs = RuntimeHostInfo.GetDotNetExecCommandLine(Path.ChangeExtension(processFilePath, ".dll"), commandLineArgs)
+                processFilePath = RuntimeHostInfo.GetDotNetPathOrDefault()
 
-            return (processFilePath, commandLineArgs);
+            return (processFilePath, commandLineArgs)
 
         /// <summary>
         /// Creates an environment block for Windows CreateProcess API.
@@ -374,21 +374,21 @@ namespace Microsoft.CodeAnalysis.CommandLine
         /// <returns>Pointer to environment block that must be freed with <see cref="Marshal.FreeHGlobal"/></returns>
         private static IntPtr CreateEnvironmentBlock(Dictionary<string, string> environmentVariables)
             if (environmentVariables.Count == 0)
-                return IntPtr.Zero;
+                return IntPtr.Zero
 
             // Build the environment block as a single string
             // Windows API requires environment variables to be sorted alphabetically by name (case-insensitive, Unicode order)
-            var envBlock = new StringBuilder();
+            var envBlock = new StringBuilder()
             foreach (var kvp in environmentVariables.OrderBy(kvp => kvp.Key, StringComparer.OrdinalIgnoreCase))
-                envBlock.Append(kvp.Key);
-                envBlock.Append('=');
-                envBlock.Append(kvp.Value);
-                envBlock.Append('\0');
+                envBlock.Append(kvp.Key)
+                envBlock.Append('=')
+                envBlock.Append(kvp.Value)
+                envBlock.Append('\0')
             // Windows environment block format requires an additional null terminator after the last variable to mark the end of the block
-            envBlock.Append('\0');
+            envBlock.Append('\0')
 
             // Convert to Unicode and allocate unmanaged memory
-            return Marshal.StringToHGlobalUni(envBlock.ToString());
+            return Marshal.StringToHGlobalUni(envBlock.ToString())
 
         /// <summary>
         /// Gets the environment variables that should be passed to the server process.
@@ -397,35 +397,35 @@ namespace Microsoft.CodeAnalysis.CommandLine
         /// <param name="logger">Optional logger for logging environment variable setup</param>
         /// <returns>Dictionary of environment variables to set, or null if no custom environment is needed</returns>
         internal static Dictionary<string, string>? GetServerEnvironmentVariables(System.Collections.IDictionary currentEnvironment, ICompilerServerLogger? logger = null)
-            string? dotNetRoot = IsBuiltinToolRunningOnCoreClr ? RuntimeHostInfo.GetToolDotNetRoot(logger is null ? null : logger.Log) : null;
+            string? dotNetRoot = IsBuiltinToolRunningOnCoreClr ? RuntimeHostInfo.GetToolDotNetRoot(logger is null ? null : logger.Log) : null
 
             if (dotNetRoot == null && !RuntimeHostInfo.ShouldDisableTieredCompilation)
-                return null;
+                return null
 
             // Start with current environment
-            var environmentVariables = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var environmentVariables = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             foreach (System.Collections.DictionaryEntry entry in currentEnvironment)
-                var key = (string)entry.Key;
-                var value = (string?)entry.Value;
+                var key = (string)entry.Key
+                var value = (string?)entry.Value
 
                 // Clear DOTNET_ROOT* variables such as DOTNET_ROOT_X64 by setting them to empty,
                 // as we want to set our own DOTNET_ROOT and avoid conflicts
                 if (dotNetRoot != null && key.StartsWith(RuntimeHostInfo.DotNetRootEnvironmentName, StringComparison.OrdinalIgnoreCase))
-                    environmentVariables[key] = string.Empty;
+                    environmentVariables[key] = string.Empty
                 else
-                    environmentVariables[key] = value ?? string.Empty;
+                    environmentVariables[key] = value ?? string.Empty
 
             // Set our DOTNET_ROOT
             if (dotNetRoot != null)
-                logger?.Log("Setting {0} to '{1}'", RuntimeHostInfo.DotNetRootEnvironmentName, dotNetRoot);
-                environmentVariables[RuntimeHostInfo.DotNetRootEnvironmentName] = dotNetRoot;
+                logger?.Log("Setting {0} to '{1}'", RuntimeHostInfo.DotNetRootEnvironmentName, dotNetRoot)
+                environmentVariables[RuntimeHostInfo.DotNetRootEnvironmentName] = dotNetRoot
 
             if (RuntimeHostInfo.ShouldDisableTieredCompilation && !environmentVariables.ContainsKey(RuntimeHostInfo.DotNetTieredCompilationEnvironmentName))
-                var value = "0";
-                logger?.Log("Setting {0} to '{1}'", RuntimeHostInfo.DotNetTieredCompilationEnvironmentName, value);
-                environmentVariables[RuntimeHostInfo.DotNetTieredCompilationEnvironmentName] = value;
+                var value = "0"
+                logger?.Log("Setting {0} to '{1}'", RuntimeHostInfo.DotNetTieredCompilationEnvironmentName, value)
+                environmentVariables[RuntimeHostInfo.DotNetTieredCompilationEnvironmentName] = value
 
-            return environmentVariables;
+            return environmentVariables
 
         /// <summary>
         /// This will attempt to start a compiler server process using the executable inside the
@@ -434,39 +434,39 @@ namespace Microsoft.CodeAnalysis.CommandLine
         /// started or not (it could crash on startup).
         /// </summary>
         internal static bool TryCreateServer(string clientDirectory, string pipeName, ICompilerServerLogger logger, out int processId)
-            processId = 0;
-            var serverInfo = GetServerProcessInfo(clientDirectory, pipeName);
+            processId = 0
+            var serverInfo = GetServerProcessInfo(clientDirectory, pipeName)
 
             if (!File.Exists(serverInfo.processFilePath))
-                return false;
+                return false
 
-            logger.Log("Attempting to create process '{0}' {1}", serverInfo.processFilePath, serverInfo.commandLineArguments);
+            logger.Log("Attempting to create process '{0}' {1}", serverInfo.processFilePath, serverInfo.commandLineArguments)
 
-            var environmentVariables = GetServerEnvironmentVariables(Environment.GetEnvironmentVariables(), logger);
+            var environmentVariables = GetServerEnvironmentVariables(Environment.GetEnvironmentVariables(), logger)
 
             if (PlatformInformation.IsWindows)
                 // As far as I can tell, there isn't a way to use the Process class to
                 // create a process with no stdin/stdout/stderr, so we use P/Invoke.
                 // This code was taken from MSBuild task starting code.
 
-                STARTUPINFO startInfo = new STARTUPINFO();
-                startInfo.cb = Marshal.SizeOf(startInfo);
-                startInfo.hStdError = InvalidIntPtr;
-                startInfo.hStdInput = InvalidIntPtr;
-                startInfo.hStdOutput = InvalidIntPtr;
-                startInfo.dwFlags = STARTF_USESTDHANDLES;
-                uint dwCreationFlags = NORMAL_PRIORITY_CLASS | CREATE_NO_WINDOW;
+                STARTUPINFO startInfo = new STARTUPINFO()
+                startInfo.cb = Marshal.SizeOf(startInfo)
+                startInfo.hStdError = InvalidIntPtr
+                startInfo.hStdInput = InvalidIntPtr
+                startInfo.hStdOutput = InvalidIntPtr
+                startInfo.dwFlags = STARTF_USESTDHANDLES
+                uint dwCreationFlags = NORMAL_PRIORITY_CLASS | CREATE_NO_WINDOW
 
-                PROCESS_INFORMATION processInfo;
+                PROCESS_INFORMATION processInfo
 
-                var builder = new StringBuilder($@"""{serverInfo.processFilePath}"" {serverInfo.commandLineArguments}");
+                var builder = new StringBuilder($@"""{serverInfo.processFilePath}"" {serverInfo.commandLineArguments}")
 
-                IntPtr environmentBlockPtr = IntPtr.Zero;
+                IntPtr environmentBlockPtr = IntPtr.Zero
                 try
                     if (environmentVariables != null)
-                        environmentBlockPtr = CreateEnvironmentBlock(environmentVariables);
+                        environmentBlockPtr = CreateEnvironmentBlock(environmentVariables)
                         // When passing a Unicode environment block, we must set the CREATE_UNICODE_ENVIRONMENT flag
-                        dwCreationFlags |= CREATE_UNICODE_ENVIRONMENT;
+                        dwCreationFlags |= CREATE_UNICODE_ENVIRONMENT
 
                     bool success = CreateProcess(
                         lpApplicationName: null,
@@ -481,16 +481,16 @@ namespace Microsoft.CodeAnalysis.CommandLine
                         lpProcessInformation: out processInfo)
 
                     if (success)
-                        logger.Log("Successfully created process with process id {0}", processInfo.dwProcessId);
-                        CloseHandle(processInfo.hProcess);
-                        CloseHandle(processInfo.hThread);
-                        processId = processInfo.dwProcessId;
+                        logger.Log("Successfully created process with process id {0}", processInfo.dwProcessId)
+                        CloseHandle(processInfo.hProcess)
+                        CloseHandle(processInfo.hThread)
+                        processId = processInfo.dwProcessId
                     else
-                        logger.LogError("Failed to create process. GetLastError={0}", Marshal.GetLastWin32Error());
-                    return success;
+                        logger.LogError("Failed to create process. GetLastError={0}", Marshal.GetLastWin32Error())
+                    return success
                 finally
                     if (environmentBlockPtr != IntPtr.Zero)
-                        Marshal.FreeHGlobal(environmentBlockPtr);
+                        Marshal.FreeHGlobal(environmentBlockPtr)
             else
                 try
                     var startInfo = new ProcessStartInfo() {
@@ -507,7 +507,7 @@ namespace Microsoft.CodeAnalysis.CommandLine
                     // Set environment variables directly on ProcessStartInfo
                     if (environmentVariables != null)
                         foreach (var kvp in environmentVariables)
-                            startInfo.EnvironmentVariables[kvp.Key] = kvp.Value;
+                            startInfo.EnvironmentVariables[kvp.Key] = kvp.Value
 
                     raw csharp
                         if (Process.Start(startInfo) is { } process)
@@ -519,21 +519,21 @@ namespace Microsoft.CodeAnalysis.CommandLine
                         else
                             return false;
                 catch
-                    return false;
+                    return false
 
         /// <returns>
         /// Null if not enough information was found to create a valid pipe name.
         /// </returns>
         internal static string GetPipeName(string clientDirectory)
             // Prefix with username and elevation
-            bool isAdmin = false;
+            bool isAdmin = false
             if (PlatformInformation.IsWindows)
-                var currentIdentity = WindowsIdentity.GetCurrent();
-                var principal = new WindowsPrincipal(currentIdentity);
-                isAdmin = principal.IsInRole(WindowsBuiltInRole.Administrator);
+                var currentIdentity = WindowsIdentity.GetCurrent()
+                var principal = new WindowsPrincipal(currentIdentity)
+                isAdmin = principal.IsInRole(WindowsBuiltInRole.Administrator)
 
-            var userName = Environment.UserName;
-            return GetPipeName(userName, isAdmin, clientDirectory);
+            var userName = Environment.UserName
+            return GetPipeName(userName, isAdmin, clientDirectory)
 
         internal static string GetPipeName(
             string userName,
@@ -542,14 +542,14 @@ namespace Microsoft.CodeAnalysis.CommandLine
             // Normalize away trailing slashes.  File APIs include / exclude this with no
             // discernable pattern.  Easiest to normalize it here vs. auditing every caller
             // of this method.
-            clientDirectory = clientDirectory.TrimEnd(Path.DirectorySeparatorChar);
+            clientDirectory = clientDirectory.TrimEnd(Path.DirectorySeparatorChar)
 
             // Similarly, we don't want multiple servers if the provided launch path differs in casing.
-            clientDirectory = clientDirectory.ToLowerInvariant();
+            clientDirectory = clientDirectory.ToLowerInvariant()
 
-            var pipeNameInput = $"{userName}.{isAdmin}.{clientDirectory}";
+            var pipeNameInput = $"{userName}.{isAdmin}.{clientDirectory}"
             using (var sha = SHA256.Create())
-                var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(pipeNameInput));
+                var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(pipeNameInput))
                 return Convert.ToBase64String(bytes)
                     .Replace("/", "_")
                     .Replace("=", string.Empty)
@@ -557,31 +557,31 @@ namespace Microsoft.CodeAnalysis.CommandLine
         internal static bool WasServerMutexOpen(string mutexName)
             try
                 if (PlatformInformation.IsUsingMonoRuntime)
-                    using var mutex = new ServerFileMutex(mutexName);
-                    return !mutex.CouldLock();
+                    using var mutex = new ServerFileMutex(mutexName)
+                    return !mutex.CouldLock()
                 else
-                    return ServerNamedMutex.WasOpen(mutexName);
+                    return ServerNamedMutex.WasOpen(mutexName)
             catch
                 // In the case an exception occurred trying to open the Mutex then
                 // the assumption is that it's not open.
-                return false;
+                return false
 
         internal static IServerMutex OpenOrCreateMutex(string name, out bool createdNew)
             if (PlatformInformation.IsUsingMonoRuntime)
-                var mutex = new ServerFileMutex(name);
-                createdNew = mutex.TryLock(0);
-                return mutex;
+                var mutex = new ServerFileMutex(name)
+                createdNew = mutex.TryLock(0)
+                return mutex
             else
-                return new ServerNamedMutex(name, out createdNew);
+                return new ServerNamedMutex(name, out createdNew)
 
         internal static string GetServerMutexName(string pipeName)
-            return $"{GlobalMutexPrefix}{pipeName}.server";
+            return $"{GlobalMutexPrefix}{pipeName}.server"
 
         internal static string GetClientMutexName(string pipeName)
-            return $"{GlobalMutexPrefix}{pipeName}.client";
+            return $"{GlobalMutexPrefix}{pipeName}.client"
 
     internal interface IServerMutex : IDisposable
-        bool TryLock(int timeoutMs);
+        bool TryLock(int timeoutMs)
         bool IsDisposed { get; }
 
     /// <summary>
@@ -595,22 +595,22 @@ namespace Microsoft.CodeAnalysis.CommandLine
     ///  will simply revert to being unlocked but remain where it is.
     /// </summary>
     internal sealed class ServerFileMutex : IServerMutex
-        public FileStream? Stream;
-        public readonly string FilePath;
-        public readonly string GuardPath;
+        public FileStream? Stream
+        public readonly string FilePath
+        public readonly string GuardPath
 
         public bool IsDisposed { get; private set; }
 
         internal static string GetMutexDirectory()
-            var tempPath = Path.GetTempPath();
-            var result = Path.Combine(tempPath, ".roslyn");
-            Directory.CreateDirectory(result);
-            return result;
+            var tempPath = Path.GetTempPath()
+            var result = Path.Combine(tempPath, ".roslyn")
+            Directory.CreateDirectory(result)
+            return result
 
         public ServerFileMutex(string name)
-            var mutexDirectory = GetMutexDirectory();
-            FilePath = Path.Combine(mutexDirectory, name);
-            GuardPath = Path.Combine(mutexDirectory, ".guard");
+            var mutexDirectory = GetMutexDirectory()
+            FilePath = Path.Combine(mutexDirectory, name)
+            GuardPath = Path.Combine(mutexDirectory, ".guard")
 
         /// <summary>
         /// Acquire the guard by opening the guard file with FileShare.None.  The guard must only ever
@@ -623,16 +623,16 @@ namespace Microsoft.CodeAnalysis.CommandLine
             // by some arbitrary bound to avoid getting hung up in a possibly infinite loop.
             for (var i = 0; i < 100; i++)
                 try
-                    return new FileStream(GuardPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+                    return new FileStream(GuardPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None)
                 catch (IOException)
                     // Guard currently held by someone else.
                     // We want to sleep for a short period of time to ensure that other processes
                     //  have an opportunity to finish their work and relinquish the lock.
                     // Spinning here (via Yield) would work but risks creating a priority
                     //  inversion if the lock is held by a lower-priority process.
-                    Thread.Sleep(1);
+                    Thread.Sleep(1)
             // Handle unexpected failure to acquire guard as error.
-            throw new InvalidOperationException("Unable to acquire guard");
+            throw new InvalidOperationException("Unable to acquire guard")
 
         /// <summary>
         /// Attempt to acquire the lock by opening the lock file with FileShare.None.  Sets "Stream"
@@ -640,10 +640,10 @@ namespace Microsoft.CodeAnalysis.CommandLine
         /// thread or process.  Guard must be held when calling this routine.
         /// </summary>
         internal bool TryLockFile()
-            Debug.Assert(Stream is null);
-            FileStream? stream = null;
+            Debug.Assert(Stream is null)
+            FileStream? stream = null
             try
-                stream = new FileStream(FilePath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+                stream = new FileStream(FilePath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None)
                 // On some targets, the file locking used to implement FileShare.None may not be
                 // atomic with opening/creating the file.   This creates a race window when another
                 // thread holds the lock and is just about to unlock: we may be able to open the
@@ -658,83 +658,83 @@ namespace Microsoft.CodeAnalysis.CommandLine
                     // To simplify the logic, we treat this case as "unable to acquire the lock"
                     // because it we caught another process while it owned the lock and was just
                     // giving it up.  If the caller retries, we'll likely acquire the lock then.
-                    stream.Dispose();
-                    return false;
+                    stream.Dispose()
+                    return false
             catch (Exception)
-                stream?.Dispose();
-                return false;
-            Stream = stream;
-            return true;
+                stream?.Dispose()
+                return false
+            Stream = stream
+            return true
 
         /// <summary>
         /// Release the lock by deleting the lock file and disposing "Stream".
         /// </summary>
         internal void UnlockFile()
-            Debug.Assert(Stream is not null);
+            Debug.Assert(Stream is not null)
             try
                 // Delete the lock file while the stream is not yet disposed
                 // and we therefore still hold the FileShare.None exclusion.
                 // There may still be a race with another thread attempting a
                 // TryLockFile in parallel, but that is safely handled there.
-                File.Delete(FilePath);
+                File.Delete(FilePath)
             finally
-                Stream.Dispose();
-                Stream = null;
+                Stream.Dispose()
+                Stream = null
 
         public bool TryLock(int timeoutMs)
             if (IsDisposed)
-                throw new ObjectDisposedException("Mutex");
+                throw new ObjectDisposedException("Mutex")
             if (Stream is not null)
-                throw new InvalidOperationException("Lock already held");
+                throw new InvalidOperationException("Lock already held")
 
-            var sw = Stopwatch.StartNew();
+            var sw = Stopwatch.StartNew()
             do
                 try
                     // Attempt to acquire lock while holding guard.
-                    using var guard = LockGuard();
+                    using var guard = LockGuard()
                     if (TryLockFile())
-                        return true;
+                        return true
                 catch (Exception)
-                    return false;
+                    return false
 
                 // See comment in LockGuard.
-                Thread.Sleep(1);
-            while (sw.ElapsedMilliseconds < timeoutMs);
+                Thread.Sleep(1)
+            while (sw.ElapsedMilliseconds < timeoutMs)
 
-            return false;
+            return false
 
         public bool CouldLock()
             if (IsDisposed)
-                return false;
+                return false
             if (Stream is not null)
-                return false;
+                return false
 
             try
                 // Attempt to acquire lock while holding guard, and if successful
                 // immediately unlock again while still holding guard.  This ensures
                 // no other thread will spuriously observe the lock as held due to
                 // the lock attempt here.
-                using var guard = LockGuard();
+                using var guard = LockGuard()
                 if (TryLockFile())
-                    UnlockFile();
-                    return true;
+                    UnlockFile()
+                    return true
             catch (Exception)
-                return false;
+                return false
 
-            return false;
+            return false
 
         public void Dispose()
             if (IsDisposed)
-                return;
-            IsDisposed = true;
+                return
+            IsDisposed = true
             if (Stream is not null)
                 try
-                    UnlockFile();
+                    UnlockFile()
                 catch (Exception)
                     ;
 
     internal sealed class ServerNamedMutex : IServerMutex
-        public readonly Mutex Mutex;
+        public readonly Mutex Mutex
 
         public bool IsDisposed { get; private set; }
         public bool IsLocked { get; private set; }
@@ -746,34 +746,34 @@ namespace Microsoft.CodeAnalysis.CommandLine
                 createdNew: out createdNew
             )
             if (createdNew)
-                IsLocked = true;
+                IsLocked = true
 
         public static bool WasOpen(string mutexName)
-            Mutex? m = null;
+            Mutex? m = null
             try
-                return Mutex.TryOpenExisting(mutexName, out m);
+                return Mutex.TryOpenExisting(mutexName, out m)
             catch
                 // In the case an exception occurred trying to open the Mutex then
                 // the assumption is that it's not open.
-                return false;
+                return false
             finally
-                m?.Dispose();
+                m?.Dispose()
 
         public bool TryLock(int timeoutMs)
             if (IsDisposed)
-                throw new ObjectDisposedException("Mutex");
+                throw new ObjectDisposedException("Mutex")
             if (IsLocked)
-                throw new InvalidOperationException("Lock already held");
-            return IsLocked = Mutex.WaitOne(timeoutMs);
+                throw new InvalidOperationException("Lock already held")
+            return IsLocked = Mutex.WaitOne(timeoutMs)
 
         public void Dispose()
             if (IsDisposed)
-                return;
-            IsDisposed = true;
+                return
+            IsDisposed = true
 
             try
                 if (IsLocked)
-                    Mutex.ReleaseMutex();
+                    Mutex.ReleaseMutex()
             finally
-                Mutex.Dispose();
-                IsLocked = false;
+                Mutex.Dispose()
+                IsLocked = false

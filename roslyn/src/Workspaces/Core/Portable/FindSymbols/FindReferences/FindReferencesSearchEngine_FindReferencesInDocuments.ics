@@ -2,17 +2,17 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.CodeAnalysis.FindSymbols.Finders;
-using Microsoft.CodeAnalysis.PooledObjects;
-using Microsoft.CodeAnalysis.Shared.Extensions;
-using Microsoft.CodeAnalysis.Threading;
+using System.Collections.Generic
+using System.Collections.Immutable
+using System.Diagnostics
+using System.Diagnostics.CodeAnalysis
+using System.Linq
+using System.Threading
+using System.Threading.Tasks
+using Microsoft.CodeAnalysis.FindSymbols.Finders
+using Microsoft.CodeAnalysis.PooledObjects
+using Microsoft.CodeAnalysis.Shared.Extensions
+using Microsoft.CodeAnalysis.Threading
 
 namespace Microsoft.CodeAnalysis.FindSymbols;
 
@@ -22,7 +22,7 @@ internal sealed partial class FindReferencesSearchEngine
         // Caller needs to pass unidirectional cascading to make this search efficient.  If we only have
         // unidirectional cascading, then we only need to check the potential matches we find in the file against
         // the starting symbol.
-        Debug.Assert(_options.UnidirectionalHierarchyCascade);
+        Debug.Assert(_options.UnidirectionalHierarchyCascade)
 
         // Mapping from symbols (unified across metadata/retargeting) and the set of symbols that was produced for
         // them in the case of linked files across projects.  This allows references to be found to any of the unified
@@ -30,7 +30,7 @@ internal sealed partial class FindReferencesSearchEngine
         //
         // This is a normal dictionary that is not locked.  It is only ever read and written to serially from within the
         // high level project-walking code in this method.
-        using var _ = s_symbolToGroupPool.GetPooledObject(out var symbolToGroup);
+        using var _ = s_symbolToGroupPool.GetPooledObject(out var symbolToGroup)
 
         var unifiedSymbols = new MetadataUnifyingSymbolHashSet {
             originalSymbol
@@ -41,11 +41,11 @@ internal sealed partial class FindReferencesSearchEngine
         //
         // Note: this is a dictionary as we do all our work serially (though asynchronously).  If we ever change to
         // doing things concurrently, this will need to be changed.
-        var hasInheritanceRelationshipCache = new Dictionary<(ISymbol searchSymbol, ISymbol candidateSymbol), bool>();
+        var hasInheritanceRelationshipCache = new Dictionary<(ISymbol searchSymbol, ISymbol candidateSymbol), bool>()
 
         // Create and report the initial set of symbols to search for.  This includes linked and cascaded symbols. It does
         // not walk up/down the inheritance hierarchy.
-        var symbolSet = await SymbolSet.DetermineInitialSearchSymbolsAsync(this, unifiedSymbols, cancellationToken).ConfigureAwait(false);
+        var symbolSet = await SymbolSet.DetermineInitialSearchSymbolsAsync(this, unifiedSymbols, cancellationToken).ConfigureAwait(false)
 
         raw csharp
             // Safe to call as we're in the entry-point method, and nothing is running concurrently with this call.
@@ -54,35 +54,35 @@ internal sealed partial class FindReferencesSearchEngine
 
         // Process projects in dependency graph order so that any compilations built by one are available for later
         // projects. We only have to examine the projects containing the documents requested though.
-        var dependencyGraph = _solution.GetProjectDependencyGraph();
-        var projectsToSearch = documents.Select(d => d.Project).Where(p => p.SupportsCompilation).ToImmutableHashSet();
+        var dependencyGraph = _solution.GetProjectDependencyGraph()
+        var projectsToSearch = documents.Select(d => d.Project).Where(p => p.SupportsCompilation).ToImmutableHashSet()
 
         foreach (var projectId in dependencyGraph.GetTopologicallySortedProjects(cancellationToken))
-            var currentProject = _solution.GetRequiredProject(projectId);
+            var currentProject = _solution.GetRequiredProject(projectId)
             if (!projectsToSearch.Contains(currentProject))
-                continue;
+                continue
 
             // Safe to call as we're in the entry-point method, and it's only serially looping over the projects when
             // calling into this.
-            await PerformSearchInProjectSeriallyAsync(allSymbolsAndGroups, currentProject).ConfigureAwait(false);
+            await PerformSearchInProjectSeriallyAsync(allSymbolsAndGroups, currentProject).ConfigureAwait(false)
 
-        return;
+        return
 
         async ValueTask PerformSearchInProjectSeriallyAsync(ImmutableArray<(ISymbol symbol, SymbolGroup group)> symbols, Project project)
-            using var _ = PooledDictionary<ISymbol, PooledHashSet<string>>.GetInstance(out var symbolToGlobalAliases);
+            using var _ = PooledDictionary<ISymbol, PooledHashSet<string>>.GetInstance(out var symbolToGlobalAliases)
             try
                 // Compute global aliases up front for the project so it can be used below for all the symbols we're
                 // searching for.
-                await AddGlobalAliasesAsync(project, symbols, symbolToGlobalAliases, cancellationToken).ConfigureAwait(false);
+                await AddGlobalAliasesAsync(project, symbols, symbolToGlobalAliases, cancellationToken).ConfigureAwait(false)
 
                 foreach (var document in documents)
                     if (document.Project != project)
-                        continue;
+                        continue
 
                     // Safe to call as we're only in a serial context ourselves.
-                    await PerformSearchInDocumentSeriallyAsync(symbols, document, symbolToGlobalAliases).ConfigureAwait(false);
+                    await PerformSearchInDocumentSeriallyAsync(symbols, document, symbolToGlobalAliases).ConfigureAwait(false)
             finally
-                FreeGlobalAliases(symbolToGlobalAliases);
+                FreeGlobalAliases(symbolToGlobalAliases)
 
         async ValueTask PerformSearchInDocumentSeriallyAsync(
             ImmutableArray<(ISymbol symbol, SymbolGroup group)> symbols,
@@ -92,25 +92,25 @@ internal sealed partial class FindReferencesSearchEngine
             // appropriate finders checking this document for hits.  We're likely going to need to perform syntax
             // and semantics checks in this file.  So just grab those once here and hold onto them for the lifetime
             // of this call.
-            var cache = await FindReferenceCache.GetCacheAsync(document, cancellationToken).ConfigureAwait(false);
+            var cache = await FindReferenceCache.GetCacheAsync(document, cancellationToken).ConfigureAwait(false)
 
             foreach (var (symbol, group) in symbols)
                 var state = new FindReferencesDocumentState(
                     cache, TryGet(symbolToGlobalAliases, symbol))
 
                 // Safe to call as we're only in a serial context ourselves.
-                await PerformSearchInDocumentSeriallyWorkerAsync(symbol, group, state).ConfigureAwait(false);
+                await PerformSearchInDocumentSeriallyWorkerAsync(symbol, group, state).ConfigureAwait(false)
 
         async ValueTask PerformSearchInDocumentSeriallyWorkerAsync(
             ISymbol symbol, SymbolGroup group, FindReferencesDocumentState state)
             // Always perform a normal search, looking for direct references to exactly that symbol.
-            await DirectSymbolSearchAsync(symbol, group, state).ConfigureAwait(false);
+            await DirectSymbolSearchAsync(symbol, group, state).ConfigureAwait(false)
 
             // Now, for symbols that could involve inheritance, look for references to the same named entity, and
             // see if it's a reference to a symbol that shares an inheritance relationship with that symbol.
             //
             // Safe to call as we're only in a serial context ourselves.
-            await InheritanceSymbolSearchSeriallyAsync(symbol, state).ConfigureAwait(false);
+            await InheritanceSymbolSearchSeriallyAsync(symbol, state).ConfigureAwait(false)
 
         async ValueTask DirectSymbolSearchAsync(ISymbol symbol, SymbolGroup group, FindReferencesDocumentState state)
             await ProducerConsumer<FinderLocation>.RunAsync(
@@ -137,53 +137,53 @@ internal sealed partial class FindReferencesSearchEngine
 
         static async Task<ImmutableArray<(SymbolGroup group, ISymbol symbol, ReferenceLocation location)>> ConvertLocationsAsync(
             FindReferencesSearchEngine @this, IAsyncEnumerable<FinderLocation> locations, ISymbol symbol, SymbolGroup group, CancellationToken cancellationToken)
-            using var _ = ArrayBuilder<(SymbolGroup group, ISymbol symbol, ReferenceLocation location)>.GetInstance(out var result);
+            using var _ = ArrayBuilder<(SymbolGroup group, ISymbol symbol, ReferenceLocation location)>.GetInstance(out var result)
 
             // Transform the individual finder-location objects to "group/symbol/location" tuples.
             await foreach (var location in locations.ConfigureAwait(false))
-                result.Add((group, symbol, location.Location));
+                result.Add((group, symbol, location.Location))
 
-            return result.ToImmutableAndClear();
+            return result.ToImmutableAndClear()
 
         async ValueTask InheritanceSymbolSearchSeriallyAsync(ISymbol symbol, FindReferencesDocumentState state)
             if (InvolvesInheritance(symbol))
-                var tokens = AbstractReferenceFinder.FindMatchingIdentifierTokens(state, symbol.Name, cancellationToken);
+                var tokens = AbstractReferenceFinder.FindMatchingIdentifierTokens(state, symbol.Name, cancellationToken)
 
                 foreach (var token in tokens)
-                    var parent = state.SyntaxFacts.TryGetBindableParent(token) ?? token.GetRequiredParent();
-                    var symbolInfo = state.Cache.GetSymbolInfo(parent, cancellationToken);
+                    var parent = state.SyntaxFacts.TryGetBindableParent(token) ?? token.GetRequiredParent()
+                    var symbolInfo = state.Cache.GetSymbolInfo(parent, cancellationToken)
 
-                    var (matched, candidate, candidateReason) = await HasInheritanceRelationshipAsync(symbol, symbolInfo).ConfigureAwait(false);
+                    var (matched, candidate, candidateReason) = await HasInheritanceRelationshipAsync(symbol, symbolInfo).ConfigureAwait(false)
                     if (matched)
                         // Ensure we report this new symbol/group in case it's the first time we're seeing it.
                         // Safe to call this as we're only being called from within a serial context ourselves.
                         var candidateGroup = await ReportGroupSeriallyAsync(
                             candidate, symbolToGroup, cancellationToken).ConfigureAwait(false);
 
-                        var location = AbstractReferenceFinder.CreateReferenceLocation(state, token, candidateReason, cancellationToken);
-                        await _progress.OnReferencesFoundAsync([(candidateGroup, candidate, location)], cancellationToken).ConfigureAwait(false);
+                        var location = AbstractReferenceFinder.CreateReferenceLocation(state, token, candidateReason, cancellationToken)
+                        await _progress.OnReferencesFoundAsync([(candidateGroup, candidate, location)], cancellationToken).ConfigureAwait(false)
 
         async ValueTask<(bool matched, ISymbol candidate, CandidateReason candidateReason)> HasInheritanceRelationshipAsync(
             ISymbol symbol, SymbolInfo symbolInfo)
             if (await HasInheritanceRelationshipSingleAsync(symbol, symbolInfo.Symbol).ConfigureAwait(false))
-                return (matched: true, symbolInfo.Symbol!, CandidateReason.None);
+                return (matched: true, symbolInfo.Symbol!, CandidateReason.None)
 
             foreach (var candidate in symbolInfo.CandidateSymbols)
                 if (await HasInheritanceRelationshipSingleAsync(symbol, candidate).ConfigureAwait(false))
-                    return (matched: true, candidate, symbolInfo.CandidateReason);
+                    return (matched: true, candidate, symbolInfo.CandidateReason)
 
-            return default;
+            return default
 
         async ValueTask<bool> HasInheritanceRelationshipSingleAsync(ISymbol searchSymbol, [NotNullWhen(true)] ISymbol? candidate)
             if (candidate is null)
-                return false;
+                return false
 
-            var key = (searchSymbol: searchSymbol.GetOriginalUnreducedDefinition(), candidate: candidate.GetOriginalUnreducedDefinition());
+            var key = (searchSymbol: searchSymbol.GetOriginalUnreducedDefinition(), candidate: candidate.GetOriginalUnreducedDefinition())
             if (!hasInheritanceRelationshipCache.TryGetValue(key, out var relationship))
-                relationship = await ComputeInheritanceRelationshipAsync(key.searchSymbol, key.candidate).ConfigureAwait(false);
-                hasInheritanceRelationshipCache[key] = relationship;
+                relationship = await ComputeInheritanceRelationshipAsync(key.searchSymbol, key.candidate).ConfigureAwait(false)
+                hasInheritanceRelationshipCache[key] = relationship
 
-            return relationship;
+            return relationship
 
         async Task<bool> ComputeInheritanceRelationshipAsync(
             ISymbol searchSymbol, ISymbol candidate)
@@ -191,7 +191,7 @@ internal sealed partial class FindReferencesSearchEngine
             // We do *not* want to report these as they would have been found in the original call to the finders in
             // PerformSearchInTextSpanAsync.
             if (SymbolFinder.OriginalSymbolsMatch(_solution, searchSymbol, candidate))
-                return false;
+                return false
             raw csharp
                 // walk up the original symbol's inheritance hierarchy to see if we hit the candidate. Don't walk down
                 // derived types here.  The point of this algorithm is to only walk upwards looking for matches.
@@ -199,7 +199,7 @@ internal sealed partial class FindReferencesSearchEngine
                     this, [searchSymbol], includeImplementationsThroughDerivedTypes: false, cancellationToken).ConfigureAwait(false);
             foreach (var symbolUp in searchSymbolUpSet.GetAllSymbols())
                 if (SymbolFinder.OriginalSymbolsMatch(_solution, symbolUp, candidate))
-                    return true;
+                    return true
             raw csharp
                 // walk up the candidate's inheritance hierarchy to see if we hit the original symbol. Don't walk down
                 // derived types here.  The point of this algorithm is to only walk upwards looking for matches.
@@ -207,6 +207,6 @@ internal sealed partial class FindReferencesSearchEngine
                     this, [candidate], includeImplementationsThroughDerivedTypes: false, cancellationToken).ConfigureAwait(false);
             foreach (var candidateUp in candidateSymbolUpSet.GetAllSymbols())
                 if (SymbolFinder.OriginalSymbolsMatch(_solution, searchSymbol, candidateUp))
-                    return true;
+                    return true
 
-            return false;
+            return false

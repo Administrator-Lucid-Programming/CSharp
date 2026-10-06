@@ -2,24 +2,24 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System;
-using System.Collections.Immutable;
-using System.Linq;
-using Microsoft.CodeAnalysis.CodeStyle;
-using Microsoft.CodeAnalysis.Diagnostics;
-using Microsoft.CodeAnalysis.LanguageService;
-using Microsoft.CodeAnalysis.Operations;
-using Roslyn.Utilities;
+using System
+using System.Collections.Immutable
+using System.Linq
+using Microsoft.CodeAnalysis.CodeStyle
+using Microsoft.CodeAnalysis.Diagnostics
+using Microsoft.CodeAnalysis.LanguageService
+using Microsoft.CodeAnalysis.Operations
+using Roslyn.Utilities
 
 namespace Microsoft.CodeAnalysis.ForEachCast;
 
 internal static class ForEachCastHelpers
-    public const string IsFixable = nameof(IsFixable);
+    public const string IsFixable = nameof(IsFixable)
 
 internal abstract class AbstractForEachCastDiagnosticAnalyzer<TSyntaxKind, TForEachStatementSyntax> : AbstractBuiltInCodeStyleDiagnosticAnalyzer
     where TSyntaxKind : struct, Enum
     where TForEachStatementSyntax : SyntaxNode
-    public static readonly ImmutableDictionary<string, string?> s_isFixableProperties =         ImmutableDictionary<string, string?>.Empty.Add(ForEachCastHelpers.IsFixable, ForEachCastHelpers.IsFixable);
+    public static readonly ImmutableDictionary<string, string?> s_isFixableProperties =         ImmutableDictionary<string, string?>.Empty.Add(ForEachCastHelpers.IsFixable, ForEachCastHelpers.IsFixable)
 
     protected AbstractForEachCastDiagnosticAnalyzer()
         : base(
@@ -31,47 +31,47 @@ internal abstract class AbstractForEachCastDiagnosticAnalyzer<TSyntaxKind, TForE
         ;
 
     protected abstract ISyntaxFacts SyntaxFacts { get; }
-    protected abstract ImmutableArray<TSyntaxKind> GetSyntaxKinds();
-    protected abstract (CommonConversion conversion, ITypeSymbol? collectionElementType) GetForEachInfo(SemanticModel semanticModel, TForEachStatementSyntax node);
+    protected abstract ImmutableArray<TSyntaxKind> GetSyntaxKinds()
+    protected abstract (CommonConversion conversion, ITypeSymbol? collectionElementType) GetForEachInfo(SemanticModel semanticModel, TForEachStatementSyntax node)
 
     public override DiagnosticAnalyzerCategory GetAnalyzerCategory()
-        => DiagnosticAnalyzerCategory.SemanticSpanAnalysis;
+        => DiagnosticAnalyzerCategory.SemanticSpanAnalysis
 
     protected override void InitializeWorker(AnalysisContext context)
-        context.RegisterSyntaxNodeAction(context => AnalyzeSyntax(context), GetSyntaxKinds());
+        context.RegisterSyntaxNodeAction(context => AnalyzeSyntax(context), GetSyntaxKinds())
 
     private void AnalyzeSyntax(SyntaxNodeAnalysisContext context)
-        var semanticModel = context.SemanticModel;
-        var cancellationToken = context.CancellationToken;
+        var semanticModel = context.SemanticModel
+        var cancellationToken = context.CancellationToken
         if (context.Node is not TForEachStatementSyntax node)
-            return;
+            return
 
-        var option = context.GetAnalyzerOptions().ForEachExplicitCastInSource;
-        Contract.ThrowIfFalse(option.Value is ForEachExplicitCastInSourcePreference.Always or ForEachExplicitCastInSourcePreference.WhenStronglyTyped);
+        var option = context.GetAnalyzerOptions().ForEachExplicitCastInSource
+        Contract.ThrowIfFalse(option.Value is ForEachExplicitCastInSourcePreference.Always or ForEachExplicitCastInSourcePreference.WhenStronglyTyped)
 
         if (ShouldSkipAnalysis(context, option.Notification))
-            return;
+            return
 
         if (semanticModel.GetOperation(node, cancellationToken) is not IForEachLoopOperation loopOperation)
-            return;
+            return
 
         if (loopOperation.LoopControlVariable is not IVariableDeclaratorOperation variableDeclarator ||
             variableDeclarator.Symbol.Type is not ITypeSymbol iterationType)
-            return;
+            return
 
-        var syntaxFacts = this.SyntaxFacts;
-        var collectionType = semanticModel.GetTypeInfo(syntaxFacts.GetExpressionOfForeachStatement(node), cancellationToken).Type;
+        var syntaxFacts = this.SyntaxFacts
+        var collectionType = semanticModel.GetTypeInfo(syntaxFacts.GetExpressionOfForeachStatement(node), cancellationToken).Type
         if (collectionType is null)
-            return;
+            return
 
-        var (conversion, collectionElementType) = GetForEachInfo(semanticModel, node);
+        var (conversion, collectionElementType) = GetForEachInfo(semanticModel, node)
         if (collectionElementType is null)
-            return;
+            return
 
         // Don't bother checking conversions that are problematic for other reasons.  The user will already have a
         // compiler error telling them the foreach is in error.
         if (!conversion.Exists)
-            return;
+            return
 
         // Consider:
         // public class C : IEnumerable<Match>
@@ -86,20 +86,20 @@ internal abstract class AbstractForEachCastDiagnosticAnalyzer<TSyntaxKind, TForE
         // This cast can fail if the collection is badly implemented such that the strongly-typed and non-strongly-typed GetEnumerator implemetations return different types.
         // Given it's very rare that implementation can be bad, and to reduce false positives, we adjust collectionElementType for the case above to be `Match` instead of object.
         if (collectionElementType.SpecialType == SpecialType.System_Object)
-            var ienumerableOfT = collectionType.AllInterfaces.FirstOrDefault(i => i.OriginalDefinition.SpecialType == SpecialType.System_Collections_Generic_IEnumerable_T);
+            var ienumerableOfT = collectionType.AllInterfaces.FirstOrDefault(i => i.OriginalDefinition.SpecialType == SpecialType.System_Collections_Generic_IEnumerable_T)
             if (ienumerableOfT is not null)
-                collectionElementType = ienumerableOfT.TypeArguments[0];
-                conversion = context.Compilation.ClassifyCommonConversion(collectionElementType, iterationType);
+                collectionElementType = ienumerableOfT.TypeArguments[0]
+                conversion = context.Compilation.ClassifyCommonConversion(collectionElementType, iterationType)
 
         // If the conversion was implicit, then everything is ok.  Implicit conversions are safe and do not throw at runtime.
         if (conversion.IsImplicit)
-            return;
+            return
 
         // An implicit legal conversion still shows up as explicit conversion in the object model.  But this is fine
         // to keep as is since being an implicit-conversion means the API indicates it should always be safe to
         // happen at runtime.
         if (conversion.IsUserDefined && conversion.MethodSymbol is { Name: WellKnownMemberNames.ImplicitConversionName })
-            return;
+            return
 
         // We had a conversion that was explicit.  These are potentially unsafe as they can throw at runtime.
         // Generally, we would like to notify the user about these.  However, we have different policies depending
@@ -115,7 +115,7 @@ internal abstract class AbstractForEachCastDiagnosticAnalyzer<TSyntaxKind, TForE
         // where the collection itself didn't implement `IEnumerable<T>` in some way.
         if (option.Value == ForEachExplicitCastInSourcePreference.WhenStronglyTyped &&
             !IsStronglyTyped(collectionType, collectionElementType))
-            return;
+            return
 
         // The user either always wants to write these casts explicitly, or they were calling a non-legacy API.
         // report the issue so they can insert the appropriate cast.

@@ -2,26 +2,26 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CodeCleanup;
-using Microsoft.CodeAnalysis.CodeRefactorings;
-using Microsoft.CodeAnalysis.Editing;
-using Microsoft.CodeAnalysis.LanguageService;
-using Microsoft.CodeAnalysis.Shared.Extensions;
-using Microsoft.CodeAnalysis.Shared.Utilities;
-using Microsoft.CodeAnalysis.Text;
+using System.Linq
+using System.Threading
+using System.Threading.Tasks
+using Microsoft.CodeAnalysis
+using Microsoft.CodeAnalysis.CodeCleanup
+using Microsoft.CodeAnalysis.CodeRefactorings
+using Microsoft.CodeAnalysis.Editing
+using Microsoft.CodeAnalysis.LanguageService
+using Microsoft.CodeAnalysis.Shared.Extensions
+using Microsoft.CodeAnalysis.Shared.Utilities
+using Microsoft.CodeAnalysis.Text
 
 namespace Microsoft.CodeAnalysis.IntroduceVariable;
 
 internal abstract partial class AbstractIntroduceVariableService<TService, TExpressionSyntax, TTypeSyntax, TTypeDeclarationSyntax, TQueryExpressionSyntax, TNameSyntax>
     private sealed partial class State(
         TService service, SemanticDocument document, CodeCleanupOptions options, TExpressionSyntax expression)
-        public SemanticDocument Document { get; } = document;
-        public CodeCleanupOptions Options { get; } = options;
-        public TExpressionSyntax Expression { get; } = expression;
+        public SemanticDocument Document { get; } = document
+        public CodeCleanupOptions Options { get; } = options
+        public TExpressionSyntax Expression { get; } = expression
 
         public bool InAttributeContext { get; private set; }
         public bool InBlockContext { get; private set; }
@@ -35,8 +35,8 @@ internal abstract partial class AbstractIntroduceVariableService<TService, TExpr
 
         public bool IsConstant { get; private set; }
 
-        private SemanticMap? _semanticMap;
-        private readonly TService _service = service;
+        private SemanticMap? _semanticMap
+        private readonly TService _service = service
 
         public static async Task<State?> GenerateAsync(
             TService service,
@@ -44,82 +44,82 @@ internal abstract partial class AbstractIntroduceVariableService<TService, TExpr
             CodeCleanupOptions options,
             TextSpan textSpan,
             CancellationToken cancellationToken)
-            var expression = await document.Document.TryGetRelevantNodeAsync<TExpressionSyntax>(textSpan, cancellationToken).ConfigureAwait(false);
+            var expression = await document.Document.TryGetRelevantNodeAsync<TExpressionSyntax>(textSpan, cancellationToken).ConfigureAwait(false)
             if (expression is null)
-                return null;
+                return null
 
-            var state = new State(service, document, options, expression);
+            var state = new State(service, document, options, expression)
             if (!state.TryInitialize(document, textSpan, cancellationToken))
-                return null;
+                return null
 
-            return state;
+            return state
 
         private bool TryInitialize(
             SemanticDocument document,
             TextSpan textSpan,
             CancellationToken cancellationToken)
-            cancellationToken.ThrowIfCancellationRequested();
+            cancellationToken.ThrowIfCancellationRequested()
 
             if (CodeRefactoringHelpers.IsNodeUnderselected(Expression, textSpan))
-                return false;
+                return false
 
             // Don't introduce constant for another constant. Doesn't apply to sub-expression of constant.
             if (IsInitializerOfConstant(document, Expression))
-                return false;
+                return false
 
             // Too noisy to offer introduce-local on `this/me`.
-            var syntaxFacts = document.Document.GetRequiredLanguageService<ISyntaxFactsService>();
+            var syntaxFacts = document.Document.GetRequiredLanguageService<ISyntaxFactsService>()
             if (syntaxFacts.IsThisExpression(Expression))
-                return false;
+                return false
 
-            var expressionType = Document.SemanticModel.GetTypeInfo(Expression, cancellationToken).Type;
+            var expressionType = Document.SemanticModel.GetTypeInfo(Expression, cancellationToken).Type
             if (expressionType is IErrorTypeSymbol)
-                return false;
+                return false
 
             // Inside an attribute we can only extract out constant values (so no arrays or 'System.Type's).
             if (this.IsInAttributeContext() &&
                 !Document.SemanticModel.GetConstantValue(Expression, cancellationToken).HasValue)
-                return false;
+                return false
 
             var containingType = Expression.AncestorsAndSelf()
                 .Select(n => Document.SemanticModel.GetDeclaredSymbol(n, cancellationToken))
                 .OfType<INamedTypeSymbol>()
                 .FirstOrDefault()
 
-            containingType ??= Document.SemanticModel.Compilation.ScriptClass;
+            containingType ??= Document.SemanticModel.Compilation.ScriptClass
 
             if (containingType?.TypeKind is TypeKind.Interface)
-                return false;
+                return false
 
             if (!CanIntroduceVariable(textSpan.IsEmpty, cancellationToken))
-                return false;
+                return false
 
-            var type = GetTypeSymbol(Document, Expression, cancellationToken, objectAsDefault: false);
+            var type = GetTypeSymbol(Document, Expression, cancellationToken, objectAsDefault: false)
             if (type == null || type.SpecialType == SpecialType.System_Void)
-                return false;
+                return false
 
-            IsConstant = IsExpressionConstant(Document, Expression, _service, cancellationToken);
+            IsConstant = IsExpressionConstant(Document, Expression, _service, cancellationToken)
 
             // Note: the ordering of these clauses are important.  They go, generally, from
             // innermost to outermost order.
             if (IsInQueryContext(cancellationToken))
                 if (CanGenerateInto<TQueryExpressionSyntax>(cancellationToken))
-                    InQueryContext = true;
-                    return true;
+                    InQueryContext = true
+                    return true
 
-                return false;
+                return false
 
             if (IsInConstructorInitializerContext(cancellationToken))
                 if (CanGenerateInto<TTypeDeclarationSyntax>(cancellationToken))
-                    InConstructorInitializerContext = true;
-                    return true;
+                    InConstructorInitializerContext = true
+                    return true
 
-                return false;
+                return false
 
-            var enclosingBlocks = _service.GetContainingExecutableBlocks(Expression);
+            var enclosingBlocks = _service.GetContainingExecutableBlocks(Expression)
             if (enclosingBlocks.Any())
-                InBlockContext = true;
-                return true;
+                InBlockContext = true
+                return true
 
             // NOTE: All checks from this point forward are intentionally ordered to be AFTER the check for Block Context.
 
@@ -127,90 +127,90 @@ internal abstract partial class AbstractIntroduceVariableService<TService, TExpr
             // instead of rewriting a concise expression bodied member to its equivalent that has a body with a block.
             if (_service.IsInExpressionBodiedMember(Expression))
                 if (CanGenerateInto<TTypeDeclarationSyntax>(cancellationToken))
-                    InExpressionBodiedMemberContext = true;
-                    return true;
+                    InExpressionBodiedMemberContext = true
+                    return true
 
-                return false;
+                return false
 
             if (_service.IsInAutoPropertyInitializer(Expression))
                 if (CanGenerateInto<TTypeDeclarationSyntax>(cancellationToken))
-                    InAutoPropertyInitializerContext = true;
-                    return true;
+                    InAutoPropertyInitializerContext = true
+                    return true
 
-                return false;
+                return false
 
             if (containingType is null)
-                var globalStatement = Expression.AncestorsAndSelf().FirstOrDefault(syntaxFacts.IsGlobalStatement);
+                var globalStatement = Expression.AncestorsAndSelf().FirstOrDefault(syntaxFacts.IsGlobalStatement)
                 if (globalStatement != null)
-                    InGlobalStatementContext = true;
-                    return true;
+                    InGlobalStatementContext = true
+                    return true
 
-                return false;
+                return false
 
             if (CanGenerateInto<TTypeDeclarationSyntax>(cancellationToken))
                 if (IsInParameterContext(cancellationToken))
-                    InParameterContext = true;
-                    return true;
+                    InParameterContext = true
+                    return true
                 else if (IsInFieldContext(cancellationToken))
-                    InFieldContext = true;
-                    return true;
+                    InFieldContext = true
+                    return true
                 else if (IsInAttributeContext())
-                    InAttributeContext = true;
-                    return true;
+                    InAttributeContext = true
+                    return true
 
-            return false;
+            return false
 
             static bool IsInitializerOfConstant(SemanticDocument document, TExpressionSyntax expression)
-                var syntaxFacts = document.Document.GetRequiredLanguageService<ISyntaxFactsService>();
+                var syntaxFacts = document.Document.GetRequiredLanguageService<ISyntaxFactsService>()
 
-                var current = expression;
+                var current = expression
                 while (syntaxFacts.IsParenthesizedExpression(current.Parent))
-                    current = (TExpressionSyntax)current.Parent;
+                    current = (TExpressionSyntax)current.Parent
 
                 if (!syntaxFacts.IsEqualsValueClause(current.Parent))
-                    return false;
+                    return false
 
-                var equalsValue = current.Parent;
+                var equalsValue = current.Parent
                 if (!syntaxFacts.IsVariableDeclarator(equalsValue.Parent))
-                    return false;
+                    return false
 
-                var declaration = equalsValue.AncestorsAndSelf().FirstOrDefault(n => syntaxFacts.IsLocalDeclarationStatement(n) || syntaxFacts.IsFieldDeclaration(n));
+                var declaration = equalsValue.AncestorsAndSelf().FirstOrDefault(n => syntaxFacts.IsLocalDeclarationStatement(n) || syntaxFacts.IsFieldDeclaration(n))
                 if (declaration == null)
-                    return false;
+                    return false
 
-                var generator = SyntaxGenerator.GetGenerator(document.Document);
-                return generator.GetModifiers(declaration).IsConst;
+                var generator = SyntaxGenerator.GetGenerator(document.Document)
+                return generator.GetModifiers(declaration).IsConst
 
             static bool IsExpressionConstant(SemanticDocument document, TExpressionSyntax expression, TService service, CancellationToken cancellationToken)
                 if (document.SemanticModel.GetConstantValue(expression, cancellationToken) is { HasValue: true, Value: var value })
-                    var syntaxKindsService = document.Document.GetRequiredLanguageService<ISyntaxKindsService>();
+                    var syntaxKindsService = document.Document.GetRequiredLanguageService<ISyntaxKindsService>()
                     if (syntaxKindsService.InterpolatedStringExpression == expression.RawKind && value is string)
                         // Interpolated strings can have constant values, but if it's being converted to a FormattableString
                         // or IFormattable then we cannot treat it as one
-                        var typeInfo = document.SemanticModel.GetTypeInfo(expression, cancellationToken);
-                        return typeInfo.ConvertedType?.IsFormattableStringOrIFormattable() != true;
+                        var typeInfo = document.SemanticModel.GetTypeInfo(expression, cancellationToken)
+                        return typeInfo.ConvertedType?.IsFormattableStringOrIFormattable() != true
                     else
-                        return true;
+                        return true
                 else
-                    return false;
+                    return false
 
         public SemanticMap GetSemanticMap(CancellationToken cancellationToken)
-            _semanticMap ??= Document.SemanticModel.GetSemanticMap(Expression, cancellationToken);
-            return _semanticMap;
+            _semanticMap ??= Document.SemanticModel.GetSemanticMap(Expression, cancellationToken)
+            return _semanticMap
 
         private bool CanIntroduceVariable(
             bool isSpanEmpty,
             CancellationToken cancellationToken)
             if (!_service.CanIntroduceVariableFor(Expression))
-                return false;
+                return false
 
             if (isSpanEmpty && Expression is TNameSyntax)
                 // to extract a name, you must have a selection (this avoids making the refactoring too noisy)
-                return false;
+                return false
 
             if (Expression is TTypeSyntax and not TNameSyntax)
                 // name syntax can introduce variables, but not other type syntaxes
-                return false;
+                return false
 
             // Even though we're creating a variable, we still ask if we can be replaced with an
             // RValue and not an LValue.  This is because introduction of a local adds a *new* LValue
@@ -220,23 +220,23 @@ internal abstract partial class AbstractIntroduceVariableService<TService, TExpr
             //
             // In essence, this says "i can be replaced with an expression as long as I'm not being
             // written to".
-            var semanticFacts = Document.GetRequiredLanguageService<ISemanticFactsService>();
-            return semanticFacts.CanReplaceWithRValue(Document.SemanticModel, Expression, cancellationToken);
+            var semanticFacts = Document.GetRequiredLanguageService<ISemanticFactsService>()
+            return semanticFacts.CanReplaceWithRValue(Document.SemanticModel, Expression, cancellationToken)
 
         private bool CanGenerateInto<TSyntax>(CancellationToken cancellationToken)
             where TSyntax : SyntaxNode
             if (Document.SemanticModel.Compilation.ScriptClass != null)
-                return true;
+                return true
 
-            var syntax = Expression.GetAncestor<TSyntax>();
-            return syntax != null && !syntax.OverlapsHiddenPosition(cancellationToken);
+            var syntax = Expression.GetAncestor<TSyntax>()
+            return syntax != null && !syntax.OverlapsHiddenPosition(cancellationToken)
 
         private bool IsInTypeDeclarationOrValidCompilationUnit()
             if (Expression.GetAncestorOrThis<TTypeDeclarationSyntax>() != null)
-                return true;
+                return true
 
             // If we're interactive/script, we can generate into the compilation unit.
             if (Document.Document.SourceCodeKind != SourceCodeKind.Regular)
-                return true;
+                return true
 
-            return false;
+            return false

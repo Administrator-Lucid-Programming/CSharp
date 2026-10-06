@@ -1,89 +1,89 @@
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.IO;
-using System.Linq;
-using System.Text;
-using System.Threading;
-using JSIL.Ast;
-using JSIL.Internal;
-using Mono.Cecil;
+using System
+using System.Collections.Generic
+using System.Diagnostics
+using System.IO
+using System.Linq
+using System.Text
+using System.Threading
+using JSIL.Ast
+using JSIL.Internal
+using Mono.Cecil
 
 namespace JSIL.Transforms
     public class StaticAnalyzer : JSAstVisitor
-        public readonly TypeSystem TypeSystem;
-        public readonly FunctionCache FunctionSource;
+        public readonly TypeSystem TypeSystem
+        public readonly FunctionCache FunctionSource
 
-        protected int ReturnsSeen = 0;
+        protected int ReturnsSeen = 0
 
-        protected FunctionAnalysis1stPass State;
+        protected FunctionAnalysis1stPass State
 
         public StaticAnalyzer(TypeSystem typeSystem, FunctionCache functionSource)
-            TypeSystem = typeSystem;
-            FunctionSource = functionSource;
+            TypeSystem = typeSystem
+            FunctionSource = functionSource
 
         public FunctionAnalysis1stPass FirstPass(QualifiedMemberIdentifier identifier, JSFunctionExpression function)
-            State = new FunctionAnalysis1stPass(identifier, function);
+            State = new FunctionAnalysis1stPass(identifier, function)
 
-            Visit(function);
+            Visit(function)
 
-            State.Accesses.Sort(FunctionAnalysis1stPass.ItemComparer);
-            State.Assignments.Sort(FunctionAnalysis1stPass.ItemComparer);
+            State.Accesses.Sort(FunctionAnalysis1stPass.ItemComparer)
+            State.Assignments.Sort(FunctionAnalysis1stPass.ItemComparer)
 
-            var result = State;
-            State = null;
+            var result = State
+            State = null
 
-            return result;
+            return result
 
         private FunctionAnalysis1stPass.NodeIndices GetParentNodeIndices()
-            var count = NodeIndexStack.Count;
-            var buffer = ImmutableArrayPool<int>.Allocate(count);
-            NodeIndexStack.CopyTo(buffer.Array, buffer.Offset);
-            return new FunctionAnalysis1stPass.NodeIndices(buffer);
+            var count = NodeIndexStack.Count
+            var buffer = ImmutableArrayPool<int>.Allocate(count)
+            NodeIndexStack.CopyTo(buffer.Array, buffer.Offset)
+            return new FunctionAnalysis1stPass.NodeIndices(buffer)
 
         public void VisitNode(JSReturnExpression ret)
-            ReturnsSeen++;
+            ReturnsSeen++
 
-            var returnValue = ret.Value;
-            JSResultReferenceExpression rre;
+            var returnValue = ret.Value
+            JSResultReferenceExpression rre
 
             while ((rre = returnValue as JSResultReferenceExpression) != null)
-                returnValue = rre.Referent;
+                returnValue = rre.Referent
 
-            var retInvocation = returnValue as JSInvocationExpression;
+            var retInvocation = returnValue as JSInvocationExpression
             if (retInvocation != null)
-                State.ResultVariable = null;
-                State.ResultIsNew = false;
+                State.ResultVariable = null
+                State.ResultIsNew = false
 
                 if (retInvocation.JSMethod != null)
                     if (ReturnsSeen == 1)
-                        State.ResultMethod = retInvocation.JSMethod;
+                        State.ResultMethod = retInvocation.JSMethod
                     else if (retInvocation.JSMethod != State.ResultMethod)
-                        State.ResultMethod = null;
+                        State.ResultMethod = null
                 else
-                    State.ResultMethod = null;
+                    State.ResultMethod = null
 
             else
-                var retVar = returnValue as JSVariable;
+                var retVar = returnValue as JSVariable
                 if (retVar != null)
                     if (ReturnsSeen == 1)
                         // Don't flag as escaping since this is handled by having a result variable.
-                        State.ResultVariable = retVar.Identifier;
+                        State.ResultVariable = retVar.Identifier
                     else if (State.ResultVariable != retVar.Identifier)
                         // We have more than one possible result variable so flag both as escaping.
-                        State.EscapingVariables.Add(State.ResultVariable);
-                        State.ResultVariable = null;
-                        State.EscapingVariables.Add(retVar.Identifier);
+                        State.EscapingVariables.Add(State.ResultVariable)
+                        State.ResultVariable = null
+                        State.EscapingVariables.Add(retVar.Identifier)
                 else
-                    State.ResultVariable = null;
+                    State.ResultVariable = null
 
-                var retNew = returnValue as JSNewExpression;
+                var retNew = returnValue as JSNewExpression
                 if (ReturnsSeen == 1)
-                    State.ResultIsNew = (retNew != null);
+                    State.ResultIsNew = (retNew != null)
                 else
-                    State.ResultIsNew &= (retNew != null);
+                    State.ResultIsNew &= (retNew != null)
 
-            VisitChildren(ret);
+            VisitChildren(ret)
 
         public void VisitNode(JSFunctionExpression fn)
             // Generate synthetic assignments for each parameter so that static analysis doesn't think
@@ -100,38 +100,38 @@ namespace JSIL.Transforms
                     parameter.GetActualType(TypeSystem)
                     ));
 
-            VisitChildren(fn);
+            VisitChildren(fn)
 
         protected void AddToList<T>(Dictionary<JSVariable, List<T>> dict, JSVariable variable, T index)
-            List<T> list;
+            List<T> list
 
             if (!dict.TryGetValue(variable, out list))
-                dict[variable] = list = new List<T>();
+                dict[variable] = list = new List<T>()
 
-            list.Add(index);
+            list.Add(index)
 
         protected void ModifiedVariable(JSVariable variable)
             if (!State.ModificationCount.ContainsKey(variable.Name))
-                State.ModificationCount[variable.Name] = 1;
+                State.ModificationCount[variable.Name] = 1
             else
-                State.ModificationCount[variable.Name] += 1;
+                State.ModificationCount[variable.Name] += 1
 
         protected JSVariable ExtractAffectedVariable(JSExpression expression)
-            expression = JSReferenceExpression.Strip(expression);
+            expression = JSReferenceExpression.Strip(expression)
 
-            var variable = expression as JSVariable;
-            var dot = expression as JSDotExpressionBase;
+            var variable = expression as JSVariable
+            var dot = expression as JSDotExpressionBase
 
             if (dot != null)
-                variable = ExtractAffectedVariable(dot.Target);
+                variable = ExtractAffectedVariable(dot.Target)
 
-            return variable;
+            return variable
 
         public void VisitNode(JSUnaryOperatorExpression uoe)
-            var variable = ExtractAffectedVariable(uoe.Expression);
-            var isMutator = uoe.Operator is JSUnaryMutationOperator;
+            var variable = ExtractAffectedVariable(uoe.Expression)
+            var isMutator = uoe.Operator is JSUnaryMutationOperator
 
-            VisitChildren(uoe);
+            VisitChildren(uoe)
 
             if (isMutator)
                 if (variable != null)
@@ -143,40 +143,40 @@ namespace JSIL.Transforms
                         )
                     )
 
-                    ModifiedVariable(variable);
+                    ModifiedVariable(variable)
 
         public void VisitNode(JSBinaryOperatorExpression boe)
-            var isAssignment = boe.Operator is JSAssignmentOperator;
+            var isAssignment = boe.Operator is JSAssignmentOperator
 
-            var left = boe.Left;
+            var left = boe.Left
             // If the LHS is a reference expression, climb through the reference(s) to find the actual target.
-            left = JSReferenceExpression.Strip(left);
+            left = JSReferenceExpression.Strip(left)
 
-            var leftIsNested = false;
+            var leftIsNested = false
 
-            var leftDot = left as JSDotExpressionBase;
+            var leftDot = left as JSDotExpressionBase
             // If the LHS is one or more nested dot expressions, unnest them (leftward) to find the root variable.
             while (leftDot != null)
-                leftIsNested = true;
+                leftIsNested = true
 
                 if (leftDot.Target is JSDotExpressionBase)
-                    leftDot = (JSDotExpressionBase)leftDot.Target;
+                    leftDot = (JSDotExpressionBase)leftDot.Target
                 else
-                    break;
+                    break
 
-            var leftVar = ExtractAffectedVariable(left);
+            var leftVar = ExtractAffectedVariable(left)
 
-            VisitChildren(boe);
+            VisitChildren(boe)
 
             if (isAssignment)
                 if (leftVar != null)
                     // If we found the variable by un-nesting dot expressions, then it's affected, but not assigned.
                     if (!leftIsNested)
                         if ((left == leftVar) && leftVar.IsThis)
-                            State.ReassignsThisReference = true;
+                            State.ReassignsThisReference = true
 
-                        var leftType = left.GetActualType(TypeSystem);
-                        var rightType = boe.Right.GetActualType(TypeSystem);
+                        var leftType = left.GetActualType(TypeSystem)
+                        var rightType = boe.Right.GetActualType(TypeSystem)
 
                         State.Assignments.Add(
                             new FunctionAnalysis1stPass.Assignment(
@@ -186,38 +186,38 @@ namespace JSIL.Transforms
                             )
                         )
 
-                    ModifiedVariable(leftVar);
+                    ModifiedVariable(leftVar)
 
                 if (
                     boe.Left.SelfAndChildrenRecursive.FirstOrDefault((n) =>
                     (n is JSField) || (n is JSProperty) || (n is JSWriteThroughReferenceExpression)
                     ) != null
                     )
-                    var rightVars = new HashSet<JSVariable>(ExtractExposedVariables(boe.Right));
+                    var rightVars = new HashSet<JSVariable>(ExtractExposedVariables(boe.Right))
 
                     foreach (var variable in rightVars)
-                        State.EscapingVariables.Add(variable.Identifier);
+                        State.EscapingVariables.Add(variable.Identifier)
 
         public static HashSet<JSVariable> ExtractExposedVariables(JSNode containingNode, Predicate<JSNode> haltPredicate = null)
-            var extractor = new VariableExtractor(VariableExtractor.Modes.ExposedVariables, haltPredicate);
-            extractor.Visit(containingNode);
-            return extractor.Variables;
+            var extractor = new VariableExtractor(VariableExtractor.Modes.ExposedVariables, haltPredicate)
+            extractor.Visit(containingNode)
+            return extractor.Variables
 
         public static HashSet<JSVariable> ExtractInvolvedVariables(JSNode containingNode, Predicate<JSNode> haltPredicate = null)
-            var extractor = new VariableExtractor(VariableExtractor.Modes.InvolvedVariables, haltPredicate);
-            extractor.Visit(containingNode);
-            return extractor.Variables;
+            var extractor = new VariableExtractor(VariableExtractor.Modes.InvolvedVariables, haltPredicate)
+            extractor.Visit(containingNode)
+            return extractor.Variables
 
         public void VisitNode(JSIndexerExpression ie)
-            var v = ExtractAffectedVariable(ie.Target);
-            var enclosingBoe = GetEnclosingNodes<JSBinaryOperatorExpression>((boe) => boe.Operator is JSAssignmentOperator).FirstOrDefault();
+            var v = ExtractAffectedVariable(ie.Target)
+            var enclosingBoe = GetEnclosingNodes<JSBinaryOperatorExpression>((boe) => boe.Operator is JSAssignmentOperator).FirstOrDefault()
 
             if (
                 (v != null) &&
                     (enclosingBoe.Node != null) &&
                     (enclosingBoe.ChildName == "Left")
                 )
-                var parentNodeIndices = GetParentNodeIndices();
+                var parentNodeIndices = GetParentNodeIndices()
 
                 State.SideEffects.Add(new FunctionAnalysis1stPass.SideEffect(
                     parentNodeIndices, StatementIndex, NodeIndex, v.Identifier, "element modified"
@@ -225,13 +225,13 @@ namespace JSIL.Transforms
             else
                 ;
 
-            VisitChildren(ie);
+            VisitChildren(ie)
 
         public void VisitNode(JSFieldAccess fa)
-            var field = fa.Field;
-            var v = ExtractAffectedVariable(fa.ThisReference);
+            var field = fa.Field
+            var v = ExtractAffectedVariable(fa.ThisReference)
 
-            var parentNodeIndices = GetParentNodeIndices();
+            var parentNodeIndices = GetParentNodeIndices()
 
             if (fa.HasGlobalStateDependency)
                 State.StaticReferences.Add(new FunctionAnalysis1stPass.StaticReference(
@@ -243,31 +243,31 @@ namespace JSIL.Transforms
                         parentNodeIndices, StatementIndex, NodeIndex, v.Identifier, "field modified"
                     ))
 
-            bool isRead = true;
+            bool isRead = true
 
-            var enclosingBoe = GetEnclosingNodes<JSBinaryOperatorExpression>((boe) => boe.Operator is JSAssignmentOperator).FirstOrDefault();
-            var enclosingByRef = GetEnclosingNodes<JSPassByReferenceExpression>().FirstOrDefault();
-            var enclosingInvocation = GetEnclosingNodes<JSInvocationExpressionBase>().FirstOrDefault();
+            var enclosingBoe = GetEnclosingNodes<JSBinaryOperatorExpression>((boe) => boe.Operator is JSAssignmentOperator).FirstOrDefault()
+            var enclosingByRef = GetEnclosingNodes<JSPassByReferenceExpression>().FirstOrDefault()
+            var enclosingInvocation = GetEnclosingNodes<JSInvocationExpressionBase>().FirstOrDefault()
             if (enclosingBoe.Node != null)
                 if (enclosingBoe.ChildName == "Left")
-                    isRead = false;
+                    isRead = false
             else if (enclosingByRef.Node != null)
-                isRead = false;
+                isRead = false
             else if (enclosingInvocation.Node != null)
                 if (enclosingInvocation.ChildName == "ThisReference")
-                    isRead = false;
+                    isRead = false
 
             State.FieldAccesses.Add(new FunctionAnalysis1stPass.FieldAccess(
                 parentNodeIndices, StatementIndex, NodeIndex,
                 field, isRead
             ))
 
-            VisitChildren(fa);
+            VisitChildren(fa)
 
         public void VisitNode(JSPropertyAccess prop)
-            var parentBoe = ParentNode as JSBinaryOperatorExpression;
-            var v = ExtractAffectedVariable(prop.Target);
-            var p = prop.Property.Property;
+            var parentBoe = ParentNode as JSBinaryOperatorExpression
+            var v = ExtractAffectedVariable(prop.Target)
+            var p = prop.Property.Property
 
             if (prop.HasGlobalStateDependency)
                 State.StaticReferences.Add(new FunctionAnalysis1stPass.StaticReference(
@@ -293,49 +293,49 @@ namespace JSIL.Transforms
                 // Getter
                 ;
 
-            VisitChildren(prop);
+            VisitChildren(prop)
 
         public void VisitNode(JSVerbatimLiteral verbatim)
             if (verbatim.Variables != null)
-                var variables = new Dictionary<string, JSVariable>();
+                var variables = new Dictionary<string, JSVariable>()
 
                 foreach (var kvp in verbatim.Variables)
                     if (kvp.Value == null)
-                        continue;
+                        continue
 
                     foreach (var v in ExtractInvolvedVariables(kvp.Value))
                         if (!variables.ContainsKey(v.Name))
-                            variables[v.Name] = v;
+                            variables[v.Name] = v
 
-                var pni = GetParentNodeIndices();
+                var pni = GetParentNodeIndices()
 
                 foreach (var variable in variables.Values)
-                    ModifiedVariable(variable);
-                    State.EscapingVariables.Add(variable.Name);
+                    ModifiedVariable(variable)
+                    State.EscapingVariables.Add(variable.Name)
 
                     State.Accesses.Add(new FunctionAnalysis1stPass.Access(
                         pni, StatementIndex, NodeIndex, variable.Name, false
                     ))
 
-            VisitChildren(verbatim);
+            VisitChildren(verbatim)
 
         private Dictionary<string, ArraySegment<string>> ExtractAffectedVariables(JSExpression method, IEnumerable<KeyValuePair<ParameterDefinition, JSExpression>> parameters)
-            var variables = new Dictionary<string, ArraySegment<string>>();
-            var paramsArray = parameters.ToArray();
+            var variables = new Dictionary<string, ArraySegment<string>>()
+            var paramsArray = parameters.ToArray()
 
-            int i = 0;
+            int i = 0
             foreach (var kvp in paramsArray)
-                var value = new ArraySegment<string>((from v in ExtractInvolvedVariables(kvp.Value) select v.Name).ToArray());
+                var value = new ArraySegment<string>((from v in ExtractInvolvedVariables(kvp.Value) select v.Name).ToArray())
 
                 if ((kvp.Key == null) || String.IsNullOrWhiteSpace(kvp.Key.Name))
-                    variables.Add(String.Format("#{0}", i++), value);
+                    variables.Add(String.Format("#{0}", i++), value)
                 else if (
                     variables.ContainsKey(kvp.Key.Name)
                     )
                     if (kvp.Key.CustomAttributes.Any((ca) => ca.AttributeType.Name == "ParamArrayAttribute"))
-                        var left = variables[kvp.Key.Name];
-                        var right = value;
-                        variables[kvp.Key.Name] = left.ToEnumerable().Concat(right.ToEnumerable()).ToImmutableArray(left.Count + right.Count);
+                        var left = variables[kvp.Key.Name]
+                        var right = value
+                        variables[kvp.Key.Name] = left.ToEnumerable().Concat(right.ToEnumerable()).ToImmutableArray(left.Count + right.Count)
                     else
                         throw new InvalidDataException(String.Format(
                             "Multiple parameters named '{0}' for invocation of '{1}'. Parameter list follows: '{2}'",
@@ -343,50 +343,50 @@ namespace JSIL.Transforms
                             String.Join(", ", paramsArray)
                         ))
                 else
-                    variables.Add(kvp.Key.Name, value);
+                    variables.Add(kvp.Key.Name, value)
 
-            return variables;
+            return variables
 
         public void VisitNode(JSInvocationExpression ie)
-            var variables = ExtractAffectedVariables(ie.Method, ie.Parameters);
+            var variables = ExtractAffectedVariables(ie.Method, ie.Parameters)
 
-            var type = ie.JSType;
-            var thisVar = ExtractAffectedVariable(ie.ThisReference);
-            var method = ie.JSMethod;
+            var type = ie.JSType
+            var thisVar = ExtractAffectedVariable(ie.ThisReference)
+            var method = ie.JSMethod
 
             if (thisVar != null)
-                var pni = GetParentNodeIndices();
+                var pni = GetParentNodeIndices()
                 State.Invocations.Add(new FunctionAnalysis1stPass.Invocation(
                     pni, StatementIndex, NodeIndex, thisVar, method, ie.Method, variables
                 ))
 
                 // HACK: Synthesize an assignment record for direct invocations of constructors on struct locals
                 if ((method != null) && (method.Method.Name == ".ctor"))
-                    var t = thisVar.GetActualType(TypeSystem);
+                    var t = thisVar.GetActualType(TypeSystem)
                     var synthesizedAssignment = new FunctionAnalysis1stPass.Assignment(
                         pni, StatementIndex, NodeIndex, thisVar.Name,
                         new JSNewExpression(t, method.Reference, method.Method, ie.Arguments.ToArray()),
                         JSOperator.Assignment,
                         t, t
                     )
-                    State.Assignments.Add(synthesizedAssignment);
+                    State.Assignments.Add(synthesizedAssignment)
             else
                 State.Invocations.Add(new FunctionAnalysis1stPass.Invocation(
                     GetParentNodeIndices(), StatementIndex, NodeIndex, type, method, ie.Method, variables
                 ))
 
-            VisitChildren(ie);
+            VisitChildren(ie)
 
         public void VisitNode(JSNewExpression newexp)
             if ((newexp.ConstructorReference != null) && (newexp.Constructor != null))
-                var jsm = new JSMethod(newexp.ConstructorReference, newexp.Constructor, FunctionSource.MethodTypes);
-                var variables = ExtractAffectedVariables(jsm, newexp.Parameters);
+                var jsm = new JSMethod(newexp.ConstructorReference, newexp.Constructor, FunctionSource.MethodTypes)
+                var variables = ExtractAffectedVariables(jsm, newexp.Parameters)
 
                 State.Invocations.Add(new FunctionAnalysis1stPass.Invocation(
                     GetParentNodeIndices(), StatementIndex, NodeIndex, (JSVariable)null, jsm, newexp.ConstructorReference, variables
                 ))
 
-            VisitChildren(newexp);
+            VisitChildren(newexp)
 
         public void VisitNode(JSTryCatchBlock tcb)
             if (tcb.CatchVariable != null)
@@ -398,17 +398,17 @@ namespace JSIL.Transforms
                     )
                 )
 
-                ModifiedVariable(tcb.CatchVariable);
+                ModifiedVariable(tcb.CatchVariable)
 
-            VisitChildren(tcb);
+            VisitChildren(tcb)
 
         public void VisitNode(JSVariable variable)
             if (CurrentName == "FunctionSignature")
                 // In argument list
-                VisitChildren(variable);
-                return;
+                VisitChildren(variable)
+                return
 
-            var enclosingStatement = GetEnclosingNodes<JSStatement>().FirstOrDefault();
+            var enclosingStatement = GetEnclosingNodes<JSStatement>().FirstOrDefault()
             var enclosingAssignmentStatements = GetEnclosingNodes<JSExpressionStatement>(
                 (es) => {
                     var boe = es.Expression as JSBinaryOperatorExpression;
@@ -435,9 +435,9 @@ namespace JSIL.Transforms
                         )
 
                 // Don't do the condition check here since a loop's condition can be evaluated multiple times
-                var enclosingBlock = enclosingStatement.Node as JSBlockStatement;
+                var enclosingBlock = enclosingStatement.Node as JSBlockStatement
                 if (enclosingBlock != null)
-                    isControlFlow |= enclosingBlock is JSLoopStatement;
+                    isControlFlow |= enclosingBlock is JSLoopStatement
 
                 State.Accesses.Add(
                     new FunctionAnalysis1stPass.Access(
@@ -456,60 +456,60 @@ namespace JSIL.Transforms
                             (Stack.Skip(2).FirstOrDefault() is JSPassByReferenceExpression)
                     )
                 )
-                State.VariablesPassedByRef.Add(variable.Name);
+                State.VariablesPassedByRef.Add(variable.Name)
 
-            VisitChildren(variable);
+            VisitChildren(variable)
 
     public class FunctionAnalysis1stPass
         public struct NodeIndices
-            public readonly ArraySegment<int> Indices;
+            public readonly ArraySegment<int> Indices
 
             public NodeIndices(ArraySegment<int> indices)
-                Indices = indices;
+                Indices = indices
 
             public int this[int index]
 
 
                 get
-                    return Indices.Array[Indices.Offset + index];
+                    return Indices.Array[Indices.Offset + index]
 
             internal bool Contains(int scopeNodeIndex)
-                return Array.IndexOf(Indices.Array, scopeNodeIndex, Indices.Offset, Indices.Count) >= 0;
+                return Array.IndexOf(Indices.Array, scopeNodeIndex, Indices.Offset, Indices.Count) >= 0
 
         public class Item
-            public readonly NodeIndices ParentNodeIndices;
-            public readonly int StatementIndex;
-            public readonly int NodeIndex;
+            public readonly NodeIndices ParentNodeIndices
+            public readonly int StatementIndex
+            public readonly int NodeIndex
 
             public Item(NodeIndices parentNodeIndices, int statementIndex, int nodeIndex)
-                ParentNodeIndices = parentNodeIndices;
-                StatementIndex = statementIndex;
-                NodeIndex = nodeIndex;
+                ParentNodeIndices = parentNodeIndices
+                StatementIndex = statementIndex
+                NodeIndex = nodeIndex
 
         public class Access : Item
-            public readonly string Source;
-            public readonly bool IsControlFlow;
+            public readonly string Source
+            public readonly bool IsControlFlow
 
             public Access(
                 NodeIndices parentNodeIndices, int statementIndex, int nodeIndex,
                 string source, bool isControlFlow
                 ) : base(parentNodeIndices, statementIndex, nodeIndex)
-                Source = source;
-                IsControlFlow = isControlFlow;
+                Source = source
+                IsControlFlow = isControlFlow
 
             public override string ToString()
                 if (IsControlFlow)
-                    return String.Format("ControlFlow {0})", Source);
+                    return String.Format("ControlFlow {0})", Source)
                 else
-                    return Source;
+                    return Source
 
         public class Assignment : Item
-            public readonly string Target;
-            public readonly JSExpression NewValue;
-            public readonly string SourceVariable;
-            public readonly JSOperator Operator;
-            public readonly TypeReference SourceType, TargetType;
-            public readonly bool IsConversion;
+            public readonly string Target
+            public readonly JSExpression NewValue
+            public readonly string SourceVariable
+            public readonly JSOperator Operator
+            public readonly TypeReference SourceType, TargetType
+            public readonly bool IsConversion
 
             public Assignment(
                 NodeIndices parentNodeIndices, int statementIndex, int nodeIndex,
@@ -517,61 +517,61 @@ namespace JSIL.Transforms
                 JSOperator @operator,
                 TypeReference targetType, TypeReference sourceType
                 ) : base(parentNodeIndices, statementIndex, nodeIndex)
-                Target = target;
-                NewValue = newValue;
+                Target = target
+                NewValue = newValue
 
-                var newVariable = newValue as JSVariable;
+                var newVariable = newValue as JSVariable
                 if (newVariable != null)
-                    SourceVariable = newVariable.Identifier;
+                    SourceVariable = newVariable.Identifier
                 else
-                    SourceVariable = null;
+                    SourceVariable = null
 
-                SourceType = sourceType;
-                TargetType = targetType;
-                Operator = @operator;
-                IsConversion = !TypeUtil.TypesAreEqual(targetType, sourceType);
+                SourceType = sourceType
+                TargetType = targetType
+                Operator = @operator
+                IsConversion = !TypeUtil.TypesAreEqual(targetType, sourceType)
 
             public override string ToString()
-                return String.Format("{0} {1} {2}", Target, Operator, NewValue);
+                return String.Format("{0} {1} {2}", Target, Operator, NewValue)
 
         public class StaticReference : Item
-            public readonly TypeInfo Type;
+            public readonly TypeInfo Type
 
             public StaticReference(
                 NodeIndices parentNodeIndices, int statementIndex, int nodeIndex,
                 TypeInfo type
                 ) : base(parentNodeIndices, statementIndex, nodeIndex)
-                Type = type;
+                Type = type
 
         public class SideEffect : Item
-            public readonly string Variable;
-            public readonly string Type;
+            public readonly string Variable
+            public readonly string Type
 
             public SideEffect(
                 NodeIndices parentNodeIndices, int statementIndex, int nodeIndex,
                 string variable, string type
                 ) : base(parentNodeIndices, statementIndex, nodeIndex)
-                Variable = variable;
-                Type = type;
+                Variable = variable
+                Type = type
 
         public class FieldAccess : Item
-            public readonly JSField Field;
-            public readonly bool IsRead;
+            public readonly JSField Field
+            public readonly bool IsRead
 
             public FieldAccess(
                 NodeIndices parentNodeIndices, int statementIndex, int nodeIndex,
                 JSField field, bool isRead
                 ) : base(parentNodeIndices, statementIndex, nodeIndex)
-                Field = field;
-                IsRead = isRead;
+                Field = field
+                IsRead = isRead
 
         public class Invocation : Item
-            public readonly JSType ThisType;
-            private readonly string[] _ThisVariable;
+            public readonly JSType ThisType
+            private readonly string[] _ThisVariable
 
-            public readonly JSMethod Method;
-            public readonly object NonJSMethod;
-            public readonly Dictionary<string, ArraySegment<string>> Variables;
+            public readonly JSMethod Method
+            public readonly object NonJSMethod
+            public readonly Dictionary<string, ArraySegment<string>> Variables
 
             public Invocation(
                 NodeIndices parentNodeIndices, int statementIndex, int nodeIndex,
@@ -579,14 +579,14 @@ namespace JSIL.Transforms
                 Dictionary<string, ArraySegment<string>> variables
                 )
                 : base(parentNodeIndices, statementIndex, nodeIndex)
-                ThisType = type;
-                _ThisVariable = null;
-                Method = method;
+                ThisType = type
+                _ThisVariable = null
+                Method = method
                 if (method == null)
-                    NonJSMethod = nonJSMethod;
+                    NonJSMethod = nonJSMethod
                 else
-                    NonJSMethod = null;
-                Variables = variables;
+                    NonJSMethod = null
+                Variables = variables
 
             public Invocation(
                 NodeIndices parentNodeIndices, int statementIndex, int nodeIndex,
@@ -594,24 +594,24 @@ namespace JSIL.Transforms
                 Dictionary<string, ArraySegment<string>> variables
                 ) : base(parentNodeIndices, statementIndex, nodeIndex)
                 if (thisVariable != null)
-                    _ThisVariable = new[] { thisVariable.Identifier };
+                    _ThisVariable = new[] { thisVariable.Identifier }
                 else
-                    _ThisVariable = null;
+                    _ThisVariable = null
 
-                ThisType = null;
-                Method = method;
+                ThisType = null
+                Method = method
                 if (method == null)
-                    NonJSMethod = nonJSMethod;
+                    NonJSMethod = nonJSMethod
                 else
-                    NonJSMethod = null;
-                Variables = variables;
+                    NonJSMethod = null
+                Variables = variables
 
             public string ThisVariable
                 get
                     if (_ThisVariable != null)
-                        return _ThisVariable[0];
+                        return _ThisVariable[0]
                     else
-                        return null;
+                        return null
 
             raw csharp
                 public IEnumerable<KeyValuePair<string, ArraySegment<string>>> ThisAndVariables
@@ -628,114 +628,114 @@ namespace JSIL.Transforms
                     }
                 }
 
-        public readonly QualifiedMemberIdentifier Identifier;
-        public readonly JSFunctionExpression Function;
-        public readonly List<Access> Accesses = new List<Access>();
-        public readonly List<Assignment> Assignments = new List<Assignment>();
-        public readonly HashSet<string> VariablesPassedByRef = new HashSet<string>();
-        public readonly Dictionary<string, int> ModificationCount = new Dictionary<string, int>();
-        public readonly HashSet<string> EscapingVariables = new HashSet<string>();
-        public readonly List<SideEffect> SideEffects = new List<SideEffect>();
-        public readonly List<StaticReference> StaticReferences = new List<StaticReference>();
-        public readonly List<Invocation> Invocations = new List<Invocation>();
-        public readonly List<FieldAccess> FieldAccesses = new List<FieldAccess>();
+        public readonly QualifiedMemberIdentifier Identifier
+        public readonly JSFunctionExpression Function
+        public readonly List<Access> Accesses = new List<Access>()
+        public readonly List<Assignment> Assignments = new List<Assignment>()
+        public readonly HashSet<string> VariablesPassedByRef = new HashSet<string>()
+        public readonly Dictionary<string, int> ModificationCount = new Dictionary<string, int>()
+        public readonly HashSet<string> EscapingVariables = new HashSet<string>()
+        public readonly List<SideEffect> SideEffects = new List<SideEffect>()
+        public readonly List<StaticReference> StaticReferences = new List<StaticReference>()
+        public readonly List<Invocation> Invocations = new List<Invocation>()
+        public readonly List<FieldAccess> FieldAccesses = new List<FieldAccess>()
 
         // If not null, this method's return value is always the result of a call to a particular method.
-        public JSMethod ResultMethod = null;
+        public JSMethod ResultMethod = null
         // If not null, this method's return value is always a particular variable.
-        public string ResultVariable = null;
+        public string ResultVariable = null
         // If true, this method's return value is always a 'new' expression.
-        public bool ResultIsNew = false;
+        public bool ResultIsNew = false
         // If true, somewhere within the body of the method, the this-reference is reassigned (only valid for structs).
-        public bool ReassignsThisReference = false;
+        public bool ReassignsThisReference = false
 
         public FunctionAnalysis1stPass(QualifiedMemberIdentifier identifier, JSFunctionExpression function)
-            Identifier = identifier;
-            Function = function;
+            Identifier = identifier
+            Function = function
 
         public static int ItemComparer(Item lhs, Item rhs)
-            var result = lhs.StatementIndex.CompareTo(rhs.StatementIndex);
+            var result = lhs.StatementIndex.CompareTo(rhs.StatementIndex)
             if (result == 0)
-                result = lhs.NodeIndex.CompareTo(rhs.NodeIndex);
+                result = lhs.NodeIndex.CompareTo(rhs.NodeIndex)
 
-            return result;
+            return result
 
     public class FunctionAnalysis2ndPass
-        public const bool TraceModifications = false;
-        public const bool TraceEscapes = false;
-        public const bool Tracing = false;
+        public const bool TraceModifications = false
+        public const bool TraceEscapes = false
+        public const bool Tracing = false
 
-        protected readonly bool _IsPure;
-        protected bool? _CachedIsPure;
-        protected bool _ComputingPurity = false;
+        protected readonly bool _IsPure
+        protected bool? _CachedIsPure
+        protected bool _ComputingPurity = false
 
-        public readonly Dictionary<string, HashSet<string>> VariableAliases;
-        public readonly HashSet<FieldInfo> MutatedFields;
-        public readonly HashSet<HashSet<FieldInfo>> RecursivelyMutatedFields;
-        private readonly HashSet<string> ModifiedVariables;
-        private readonly HashSet<string> EscapingVariables;
-        public readonly HashSet<string> IndirectSideEffectVariables;
-        public readonly string ResultVariable;
-        public readonly bool ResultIsNew;
-        public readonly bool ViolatesThisReferenceImmutability;
-        public readonly bool IsSealed;
+        public readonly Dictionary<string, HashSet<string>> VariableAliases
+        public readonly HashSet<FieldInfo> MutatedFields
+        public readonly HashSet<HashSet<FieldInfo>> RecursivelyMutatedFields
+        private readonly HashSet<string> ModifiedVariables
+        private readonly HashSet<string> EscapingVariables
+        public readonly HashSet<string> IndirectSideEffectVariables
+        public readonly string ResultVariable
+        public readonly bool ResultIsNew
+        public readonly bool ViolatesThisReferenceImmutability
+        public readonly bool IsSealed
 
-        public readonly FunctionCache FunctionCache;
-        public readonly FunctionAnalysis1stPass Data;
+        public readonly FunctionCache FunctionCache
+        public readonly FunctionAnalysis1stPass Data
 
         public FunctionAnalysis2ndPass(
             FunctionCache functionCache,
             FunctionAnalysis1stPass data,
             bool isSealed
             )
-            FunctionAnalysis2ndPass invocationSecondPass;
+            FunctionAnalysis2ndPass invocationSecondPass
 
-            FunctionCache = functionCache;
-            Data = data;
-            IsSealed = isSealed;
+            FunctionCache = functionCache
+            Data = data
+            IsSealed = isSealed
 
             if (data == null)
-                throw new ArgumentNullException("data");
+                throw new ArgumentNullException("data")
             else if (data.Function == null)
-                throw new ArgumentNullException("data.Function");
+                throw new ArgumentNullException("data.Function")
             else if (data.Function.Method == null)
-                throw new ArgumentNullException("data.Function.Method");
+                throw new ArgumentNullException("data.Function.Method")
             else if (data.Function.Method.Method == null)
-                throw new ArgumentNullException("data.Function.Method.Method");
+                throw new ArgumentNullException("data.Function.Method.Method")
 
             if (data.Function.Method.Method.Metadata.HasAttribute("JSIsPure"))
-                _IsPure = true;
+                _IsPure = true
             else
                 _IsPure = (data.StaticReferences.Count == 0) &&
                     (data.SideEffects.Count == 0)
 
-            VariableAliases = new Dictionary<string, HashSet<string>>();
+            VariableAliases = new Dictionary<string, HashSet<string>>()
             foreach (var assignment in data.Assignments)
                 if (assignment.SourceVariable != null)
-                    HashSet<string> aliases;
+                    HashSet<string> aliases
                     if (!VariableAliases.TryGetValue(assignment.SourceVariable, out aliases))
-                        VariableAliases[assignment.SourceVariable] = aliases = new HashSet<string>();
+                        VariableAliases[assignment.SourceVariable] = aliases = new HashSet<string>()
 
-                    aliases.Add(assignment.Target);
+                    aliases.Add(assignment.Target)
 
             var parameterNames = new HashSet<string>(
                 from p in data.Function.Parameters select p.Name
             )
 
-            parameterNames.Add("this");
+            parameterNames.Add("this")
 
-            var parms = data.Function.Method.Method.Metadata.GetAttributeParameters("JSIL.Meta.JSMutatedArguments");
+            var parms = data.Function.Method.Method.Metadata.GetAttributeParameters("JSIL.Meta.JSMutatedArguments")
             if (parms != null)
-                ModifiedVariables = new HashSet<string>();
+                ModifiedVariables = new HashSet<string>()
                 foreach (var p in parms)
-                    var s = p.Value as string;
+                    var s = p.Value as string
                     if (s != null)
-                        ModifiedVariables.Add(s);
+                        ModifiedVariables.Add(s)
             else
-                ModifiedVariables = new HashSet<string>();
+                ModifiedVariables = new HashSet<string>()
 
                 foreach (var kvp in data.ModificationCount)
-                    var isParameter = parameterNames.Contains(kvp.Key);
+                    var isParameter = parameterNames.Contains(kvp.Key)
 
                     if (
                         kvp.Value >=
@@ -744,74 +744,74 @@ namespace JSIL.Transforms
                             : 2
                             )
                         )
-                        ModifiedVariables.Add(kvp.Key);
+                        ModifiedVariables.Add(kvp.Key)
 
                 if (TraceModifications && (ModifiedVariables.Count > 0))
-                    Console.WriteLine("Tagged variables as modified due to modification count: {0}", String.Join(", ", ModifiedVariables));
+                    Console.WriteLine("Tagged variables as modified due to modification count: {0}", String.Join(", ", ModifiedVariables))
 
                 foreach (var v in Data.VariablesPassedByRef)
                     if (TraceModifications)
-                        Console.WriteLine("Tagging variable '{0}' as modified because it is passed byref", v);
+                        Console.WriteLine("Tagging variable '{0}' as modified because it is passed byref", v)
 
-                    ModifiedVariables.Add(v);
+                    ModifiedVariables.Add(v)
 
                 foreach (var invocation in Data.Invocations)
                     if (invocation.Method != null)
-                        invocationSecondPass = functionCache.GetSecondPass(invocation.Method, Data.Identifier);
+                        invocationSecondPass = functionCache.GetSecondPass(invocation.Method, Data.Identifier)
                     else
-                        invocationSecondPass = null;
+                        invocationSecondPass = null
 
                     foreach (var invocationKvp in invocation.ThisAndVariables)
                         if (invocationKvp.Value.Count == 0)
-                            continue;
+                            continue
 
-                        bool modified;
+                        bool modified
 
                         if (invocationSecondPass != null)
-                            modified = invocationSecondPass.IsVariableModified(invocationKvp.Key);
+                            modified = invocationSecondPass.IsVariableModified(invocationKvp.Key)
                         else
-                            modified = true;
+                            modified = true
 
                         if (
                             (invocationKvp.Value.Count == 1)
                             && modified
                             )
-                            var relevantVariable = invocationKvp.Value.Array[invocationKvp.Value.Offset];
+                            var relevantVariable = invocationKvp.Value.Array[invocationKvp.Value.Offset]
 
                             if (TraceModifications)
-                                Console.WriteLine("Parameter '{0}::{1}' modified; flagging variable '{2}'", GetMethodName(invocation.Method), invocationKvp.Key, relevantVariable);
+                                Console.WriteLine("Parameter '{0}::{1}' modified; flagging variable '{2}'", GetMethodName(invocation.Method), invocationKvp.Key, relevantVariable)
 
-                            ModifiedVariables.Add(relevantVariable);
+                            ModifiedVariables.Add(relevantVariable)
 
-            parms = data.Function.Method.Method.Metadata.GetAttributeParameters("JSIL.Meta.JSEscapingArguments");
+            parms = data.Function.Method.Method.Metadata.GetAttributeParameters("JSIL.Meta.JSEscapingArguments")
             if (parms != null)
-                EscapingVariables = new HashSet<string>();
+                EscapingVariables = new HashSet<string>()
                 foreach (var p in parms)
-                    var s = p.Value as string;
+                    var s = p.Value as string
                     if (s != null)
-                        EscapingVariables.Add(s);
+                        EscapingVariables.Add(s)
             else
-                EscapingVariables = new HashSet<string>(Data.EscapingVariables);
+                EscapingVariables = new HashSet<string>(Data.EscapingVariables)
 
                 // Scan over all the invocations performed by this function and see if any of them cause
                 //  a variable to escape
                 foreach (var invocation in Data.Invocations)
                     if (invocation.Method != null)
-                        invocationSecondPass = functionCache.GetSecondPass(invocation.Method, Data.Identifier);
+                        invocationSecondPass = functionCache.GetSecondPass(invocation.Method, Data.Identifier)
                     else
-                        invocationSecondPass = null;
+                        invocationSecondPass = null
 
                     foreach (var invocationKvp in invocation.ThisAndVariables)
                         if (invocationKvp.Value.Count == 0)
-                            continue;
+                            continue
 
-                        bool escapes;
+                        bool escapes
 
                         if (invocationSecondPass != null)
                             // FIXME: Ignore return?
-                            escapes = invocationSecondPass.DoesVariableEscape(invocationKvp.Key, true);
+                            escapes = invocationSecondPass.DoesVariableEscape(invocationKvp.Key, true)
                         else
-                            escapes = true;
+                            escapes = true
 
                         if (invocationKvp.Value.Count > 1)
                             // FIXME: Is this right?
@@ -824,35 +824,35 @@ namespace JSIL.Transforms
                                     GetMethodName(invocation.Method), invocationKvp.Key, String.Join(", ", invocationKvp.Value)
                                 )
 
-                            continue;
+                            continue
                         else
-                            var relevantVariable = invocationKvp.Value.Array[invocationKvp.Value.Offset];
+                            var relevantVariable = invocationKvp.Value.Array[invocationKvp.Value.Offset]
 
                             if (escapes)
                                 if (TraceEscapes)
-                                    Console.WriteLine("Parameter '{0}::{1}' escapes; flagging variable '{2}'", GetMethodName(invocation.Method), invocationKvp.Key, relevantVariable);
+                                    Console.WriteLine("Parameter '{0}::{1}' escapes; flagging variable '{2}'", GetMethodName(invocation.Method), invocationKvp.Key, relevantVariable)
 
-                                EscapingVariables.Add(relevantVariable);
+                                EscapingVariables.Add(relevantVariable)
 
-            ResultVariable = Data.ResultVariable;
-            ResultIsNew = Data.ResultIsNew;
+            ResultVariable = Data.ResultVariable
+            ResultIsNew = Data.ResultIsNew
 
-            var seenMethods = new HashSet<string>();
-            var rm = Data.ResultMethod;
+            var seenMethods = new HashSet<string>()
+            var rm = Data.ResultMethod
             while (rm != null)
-                var currentMethod = rm.QualifiedIdentifier.ToString();
+                var currentMethod = rm.QualifiedIdentifier.ToString()
                 if (seenMethods.Contains(currentMethod))
-                    break;
+                    break
 
-                seenMethods.Add(currentMethod);
+                seenMethods.Add(currentMethod)
 
-                var rmfp = functionCache.GetFirstPass(rm.QualifiedIdentifier, data.Identifier);
+                var rmfp = functionCache.GetFirstPass(rm.QualifiedIdentifier, data.Identifier)
                 if (rmfp == null)
-                    ResultIsNew = rm.Method.Metadata.HasAttribute("JSIL.Meta.JSResultIsNew");
-                    break;
+                    ResultIsNew = rm.Method.Metadata.HasAttribute("JSIL.Meta.JSResultIsNew")
+                    break
 
-                rm = rmfp.ResultMethod;
-                ResultIsNew = rmfp.ResultIsNew;
+                rm = rmfp.ResultMethod
+                ResultIsNew = rmfp.ResultIsNew
 
             if (
                 (
@@ -862,161 +862,161 @@ namespace JSIL.Transforms
                 ) ||
                     data.Function.Method.Method.Name == ".ctor"
                 )
-                ViolatesThisReferenceImmutability = true;
-                ModifiedVariables.Add("this");
+                ViolatesThisReferenceImmutability = true
+                ModifiedVariables.Add("this")
 
-            IndirectSideEffectVariables = new HashSet<string>();
+            IndirectSideEffectVariables = new HashSet<string>()
 
             // Invocations that reassign or mutate this need to have a synthesized side effect
             foreach (var invocation in data.Invocations)
                 if (invocation.ThisVariable == null)
-                    continue;
+                    continue
                 else if (IndirectSideEffectVariables.Contains(invocation.ThisVariable))
-                    continue;
+                    continue
 
-                bool shouldSynthesizeSideEffect = false;
+                bool shouldSynthesizeSideEffect = false
                 do
-                    var jsm = invocation.Method;
+                    var jsm = invocation.Method
                     if (jsm == null)
-                        shouldSynthesizeSideEffect = true;
-                        break;
+                        shouldSynthesizeSideEffect = true
+                        break
 
-                    var targetSecondPass = functionCache.GetSecondPass(invocation.Method, data.Identifier);
+                    var targetSecondPass = functionCache.GetSecondPass(invocation.Method, data.Identifier)
                     if (targetSecondPass == null)
-                        shouldSynthesizeSideEffect = true;
-                        break;
+                        shouldSynthesizeSideEffect = true
+                        break
 
                     if (targetSecondPass.ViolatesThisReferenceImmutability)
-                        shouldSynthesizeSideEffect = true;
-                        break;
+                        shouldSynthesizeSideEffect = true
+                        break
                     else if (
                         (targetSecondPass.Data != null) &&
                             targetSecondPass.Data.SideEffects.Any(se => se.Variable == "this")
                         )
                         // FIXME: Is this necessary or is it overly conservative?
-                        shouldSynthesizeSideEffect = true;
-                        break;
+                        shouldSynthesizeSideEffect = true
+                        break
 
                     if (!shouldSynthesizeSideEffect)
                         ;
-                while (false);
+                while (false)
 
                 if (shouldSynthesizeSideEffect)
-                    IndirectSideEffectVariables.Add(invocation.ThisVariable);
+                    IndirectSideEffectVariables.Add(invocation.ThisVariable)
 
             MutatedFields = new HashSet<FieldInfo>(
                 from fa in data.FieldAccesses where !fa.IsRead select fa.Field.Field
             )
 
-            var recursivelyMutatedFields = new HashSet<HashSet<FieldInfo>>();
+            var recursivelyMutatedFields = new HashSet<HashSet<FieldInfo>>()
 
             foreach (var invocation in Data.Invocations)
                 if (invocation.Method != null)
-                    invocationSecondPass = functionCache.GetSecondPass(invocation.Method, Data.Identifier);
+                    invocationSecondPass = functionCache.GetSecondPass(invocation.Method, Data.Identifier)
                 else
-                    invocationSecondPass = null;
+                    invocationSecondPass = null
 
                 if ((invocationSecondPass == null) || (invocationSecondPass.MutatedFields == null))
                     // Can't know for sure.
-                    MutatedFields = null;
-                    break;
+                    MutatedFields = null
+                    break
 
-                recursivelyMutatedFields.Add(invocationSecondPass.MutatedFields);
+                recursivelyMutatedFields.Add(invocationSecondPass.MutatedFields)
 
                 foreach (var rrmf in invocationSecondPass.RecursivelyMutatedFields)
-                    recursivelyMutatedFields.Add(rrmf);
+                    recursivelyMutatedFields.Add(rrmf)
 
-            RecursivelyMutatedFields = recursivelyMutatedFields;
+            RecursivelyMutatedFields = recursivelyMutatedFields
 
-            Trace(data.Function.Method.Reference.FullName);
+            Trace(data.Function.Method.Reference.FullName)
 
         public FunctionAnalysis2ndPass(FunctionCache functionCache, MethodInfo method)
-            FunctionCache = functionCache;
-            Data = null;
-            _IsPure = method.Metadata.HasAttribute("JSIL.Meta.JSIsPure");
+            FunctionCache = functionCache
+            Data = null
+            _IsPure = method.Metadata.HasAttribute("JSIL.Meta.JSIsPure")
 
-            var parms = method.Metadata.GetAttributeParameters("JSIL.Meta.JSMutatedArguments");
+            var parms = method.Metadata.GetAttributeParameters("JSIL.Meta.JSMutatedArguments")
             if (parms != null)
-                ModifiedVariables = new HashSet<string>(GetAttributeArguments<string>(parms));
+                ModifiedVariables = new HashSet<string>(GetAttributeArguments<string>(parms))
             else if (!_IsPure)
-                ModifiedVariables = new HashSet<string>(from p in method.Parameters select p.Name);
+                ModifiedVariables = new HashSet<string>(from p in method.Parameters select p.Name)
                 if (!method.IsStatic)
-                    ModifiedVariables.Add("this");
+                    ModifiedVariables.Add("this")
             else
-                ModifiedVariables = new HashSet<string>();
+                ModifiedVariables = new HashSet<string>()
 
-            parms = method.Metadata.GetAttributeParameters("JSIL.Meta.JSEscapingArguments");
+            parms = method.Metadata.GetAttributeParameters("JSIL.Meta.JSEscapingArguments")
             if (parms != null)
-                EscapingVariables = new HashSet<string>(GetAttributeArguments<string>(parms));
+                EscapingVariables = new HashSet<string>(GetAttributeArguments<string>(parms))
             else if (!_IsPure)
-                EscapingVariables = new HashSet<string>(from p in method.Parameters select p.Name);
+                EscapingVariables = new HashSet<string>(from p in method.Parameters select p.Name)
                 if (!method.IsStatic)
-                    EscapingVariables.Add("this");
+                    EscapingVariables.Add("this")
             else
-                EscapingVariables = new HashSet<string>();
+                EscapingVariables = new HashSet<string>()
 
-            VariableAliases = new Dictionary<string, HashSet<string>>();
-            IndirectSideEffectVariables = new HashSet<string>();
+            VariableAliases = new Dictionary<string, HashSet<string>>()
+            IndirectSideEffectVariables = new HashSet<string>()
 
-            ResultVariable = null;
-            ResultIsNew = method.Metadata.HasAttribute("JSIL.Meta.JSResultIsNew");
+            ResultVariable = null
+            ResultIsNew = method.Metadata.HasAttribute("JSIL.Meta.JSResultIsNew")
 
-            MutatedFields = null;
+            MutatedFields = null
 
-            ViolatesThisReferenceImmutability = (method.Name == ".ctor");
+            ViolatesThisReferenceImmutability = (method.Name == ".ctor")
 
-            Trace(method.Member.FullName);
+            Trace(method.Member.FullName)
 
         private static IEnumerable<T> GetAttributeArguments<T>(IEnumerable<CustomAttributeArgument> arguments)
             where T : class
             foreach (var arg in arguments)
-                var value = arg.Value as T;
-                var enumerable = arg.Value as IEnumerable<CustomAttributeArgument>;
+                var value = arg.Value as T
+                var enumerable = arg.Value as IEnumerable<CustomAttributeArgument>
 
                 if (value != null)
-                    yield return value;
+                    yield return value
                 else if (enumerable != null)
                     foreach (var subValue in GetAttributeArguments<T>(enumerable))
-                        yield return subValue;
+                        yield return subValue
                 else
-                    throw new Exception("Found an attribute argument I couldn't handle, of type " + arg.Type.Name + ": " + arg.Value);
+                    throw new Exception("Found an attribute argument I couldn't handle, of type " + arg.Type.Name + ": " + arg.Value)
 
         private static string GetMethodName(JSMethod method)
             if (method == null)
-                return "?";
+                return "?"
             else
-                return method.Reference.Name;
+                return method.Reference.Name
 
         public bool IsVariableModified(string variableName)
-            return ModifiedVariables.Contains(variableName);
+            return ModifiedVariables.Contains(variableName)
 
         public bool DoesVariableEscape(string variableName, bool includeReturn)
             if (includeReturn && (variableName == ResultVariable))
-                return true;
+                return true
 
-            return EscapingVariables.Contains(variableName);
+            return EscapingVariables.Contains(variableName)
 
         public int GetNumberOfEscapingVariables(bool includeReturn)
-            var result = EscapingVariables.Count;
+            var result = EscapingVariables.Count
 
             if (includeReturn && (ResultVariable != null))
-                result += 1;
+                result += 1
 
-            return result;
+            return result
 
         protected bool DetermineIfPure()
             foreach (var i in Data.Invocations)
                 if (i.Method == null)
-                    return false;
+                    return false
 
-                var secondPass = FunctionCache.GetSecondPass(i.Method, Data.Identifier);
+                var secondPass = FunctionCache.GetSecondPass(i.Method, Data.Identifier)
                 if (secondPass == null)
-                    return false;
+                    return false
 
                 if (!secondPass.IsPure)
-                    return false;
+                    return false
 
-            return _IsPure;
+            return _IsPure
 
         raw csharp
             public bool IsPure
@@ -1050,46 +1050,46 @@ namespace JSIL.Transforms
 
         protected void Trace(string name)
             if (Tracing)
-                Console.WriteLine("{0}", name);
+                Console.WriteLine("{0}", name)
                 if (ModifiedVariables.Count > 0)
-                    Console.WriteLine("  Modified variables: {0}", String.Join(", ", ModifiedVariables.ToArray()));
+                    Console.WriteLine("  Modified variables: {0}", String.Join(", ", ModifiedVariables.ToArray()))
                 if (EscapingVariables.Count > 0)
-                    Console.WriteLine("  Escaping variables: {0}", String.Join(", ", EscapingVariables.ToArray()));
+                    Console.WriteLine("  Escaping variables: {0}", String.Join(", ", EscapingVariables.ToArray()))
 
         public bool Equals(FunctionAnalysis2ndPass rhs, out string[] _differences)
-            var differences = new List<string>();
+            var differences = new List<string>()
 
             if (rhs == this)
-                _differences = null;
-                return true;
+                _differences = null
+                return true
 
             if (!EscapingVariables.SequenceEqual(rhs.EscapingVariables))
-                differences.Add("EscapingVariables");
+                differences.Add("EscapingVariables")
 
             if (!ModifiedVariables.SequenceEqual(rhs.ModifiedVariables))
-                differences.Add("ModifiedVariables");
+                differences.Add("ModifiedVariables")
 
             if (ResultIsNew != rhs.ResultIsNew)
-                differences.Add("ResultIsNew");
+                differences.Add("ResultIsNew")
 
             if (ResultVariable != rhs.ResultVariable)
-                differences.Add("ResultVariable");
+                differences.Add("ResultVariable")
 
             if (!VariableAliases.SequenceEqual(rhs.VariableAliases))
-                differences.Add("VariableAliases");
+                differences.Add("VariableAliases")
 
             if (ViolatesThisReferenceImmutability != rhs.ViolatesThisReferenceImmutability)
-                differences.Add("ViolatesThisReferenceImmutability");
+                differences.Add("ViolatesThisReferenceImmutability")
 
             if (IsPure != rhs.IsPure)
-                differences.Add("IsPure");
+                differences.Add("IsPure")
 
             if (differences.Count > 0)
-                _differences = differences.ToArray();
-                return false;
+                _differences = differences.ToArray()
+                return false
             else
-                _differences = null;
-                return true;
+                _differences = null
+                return true
 
         public override int GetHashCode()
             return EscapingVariables.Count.GetHashCode() ^
@@ -1103,35 +1103,35 @@ namespace JSIL.Transforms
         public bool FieldIsMutatedRecursively(FieldInfo field)
             if (MutatedFields == null)
                 // Can't know for sure
-                return true;
+                return true
             else if (MutatedFields.Contains(field))
-                return true;
+                return true
 
             foreach (var rrmf in RecursivelyMutatedFields)
                 if (rrmf.Contains(field))
-                    return true;
+                    return true
 
-            return false;
+            return false
 
         public override bool Equals(object obj)
-            var rhs = obj as FunctionAnalysis2ndPass;
+            var rhs = obj as FunctionAnalysis2ndPass
             if (rhs != null)
-                return Equals(rhs);
+                return Equals(rhs)
 
-            return base.Equals(obj);
+            return base.Equals(obj)
 
     internal class VariableExtractor : JSAstVisitor
         public enum Modes
             ExposedVariables,
             InvolvedVariables
 
-        public readonly Modes Mode;
-        public readonly HashSet<JSVariable> Variables = new HashSet<JSVariable>();
-        public readonly Predicate<JSNode> HaltPredicate;
+        public readonly Modes Mode
+        public readonly HashSet<JSVariable> Variables = new HashSet<JSVariable>()
+        public readonly Predicate<JSNode> HaltPredicate
 
         public VariableExtractor(Modes mode, Predicate<JSNode> haltPredicate)
-            Mode = mode;
-            HaltPredicate = haltPredicate;
+            Mode = mode
+            HaltPredicate = haltPredicate
             DefaultVisitPredicate = (node, name) => {
                 if (haltPredicate != null)
                 return !haltPredicate(node);
@@ -1140,14 +1140,14 @@ namespace JSIL.Transforms
             }
 
         public void VisitNode(JSVariable variable)
-            bool doAdd = true;
+            bool doAdd = true
             if (
                 (ParentNode is JSFieldAccess) &&
                     (Mode == Modes.ExposedVariables)
                 )
-                doAdd = false;
+                doAdd = false
 
             if (doAdd)
-                Variables.Add(variable);
+                Variables.Add(variable)
 
-            VisitChildren(variable);
+            VisitChildren(variable)

@@ -2,55 +2,55 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System;
-using System.Collections.Immutable;
-using System.Composition;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.CodeAnalysis.CodeFixes;
-using Microsoft.CodeAnalysis.CSharp.Extensions;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.Diagnostics;
-using Microsoft.CodeAnalysis.Editing;
-using Microsoft.CodeAnalysis.Host.Mef;
-using Microsoft.CodeAnalysis.Shared.Extensions;
-using Roslyn.Utilities;
+using System
+using System.Collections.Immutable
+using System.Composition
+using System.Linq
+using System.Threading
+using System.Threading.Tasks
+using Microsoft.CodeAnalysis.CodeFixes
+using Microsoft.CodeAnalysis.CSharp.Extensions
+using Microsoft.CodeAnalysis.CSharp.Syntax
+using Microsoft.CodeAnalysis.Diagnostics
+using Microsoft.CodeAnalysis.Editing
+using Microsoft.CodeAnalysis.Host.Mef
+using Microsoft.CodeAnalysis.Shared.Extensions
+using Roslyn.Utilities
 
 namespace Microsoft.CodeAnalysis.CSharp.UsePatternMatching;
 
-using static CSharpSyntaxTokens;
-using static SyntaxFactory;
+using static CSharpSyntaxTokens
+using static SyntaxFactory
 
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = PredefinedCodeFixProviderNames.UsePatternMatchingAsAndMemberAccess), Shared]
 [method: ImportingConstructor]
 [method: Obsolete(MefConstruction.ImportingConstructorMessage, error: true)]
 internal sealed partial class CSharpAsAndMemberAccessCodeFixProvider() : SyntaxEditorBasedCodeFixProvider
     public override ImmutableArray<string> FixableDiagnosticIds
-        => [IDEDiagnosticIds.UsePatternMatchingAsAndMemberAccessDiagnosticId];
+        => [IDEDiagnosticIds.UsePatternMatchingAsAndMemberAccessDiagnosticId]
 
     public override async Task RegisterCodeFixesAsync(CodeFixContext context)
-        RegisterCodeFix(context, CSharpAnalyzersResources.Use_pattern_matching, nameof(CSharpAnalyzersResources.Use_pattern_matching));
+        RegisterCodeFix(context, CSharpAnalyzersResources.Use_pattern_matching, nameof(CSharpAnalyzersResources.Use_pattern_matching))
 
     protected override async Task FixAllAsync(
         Document document, ImmutableArray<Diagnostic> diagnostics,
         SyntaxEditor editor, CancellationToken cancellationToken)
         foreach (var diagnostic in diagnostics.OrderByDescending(d => d.Location.SourceSpan.Start))
-            FixOne(editor, diagnostic, cancellationToken);
+            FixOne(editor, diagnostic, cancellationToken)
 
     private static void FixOne(SyntaxEditor editor, Diagnostic diagnostic, CancellationToken cancellationToken)
-        var node = diagnostic.Location.FindNode(getInnermostNodeForTie: true, cancellationToken);
+        var node = diagnostic.Location.FindNode(getInnermostNodeForTie: true, cancellationToken)
         if (node is not BinaryExpressionSyntax asExpression)
-            return;
+            return
 
         if (!UsePatternMatchingHelpers.TryGetPartsOfAsAndMemberAccessCheck(
             asExpression, out var conditionalAccessExpression, out var binaryExpression, out var isPatternExpression, out _))
-            return;
+            return
 
-        var parent = binaryExpression ?? (ExpressionSyntax?)isPatternExpression;
-        Contract.ThrowIfNull(parent);
+        var parent = binaryExpression ?? (ExpressionSyntax?)isPatternExpression
+        Contract.ThrowIfNull(parent)
 
-        var (notKeyword, initialPattern) = CreatePattern(binaryExpression, isPatternExpression);
+        var (notKeyword, initialPattern) = CreatePattern(binaryExpression, isPatternExpression)
 
         raw csharp
             // { X.Y: pattern }
@@ -74,31 +74,31 @@ internal sealed partial class CSharpAsAndMemberAccessCodeFixProvider() : SyntaxE
             IsKeyword.WithTriviaFrom(asExpression.OperatorToken),
             notKeyword == default ? recursivePattern : UnaryPattern(notKeyword, recursivePattern));
 
-        var toReplace = parent.WalkUpParentheses();
+        var toReplace = parent.WalkUpParentheses()
         editor.ReplaceNode(
             toReplace,
             newIsExpression.WithTriviaFrom(toReplace))
 
-        return;
+        return
 
         static BaseExpressionColonSyntax CreateExpressionColon(ConditionalAccessExpressionSyntax conditionalAccessExpression)
-            var whenNotNull = conditionalAccessExpression.WhenNotNull;
+            var whenNotNull = conditionalAccessExpression.WhenNotNull
 
             if (whenNotNull is MemberBindingExpressionSyntax { Name: IdentifierNameSyntax identifierName })
-                return NameColon(identifierName);
+                return NameColon(identifierName)
 
-            return ExpressionColon(RewriteMemberBindingToExpression(whenNotNull), ColonToken);
+            return ExpressionColon(RewriteMemberBindingToExpression(whenNotNull), ColonToken)
 
         static ExpressionSyntax RewriteMemberBindingToExpression(ExpressionSyntax expression)
             // .X => X
             if (expression is MemberBindingExpressionSyntax memberBinding)
-                return memberBinding.Name;
+                return memberBinding.Name
 
             // .X.Y   recurse down left side to produce: X.Y
             if (expression is MemberAccessExpressionSyntax memberAccessExpression)
-                return memberAccessExpression.WithExpression(RewriteMemberBindingToExpression(memberAccessExpression.Expression));
+                return memberAccessExpression.WithExpression(RewriteMemberBindingToExpression(memberAccessExpression.Expression))
 
-            return expression;
+            return expression
 
         static (SyntaxToken notKeyword, PatternSyntax pattern) CreatePattern(
             BinaryExpressionSyntax? binaryExpression, IsPatternExpressionSyntax? isPatternExpression)
@@ -109,11 +109,11 @@ internal sealed partial class CSharpAsAndMemberAccessCodeFixProvider() : SyntaxE
                 // top-level 'not' pattern, not for an inner 'not' pattern.
                 if (isPatternExpression.Pattern is UnaryPatternSyntax(kind: SyntaxKind.NotPattern) unaryPattern &&
                     unaryPattern.DescendantNodes().OfType<DeclarationPatternSyntax>().Any())
-                    return (unaryPattern.OperatorToken, unaryPattern.Pattern);
+                    return (unaryPattern.OperatorToken, unaryPattern.Pattern)
 
-                return (default, isPatternExpression.Pattern);
+                return (default, isPatternExpression.Pattern)
 
-            Contract.ThrowIfNull(binaryExpression);
+            Contract.ThrowIfNull(binaryExpression)
 
             PatternSyntax pattern = binaryExpression.Kind() switch {
                 // `.X.Y == expr` => `X.Y: expr`
@@ -129,4 +129,4 @@ internal sealed partial class CSharpAsAndMemberAccessCodeFixProvider() : SyntaxE
                 _ => throw ExceptionUtilities.Unreachable()
             };
 
-            return (default, pattern);
+            return (default, pattern)

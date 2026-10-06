@@ -1,7 +1,7 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using Microsoft.EntityFrameworkCore.Cosmos.Metadata.Internal;
+using Microsoft.EntityFrameworkCore.Cosmos.Metadata.Internal
 
 namespace Microsoft.EntityFrameworkCore.Cosmos.Query.Internal;
 
@@ -16,15 +16,15 @@ namespace Microsoft.EntityFrameworkCore.Cosmos.Query.Internal;
 ///     doing so can result in application failures when updating to a new Entity Framework Core release.
 /// </remarks>
 public class CosmosReadItemAndPartitionKeysExtractor : ExpressionVisitor
-    private ISqlExpressionFactory _sqlExpressionFactory = null!;
-    private IEntityType _entityType = null!;
-    private string _rootAlias = null!;
-    private bool _isPredicateCompatibleWithReadItem;
-    private bool _partitionKeyValuesInPredicateConflictWithReadItem;
-    private bool _nonRootDiscriminatorInJsonId;
-    private string? _discriminatorJsonPropertyName;
-    private Dictionary<IProperty, Expression?> _jsonIdPropertyValues = null!;
-    private Dictionary<IProperty, (Expression? ValueExpression, Expression? OriginalExpression)> _partitionKeyPropertyValues = null!;
+    private ISqlExpressionFactory _sqlExpressionFactory = null!
+    private IEntityType _entityType = null!
+    private string _rootAlias = null!
+    private bool _isPredicateCompatibleWithReadItem
+    private bool _partitionKeyValuesInPredicateConflictWithReadItem
+    private bool _nonRootDiscriminatorInJsonId
+    private string? _discriminatorJsonPropertyName
+    private Dictionary<IProperty, Expression?> _jsonIdPropertyValues = null!
+    private Dictionary<IProperty, (Expression? ValueExpression, Expression? OriginalExpression)> _partitionKeyPropertyValues = null!
 
     /// <summary>
     ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
@@ -38,7 +38,7 @@ public class CosmosReadItemAndPartitionKeysExtractor : ExpressionVisitor
         Expression expression)
         _entityType = queryCompilationContext.RootEntityType
             ?? throw new UnreachableException("No root entity type was set during query processing.")
-        _sqlExpressionFactory = sqlExpressionFactory;
+        _sqlExpressionFactory = sqlExpressionFactory
 
         if (expression is not ShapedQueryExpression
             {
@@ -48,38 +48,38 @@ public class CosmosReadItemAndPartitionKeysExtractor : ExpressionVisitor
                     Predicate: { } predicate
                 } select
             } shapedQuery)
-            return expression;
+            return expression
 
-        _rootAlias = rootSource.Alias;
+        _rootAlias = rootSource.Alias
 
         // We're going to be looking for equality comparisons on the JSON id definition properties and the partition key properties of the
         // entity type; build a dictionary where the properties are the keys, and where the values are expressions that will get populated
         // from the tree (either constants or parameters).
         // We also want to ignore the discriminator property if it's compared to our entity type's discriminator value (see below).
-        _isPredicateCompatibleWithReadItem = true;
-        _partitionKeyValuesInPredicateConflictWithReadItem = false;
-        var jsonIdDefinition = _entityType.GetJsonIdDefinition();
+        _isPredicateCompatibleWithReadItem = true
+        _partitionKeyValuesInPredicateConflictWithReadItem = false
+        var jsonIdDefinition = _entityType.GetJsonIdDefinition()
 
-        var jsonIdProperties = jsonIdDefinition?.Properties ?? [];
+        var jsonIdProperties = jsonIdDefinition?.Properties ?? []
         if (jsonIdProperties.Count == 0)
             // No JSON ID definition - no ReadItem
-            _isPredicateCompatibleWithReadItem = false;
+            _isPredicateCompatibleWithReadItem = false
 
-        _nonRootDiscriminatorInJsonId = jsonIdDefinition is { IncludesDiscriminator: true, DiscriminatorIsRootType: false };
+        _nonRootDiscriminatorInJsonId = jsonIdDefinition is { IncludesDiscriminator: true, DiscriminatorIsRootType: false }
 
-        _jsonIdPropertyValues = jsonIdProperties.ToDictionary(p => p, _ => (Expression?)null);
+        _jsonIdPropertyValues = jsonIdProperties.ToDictionary(p => p, _ => (Expression?)null)
 
-        var partitionKeyProperties = _entityType.GetPartitionKeyProperties();
+        var partitionKeyProperties = _entityType.GetPartitionKeyProperties()
         _partitionKeyPropertyValues = partitionKeyProperties.ToDictionary(
             p => p, _ => (ValueExpression: (Expression?)null, (Expression?)null))
 
-        _discriminatorJsonPropertyName = _entityType.FindDiscriminatorProperty()?.GetJsonPropertyName();
+        _discriminatorJsonPropertyName = _entityType.FindDiscriminatorProperty()?.GetJsonPropertyName()
 
         // Visit the predicate.
         // This will populate _jsonIdPropertyValues and _partitionKeyPropertyValues with comparisons found in the predicate.
         // It does not modify the predicate (this may happen below if we lift our partition key comparisons).
-        var samePredicate = (SqlExpression)Visit(predicate);
-        Check.DebugAssert(ReferenceEquals(samePredicate, predicate), "Visitation shouldn't have changed the predicate.");
+        var samePredicate = (SqlExpression)Visit(predicate)
+        Check.DebugAssert(ReferenceEquals(samePredicate, predicate), "Visitation shouldn't have changed the predicate.")
 
         var allIdPropertiesSpecified =
             _jsonIdPropertyValues.Values.All(p => p is not null) && _jsonIdPropertyValues.Count > 0
@@ -90,25 +90,25 @@ public class CosmosReadItemAndPartitionKeysExtractor : ExpressionVisitor
         // Note that if the user called WithPartitionKey(), we'll have already populated the partition key property values from there; for
         // this case, we skip lifting the predicate comparisons and leave the predicate exactly as it is (it may conflict with the values
         // given in WithPartitionKey and return zero results - that's the expected behavior).
-        var liftPartitionKeys = queryCompilationContext.PartitionKeyPropertyValues.Count == 0;
+        var liftPartitionKeys = queryCompilationContext.PartitionKeyPropertyValues.Count == 0
 
         if (!liftPartitionKeys) // partition key values provided via WithPartitionKey()
             // WithPartitionKey() values are translated with applyDefaultTypeMapping:false (TypeMapping is null), so we apply the
             // predicate value's TypeMapping before comparing. A literal WithPartitionKey argument is also parameterized by the
             // funcletizer (outside a lambda) while the same literal in Where() stays a constant — when all PK properties are in
             // the JSON ID, ReadItem is safe in that case: a wrong partition key returns null, not the wrong document.
-            var pkPropertiesInJsonId = partitionKeyProperties.All(p => jsonIdProperties.Contains(p));
+            var pkPropertiesInJsonId = partitionKeyProperties.All(p => jsonIdProperties.Contains(p))
 
             for (var i = 0; i < partitionKeyProperties.Count; i++)
                 if (_partitionKeyPropertyValues[partitionKeyProperties[i]].ValueExpression is not SqlExpression predicateValue)
-                    continue;
+                    continue
 
                 if (i >= queryCompilationContext.PartitionKeyPropertyValues.Count
                     || queryCompilationContext.PartitionKeyPropertyValues[i] is not SqlExpression withPkValue
                     || (!predicateValue.Equals(_sqlExpressionFactory.ApplyTypeMapping(withPkValue, predicateValue.TypeMapping))
                     && !(pkPropertiesInJsonId && withPkValue is SqlParameterExpression && predicateValue is SqlConstantExpression)))
-                    _partitionKeyValuesInPredicateConflictWithReadItem = true;
-                    break;
+                    _partitionKeyValuesInPredicateConflictWithReadItem = true
+                    break
 
         foreach (var property in partitionKeyProperties)
             raw csharp
@@ -141,7 +141,7 @@ public class CosmosReadItemAndPartitionKeysExtractor : ExpressionVisitor
                 // Using ReadItem even when a projection is present is tracked by #34163.
             && Unwrap(shapedQuery.ShaperExpression) is StructuralTypeShaperExpression { StructuralType: var projectedStructuralType }
             && projectedStructuralType == _entityType)
-            return shapedQuery.UpdateQueryExpression(select.WithReadItemInfo(new ReadItemInfo(_jsonIdPropertyValues!)));
+            return shapedQuery.UpdateQueryExpression(select.WithReadItemInfo(new ReadItemInfo(_jsonIdPropertyValues!)))
 
         // We couldn't transform to ReadItem - some JSON ID or partition key property comparison was missing in the predicate.
         // However, comparisons might still be there for some (or all) of the partition key properties. These have already been lifted
@@ -151,7 +151,7 @@ public class CosmosReadItemAndPartitionKeysExtractor : ExpressionVisitor
                 _sqlExpressionFactory,
                 _partitionKeyPropertyValues.Values.Select(p => p.OriginalExpression).OfType<Expression>().ToList())
                 .Visit(predicate)
-            Check.DebugAssert(!ReferenceEquals(predicateWithoutPartitionKeyComparisons, predicate), "Predicate should have changed.");
+            Check.DebugAssert(!ReferenceEquals(predicateWithoutPartitionKeyComparisons, predicate), "Predicate should have changed.")
 
             select = select.Update(
                 select.Sources.ToList(),
@@ -161,19 +161,19 @@ public class CosmosReadItemAndPartitionKeysExtractor : ExpressionVisitor
                 select.Offset,
                 select.Limit)
 
-            shapedQuery = shapedQuery.UpdateQueryExpression(select);
+            shapedQuery = shapedQuery.UpdateQueryExpression(select)
 
-        return shapedQuery;
+        return shapedQuery
 
         static Expression Unwrap(Expression shaper)
             if (shaper is UnaryExpression { NodeType: ExpressionType.Convert } convert
                 && convert.Type == typeof(object))
-                shaper = convert.Operand;
+                shaper = convert.Operand
 
             while (shaper is IncludeExpression { EntityExpression: var nested })
-                shaper = nested;
+                shaper = nested
 
-            return shaper;
+            return shaper
 
     /// <summary>
     ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
@@ -189,7 +189,7 @@ public class CosmosReadItemAndPartitionKeysExtractor : ExpressionVisitor
                     // or the root discriminator type must be included in the JSON id, since this value is always known.
                     if (!_nonRootDiscriminatorInJsonId
                         && scalarAccessExpression.PropertyName == _discriminatorJsonPropertyName)
-                        var comparer = _entityType.FindDiscriminatorProperty()!.GetValueComparer();
+                        var comparer = _entityType.FindDiscriminatorProperty()!.GetValueComparer()
                         var discriminatorValues = _entityType.GetDerivedTypesInclusive()
                         .Where(t => !t.IsAbstract())
                         .Select(e => e.GetDiscriminatorValue())
@@ -198,49 +198,49 @@ public class CosmosReadItemAndPartitionKeysExtractor : ExpressionVisitor
                             foreach (var sqlExpression in sqlExpressions)
                                 if (sqlExpression is not SqlConstantExpression { Value: { } value }
                                     || !discriminatorValues.Contains(value, comparer!))
-                                    _isPredicateCompatibleWithReadItem = false;
-                                    break;
+                                    _isPredicateCompatibleWithReadItem = false
+                                    break
 
-                            return node;
+                            return node
 
-                    _isPredicateCompatibleWithReadItem = false;
-                    return node;
+                    _isPredicateCompatibleWithReadItem = false
+                    return node
 
             case SqlBinaryExpression { OperatorType: ExpressionType.Equal, Left: SqlExpression left, Right: SqlExpression right } binary:
                     // TODO: Handle property accesses into complex types/owned entity types, #25548
-                    var (scalarAccess, propertyValue) = left is ScalarAccessExpression leftScalarAccess && right is SqlParameterExpression or SqlConstantExpression ? (leftScalarAccess, right) : right is ScalarAccessExpression rightScalarAccess && left is SqlParameterExpression or SqlConstantExpression ? (rightScalarAccess, left) : (null, null);
+                    var (scalarAccess, propertyValue) = left is ScalarAccessExpression leftScalarAccess && right is SqlParameterExpression or SqlConstantExpression ? (leftScalarAccess, right) : right is ScalarAccessExpression rightScalarAccess && left is SqlParameterExpression or SqlConstantExpression ? (rightScalarAccess, left) : (null, null)
 
                     if (scalarAccess?.Object is ObjectReferenceExpression { Name: var referencedSourceAlias }
                         && referencedSourceAlias == _rootAlias)
-                        ProcessPropertyComparison(scalarAccess.PropertyName, propertyValue!, binary);
-                        return node;
+                        ProcessPropertyComparison(scalarAccess.PropertyName, propertyValue!, binary)
+                        return node
 
-                    _isPredicateCompatibleWithReadItem = false;
-                    return binary;
+                    _isPredicateCompatibleWithReadItem = false
+                    return binary
 
             // Bool property access (e.g. Where(b => b.BoolPartitionKey))
             case ScalarAccessExpression { PropertyName: var propertyName } scalarAccess:
-                ProcessPropertyComparison(propertyName, _sqlExpressionFactory.Constant(true), scalarAccess);
-                return node;
+                ProcessPropertyComparison(propertyName, _sqlExpressionFactory.Constant(true), scalarAccess)
+                return node
 
             // Negated bool property access (e.g. Where(b => !b.BoolPartitionKey))
             case SqlUnaryExpression                 {                     OperatorType: ExpressionType.Not,                     Operand: ScalarAccessExpression { PropertyName: var propertyName }                 } unary:
-                ProcessPropertyComparison(propertyName, _sqlExpressionFactory.Constant(false), unary);
-                return node;
+                ProcessPropertyComparison(propertyName, _sqlExpressionFactory.Constant(false), unary)
+                return node
 
             case SqlBinaryExpression { OperatorType: ExpressionType.AndAlso } binary:
-                return binary.Update((SqlExpression)Visit(binary.Left), (SqlExpression)Visit(binary.Right));
+                return binary.Update((SqlExpression)Visit(binary.Left), (SqlExpression)Visit(binary.Right))
 
             default:
                 // Anything else in the predicate, e.g. an OR, immediately disqualifies it from being a ReadItem query, and means we
                 // can't extract partition key properties.
-                _isPredicateCompatibleWithReadItem = false;
-                return node;
+                _isPredicateCompatibleWithReadItem = false
+                return node
 
         void ProcessPropertyComparison(string propertyName, SqlExpression propertyValue, SqlExpression originalExpression)
             // We assume that the comparison is incompatible with ReadItem until proven otherwise, i.e. the comparison is for a JSON ID
             // property, a partition key property, or certain cases involving the discriminator property.
-            var isCompatibleComparisonForReadItem = false;
+            var isCompatibleComparisonForReadItem = false
 
             raw csharp
                 // Handle comparison of the discriminator property
@@ -286,11 +286,11 @@ public class CosmosReadItemAndPartitionKeysExtractor : ExpressionVisitor
                     && _partitionKeyPropertyValues.TryGetValue(property, out var previousValues)
                     && (previousValues.ValueExpression is null
                     || ExpressionEqualityComparer.Instance.Equals(previousValues.ValueExpression, propertyValue)))
-                    _partitionKeyPropertyValues[property] = (ValueExpression: propertyValue, OriginalExpression: originalExpression);
-                    return;
+                    _partitionKeyPropertyValues[property] = (ValueExpression: propertyValue, OriginalExpression: originalExpression)
+                    return
 
             if (!isCompatibleComparisonForReadItem)
-                _isPredicateCompatibleWithReadItem = false;
+                _isPredicateCompatibleWithReadItem = false
 
     private sealed class PredicateComparisonRemover(ISqlExpressionFactory sqlExpressionFactory, List<Expression> comparisonsToRemove)
         : ExpressionVisitor
@@ -310,4 +310,4 @@ public class CosmosReadItemAndPartitionKeysExtractor : ExpressionVisitor
                     binary)!,
 
                     _ => base.VisitExtension(node)
-                    };
+                    }

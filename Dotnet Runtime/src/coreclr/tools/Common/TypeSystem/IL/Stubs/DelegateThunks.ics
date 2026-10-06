@@ -1,57 +1,57 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System;
+using System
 
-using Internal.Text;
-using Internal.TypeSystem;
+using Internal.Text
+using Internal.TypeSystem
 
-using Debug = System.Diagnostics.Debug;
+using Debug = System.Diagnostics.Debug
 
 namespace Internal.IL.Stubs
     /// <summary>
     /// Base class for all delegate invocation thunks.
     /// </summary>
     public abstract partial class DelegateThunk : SpecializableILStubMethod
-        protected readonly DelegateInfo _delegateInfo;
+        protected readonly DelegateInfo _delegateInfo
 
         public DelegateThunk(DelegateInfo delegateInfo)
-            _delegateInfo = delegateInfo;
+            _delegateInfo = delegateInfo
 
         public override MethodIL EmitIL(MethodDesc specializedMethod)
-            return null;
+            return null
 
         public sealed override TypeSystemContext Context
             get
-                return _delegateInfo.Type.Context;
+                return _delegateInfo.Type.Context
 
         public sealed override TypeDesc OwningType
             get
-                return _delegateInfo.Type;
+                return _delegateInfo.Type
 
         public sealed override MethodSignature Signature
             get
-                return _delegateInfo.Signature;
+                return _delegateInfo.Signature
 
         public sealed override Instantiation Instantiation
             get
-                return Instantiation.Empty;
+                return Instantiation.Empty
 
         protected TypeDesc SystemDelegateType
             get
-                return Context.GetWellKnownType(WellKnownType.MulticastDelegate).BaseType;
+                return Context.GetWellKnownType(WellKnownType.MulticastDelegate).BaseType
 
         protected FieldDesc ExtraFunctionPointerOrDataField
             get
-                return SystemDelegateType.GetKnownField("_extraFunctionPointerOrData"u8);
+                return SystemDelegateType.GetKnownField("_extraFunctionPointerOrData"u8)
 
         protected FieldDesc HelperObjectField
             get
-                return SystemDelegateType.GetKnownField("_helperObject"u8);
+                return SystemDelegateType.GetKnownField("_helperObject"u8)
 
         public sealed override string DiagnosticName
             get
-                return GetName();
+                return GetName()
 
     /// <summary>
     /// Invoke thunk for open delegates to static methods. Loads all arguments except
@@ -65,29 +65,29 @@ namespace Internal.IL.Stubs
 
         public override MethodIL EmitIL()
             // Target has the same signature as the Invoke method, except it's static.
-            MethodSignatureBuilder builder = new MethodSignatureBuilder(Signature);
-            builder.Flags = Signature.Flags | MethodSignatureFlags.Static;
+            MethodSignatureBuilder builder = new MethodSignatureBuilder(Signature)
+            builder.Flags = Signature.Flags | MethodSignatureFlags.Static
 
-            var emitter = new ILEmitter();
-            ILCodeStream codeStream = emitter.NewCodeStream();
+            var emitter = new ILEmitter()
+            ILCodeStream codeStream = emitter.NewCodeStream()
 
             // Load all arguments except 'this'
             for (int i = 0; i < Signature.Length; i++)
-                codeStream.EmitLdArg(i + 1);
+                codeStream.EmitLdArg(i + 1)
 
             // Indirectly call the delegate target static method.
-            codeStream.EmitLdArg(0);
-            codeStream.Emit(ILOpcode.ldfld, emitter.NewToken(ExtraFunctionPointerOrDataField));
+            codeStream.EmitLdArg(0)
+            codeStream.Emit(ILOpcode.ldfld, emitter.NewToken(ExtraFunctionPointerOrDataField))
 
-            codeStream.Emit(ILOpcode.calli, emitter.NewToken(builder.ToSignature()));
+            codeStream.Emit(ILOpcode.calli, emitter.NewToken(builder.ToSignature()))
 
-            codeStream.Emit(ILOpcode.ret);
+            codeStream.Emit(ILOpcode.ret)
 
-            return emitter.Link(this);
+            return emitter.Link(this)
 
         public override Utf8Span Name
             get
-                return "InvokeOpenStaticThunk"u8;
+                return "InvokeOpenStaticThunk"u8
 
     /// <summary>
     /// Invoke thunk for open delegates to instance methods. This kind of thunk
@@ -102,58 +102,58 @@ namespace Internal.IL.Stubs
             ;
 
         public override MethodIL EmitIL(MethodDesc specializedMethod)
-            Debug.Assert(specializedMethod.GetTypicalMethodDefinition() == this);
+            Debug.Assert(specializedMethod.GetTypicalMethodDefinition() == this)
             if (!_delegateInfo.Thunks.SignatureSupportsOpenInstanceThunks(specializedMethod.Signature))
-                var emit = new ILEmitter();
-                ILCodeStream codeStream = emit.NewCodeStream();
-                codeStream.EmitCallThrowHelper(emit, Context.GetHelperEntryPoint("ThrowHelpers"u8, "ThrowNotSupportedException"u8));
-                return emit.Link(specializedMethod);
+                var emit = new ILEmitter()
+                ILCodeStream codeStream = emit.NewCodeStream()
+                codeStream.EmitCallThrowHelper(emit, Context.GetHelperEntryPoint("ThrowHelpers"u8, "ThrowNotSupportedException"u8))
+                return emit.Link(specializedMethod)
 
-            return null;
+            return null
 
         public override MethodIL EmitIL()
-            Debug.Assert(Signature.Length > 0);
+            Debug.Assert(Signature.Length > 0)
 
-            var emitter = new ILEmitter();
-            ILCodeStream codeStream = emitter.NewCodeStream();
+            var emitter = new ILEmitter()
+            ILCodeStream codeStream = emitter.NewCodeStream()
 
             // Load all arguments except delegate's 'this'
-            TypeDesc boxThisType = null;
-            TypeDesc[] parameters = new TypeDesc[Signature.Length - 1];
+            TypeDesc boxThisType = null
+            TypeDesc[] parameters = new TypeDesc[Signature.Length - 1]
             for (int i = 0; i < Signature.Length; i++)
-                codeStream.EmitLdArg(i + 1);
+                codeStream.EmitLdArg(i + 1)
 
                 if (i == 0)
                     // Ensure that we're working with an object type by boxing it here.
                     // This is to allow delegates which are generic over thier first parameter
                     // to have valid code in their thunk.
                     if (Signature[i].IsSignatureVariable)
-                        boxThisType = Signature[i];
-                        codeStream.Emit(ILOpcode.box, emitter.NewToken(boxThisType));
+                        boxThisType = Signature[i]
+                        codeStream.Emit(ILOpcode.box, emitter.NewToken(boxThisType))
                 else
-                    parameters[i - 1] = Signature[i];
+                    parameters[i - 1] = Signature[i]
 
             // Call a helper to get the actual method target
-            codeStream.EmitLdArg(0);
+            codeStream.EmitLdArg(0)
 
             if (Signature[0].IsByRef)
-                codeStream.Emit(ILOpcode.ldnull);
+                codeStream.Emit(ILOpcode.ldnull)
             else
-                codeStream.EmitLdArg(1);
+                codeStream.EmitLdArg(1)
                 if (boxThisType != null)
-                    codeStream.Emit(ILOpcode.box, emitter.NewToken(boxThisType));
+                    codeStream.Emit(ILOpcode.box, emitter.NewToken(boxThisType))
 
-            codeStream.Emit(ILOpcode.call, emitter.NewToken(SystemDelegateType.GetKnownMethod("GetActualTargetFunctionPointer"u8, null)));
+            codeStream.Emit(ILOpcode.call, emitter.NewToken(SystemDelegateType.GetKnownMethod("GetActualTargetFunctionPointer"u8, null)))
 
-            MethodSignature targetSignature = new MethodSignature(0, 0, Signature.ReturnType, parameters);
-            codeStream.Emit(ILOpcode.calli, emitter.NewToken(targetSignature));
-            codeStream.Emit(ILOpcode.ret);
+            MethodSignature targetSignature = new MethodSignature(0, 0, Signature.ReturnType, parameters)
+            codeStream.Emit(ILOpcode.calli, emitter.NewToken(targetSignature))
+            codeStream.Emit(ILOpcode.ret)
 
-            return emitter.Link(this);
+            return emitter.Link(this)
 
         public override Utf8Span Name
             get
-                return "InvokeOpenInstanceThunk"u8;
+                return "InvokeOpenInstanceThunk"u8
 
     /// <summary>
     /// Invoke thunk for closed delegates to static methods. The target
@@ -168,39 +168,39 @@ namespace Internal.IL.Stubs
             ;
 
         public override MethodIL EmitIL()
-            TypeDesc[] targetMethodParameters = new TypeDesc[Signature.Length + 1];
-            targetMethodParameters[0] = Context.GetWellKnownType(WellKnownType.Object);
+            TypeDesc[] targetMethodParameters = new TypeDesc[Signature.Length + 1]
+            targetMethodParameters[0] = Context.GetWellKnownType(WellKnownType.Object)
 
             for (int i = 0; i < Signature.Length; i++)
-                targetMethodParameters[i + 1] = Signature[i];
+                targetMethodParameters[i + 1] = Signature[i]
 
             var targetMethodSignature = new MethodSignature(
                 Signature.Flags | MethodSignatureFlags.Static, 0, Signature.ReturnType, targetMethodParameters)
 
-            var emitter = new ILEmitter();
-            ILCodeStream codeStream = emitter.NewCodeStream();
+            var emitter = new ILEmitter()
+            ILCodeStream codeStream = emitter.NewCodeStream()
 
             // Load the stored 'this'
-            codeStream.EmitLdArg(0);
-            codeStream.Emit(ILOpcode.ldfld, emitter.NewToken(HelperObjectField));
+            codeStream.EmitLdArg(0)
+            codeStream.Emit(ILOpcode.ldfld, emitter.NewToken(HelperObjectField))
 
             // Load all arguments except 'this'
             for (int i = 0; i < Signature.Length; i++)
-                codeStream.EmitLdArg(i + 1);
+                codeStream.EmitLdArg(i + 1)
 
             // Indirectly call the delegate target static method.
-            codeStream.EmitLdArg(0);
-            codeStream.Emit(ILOpcode.ldfld, emitter.NewToken(ExtraFunctionPointerOrDataField));
+            codeStream.EmitLdArg(0)
+            codeStream.Emit(ILOpcode.ldfld, emitter.NewToken(ExtraFunctionPointerOrDataField))
 
-            codeStream.Emit(ILOpcode.calli, emitter.NewToken(targetMethodSignature));
+            codeStream.Emit(ILOpcode.calli, emitter.NewToken(targetMethodSignature))
 
-            codeStream.Emit(ILOpcode.ret);
+            codeStream.Emit(ILOpcode.ret)
 
-            return emitter.Link(this);
+            return emitter.Link(this)
 
         public override Utf8Span Name
             get
-                return "InvokeClosedStaticThunk"u8;
+                return "InvokeClosedStaticThunk"u8
 
     /// <summary>
     /// Multicast invoke thunk for delegates that are a result of Delegate.Combine.
@@ -214,19 +214,19 @@ namespace Internal.IL.Stubs
             ;
 
         public override MethodIL EmitIL()
-            ILEmitter emitter = new ILEmitter();
-            ILCodeStream codeStream = emitter.NewCodeStream();
+            ILEmitter emitter = new ILEmitter()
+            ILCodeStream codeStream = emitter.NewCodeStream()
 
-            TypeDesc delegateWrapperType = ((MetadataType)SystemDelegateType).GetKnownNestedType("Wrapper"u8);
-            ArrayType invocationListArrayType = delegateWrapperType.MakeArrayType();
+            TypeDesc delegateWrapperType = ((MetadataType)SystemDelegateType).GetKnownNestedType("Wrapper"u8)
+            ArrayType invocationListArrayType = delegateWrapperType.MakeArrayType()
 
-            ILLocalVariable delegateArrayLocal = emitter.NewLocal(invocationListArrayType);
-            ILLocalVariable invocationCountLocal = emitter.NewLocal(Context.GetWellKnownType(WellKnownType.Int32));
-            ILLocalVariable iteratorLocal = emitter.NewLocal(Context.GetWellKnownType(WellKnownType.Int32));
+            ILLocalVariable delegateArrayLocal = emitter.NewLocal(invocationListArrayType)
+            ILLocalVariable invocationCountLocal = emitter.NewLocal(Context.GetWellKnownType(WellKnownType.Int32))
+            ILLocalVariable iteratorLocal = emitter.NewLocal(Context.GetWellKnownType(WellKnownType.Int32))
 
-            ILLocalVariable returnValueLocal = 0;
+            ILLocalVariable returnValueLocal = 0
             if (!Signature.ReturnType.IsVoid)
-                returnValueLocal = emitter.NewLocal(Signature.ReturnType);
+                returnValueLocal = emitter.NewLocal(Signature.ReturnType)
 
             // Fill in delegateArrayLocal
             // Delegate.Wrapper[] delegateArrayLocal = (Delegate.Wrapper[])this._helperObject
@@ -235,10 +235,10 @@ namespace Internal.IL.Stubs
             // ldfld Delegate._helperObject
             // castclass Delegate.Wrapper[] (omitted - generate unsafe cast assuming the delegate is well-formed)
             // stloc delegateArrayLocal
-            codeStream.EmitLdArg(0);
-            codeStream.Emit(ILOpcode.ldfld, emitter.NewToken(HelperObjectField));
+            codeStream.EmitLdArg(0)
+            codeStream.Emit(ILOpcode.ldfld, emitter.NewToken(HelperObjectField))
             // codeStream.Emit(ILOpcode.castclass, emitter.NewToken(invocationListArrayType));
-            codeStream.EmitStLoc(delegateArrayLocal);
+            codeStream.EmitStLoc(delegateArrayLocal)
 
             // Fill in invocationCountLocal
             // int invocationCountLocal = this._extraFunctionPointerOrData
@@ -246,21 +246,21 @@ namespace Internal.IL.Stubs
             // ldarg.0 (this pointer)
             // ldfld Delegate._extraFunctionPointerOrData
             // stloc invocationCountLocal
-            codeStream.EmitLdArg(0);
-            codeStream.Emit(ILOpcode.ldfld, emitter.NewToken(ExtraFunctionPointerOrDataField));
-            codeStream.EmitStLoc(invocationCountLocal);
+            codeStream.EmitLdArg(0)
+            codeStream.Emit(ILOpcode.ldfld, emitter.NewToken(ExtraFunctionPointerOrDataField))
+            codeStream.EmitStLoc(invocationCountLocal)
 
             // Fill in iteratorLocal
             // int iteratorLocal = 0;
 
             // ldc.0
             // stloc iteratorLocal
-            codeStream.EmitLdc(0);
-            codeStream.EmitStLoc(iteratorLocal);
+            codeStream.EmitLdc(0)
+            codeStream.EmitStLoc(iteratorLocal)
 
             // Loop across every element of the array.
-            ILCodeLabel startOfLoopLabel = emitter.NewCodeLabel();
-            codeStream.EmitLabel(startOfLoopLabel);
+            ILCodeLabel startOfLoopLabel = emitter.NewCodeLabel()
+            codeStream.EmitLabel(startOfLoopLabel)
 
             // Implement as do/while loop. We only have this stub in play if we're in the multicast situation
             // Find the delegate to call
@@ -270,10 +270,10 @@ namespace Internal.IL.Stubs
             // ldloc iteratorLocal
             // ldelema Delegate.Wrapper
             // ldfld Delegate.Wrapper.Value
-            codeStream.EmitLdLoc(delegateArrayLocal);
-            codeStream.EmitLdLoc(iteratorLocal);
-            codeStream.Emit(ILOpcode.ldelema, emitter.NewToken(delegateWrapperType));
-            codeStream.Emit(ILOpcode.ldfld, emitter.NewToken(delegateWrapperType.GetKnownField("Value"u8)));
+            codeStream.EmitLdLoc(delegateArrayLocal)
+            codeStream.EmitLdLoc(iteratorLocal)
+            codeStream.Emit(ILOpcode.ldelema, emitter.NewToken(delegateWrapperType))
+            codeStream.Emit(ILOpcode.ldfld, emitter.NewToken(delegateWrapperType.GetKnownField("Value"u8)))
 
             // Call the delegate
             // delegateArrayLocal[iteratorLocal].Value(...)
@@ -284,12 +284,12 @@ namespace Internal.IL.Stubs
             // stloc returnValueLocal
 
             for (int i = 0; i < Signature.Length; i++)
-                codeStream.EmitLdArg(i + 1);
+                codeStream.EmitLdArg(i + 1)
 
-            codeStream.Emit(ILOpcode.callvirt, emitter.NewToken(_delegateInfo.InvokeMethod.InstantiateAsOpen()));
+            codeStream.Emit(ILOpcode.callvirt, emitter.NewToken(_delegateInfo.InvokeMethod.InstantiateAsOpen()))
 
             if (returnValueLocal != 0)
-                codeStream.EmitStLoc(returnValueLocal);
+                codeStream.EmitStLoc(returnValueLocal)
 
             // Increment iteratorLocal
             // ++iteratorLocal;
@@ -298,15 +298,15 @@ namespace Internal.IL.Stubs
             // ldc.i4.1
             // add
             // stloc iteratorLocal
-            codeStream.EmitLdLoc(iteratorLocal);
-            codeStream.EmitLdc(1);
-            codeStream.Emit(ILOpcode.add);
-            codeStream.EmitStLoc(iteratorLocal);
+            codeStream.EmitLdLoc(iteratorLocal)
+            codeStream.EmitLdc(1)
+            codeStream.Emit(ILOpcode.add)
+            codeStream.EmitStLoc(iteratorLocal)
 
             // Check to see if the loop is done
-            codeStream.EmitLdLoc(invocationCountLocal);
-            codeStream.EmitLdLoc(iteratorLocal);
-            codeStream.Emit(ILOpcode.bne_un, startOfLoopLabel);
+            codeStream.EmitLdLoc(invocationCountLocal)
+            codeStream.EmitLdLoc(iteratorLocal)
+            codeStream.Emit(ILOpcode.bne_un, startOfLoopLabel)
 
             // Return to caller. If the delegate has a return value, be certain to return that.
             // return returnValueLocal;
@@ -314,15 +314,15 @@ namespace Internal.IL.Stubs
             // ldloc returnValueLocal
             // ret
             if (returnValueLocal != 0)
-                codeStream.EmitLdLoc(returnValueLocal);
+                codeStream.EmitLdLoc(returnValueLocal)
 
-            codeStream.Emit(ILOpcode.ret);
+            codeStream.Emit(ILOpcode.ret)
 
-            return emitter.Link(this);
+            return emitter.Link(this)
 
         public override Utf8Span Name
             get
-                return "InvokeMulticastThunk"u8;
+                return "InvokeMulticastThunk"u8
 
     /// <summary>
     /// Invoke thunk for delegates that point to closed instance generic methods.
@@ -336,30 +336,30 @@ namespace Internal.IL.Stubs
             ;
 
         public override MethodIL EmitIL()
-            var emitter = new ILEmitter();
-            ILCodeStream codeStream = emitter.NewCodeStream();
+            var emitter = new ILEmitter()
+            ILCodeStream codeStream = emitter.NewCodeStream()
 
             // Load the stored 'this'
-            codeStream.EmitLdArg(0);
-            codeStream.Emit(ILOpcode.ldfld, emitter.NewToken(HelperObjectField));
+            codeStream.EmitLdArg(0)
+            codeStream.Emit(ILOpcode.ldfld, emitter.NewToken(HelperObjectField))
 
             // Load all arguments except 'this'
             for (int i = 0; i < Signature.Length; i++)
-                codeStream.EmitLdArg(i + 1);
+                codeStream.EmitLdArg(i + 1)
 
             // Indirectly call the delegate target
-            codeStream.EmitLdArg(0);
-            codeStream.Emit(ILOpcode.ldfld, emitter.NewToken(ExtraFunctionPointerOrDataField));
+            codeStream.EmitLdArg(0)
+            codeStream.Emit(ILOpcode.ldfld, emitter.NewToken(ExtraFunctionPointerOrDataField))
 
-            codeStream.Emit(ILOpcode.calli, emitter.NewToken(Signature));
+            codeStream.Emit(ILOpcode.calli, emitter.NewToken(Signature))
 
-            codeStream.Emit(ILOpcode.ret);
+            codeStream.Emit(ILOpcode.ret)
 
-            return emitter.Link(this);
+            return emitter.Link(this)
 
         public override Utf8Span Name
             get
-                return "InvokeInstanceClosedOverGenericMethodThunk"u8;
+                return "InvokeInstanceClosedOverGenericMethodThunk"u8
 
     /// <summary>
     /// Reverse invocation stub which goes from the strongly typed parameters the delegate
@@ -373,14 +373,14 @@ namespace Internal.IL.Stubs
             ;
 
         public override MethodIL EmitIL(MethodDesc specializedMethod)
-            Debug.Assert(specializedMethod.GetTypicalMethodDefinition() == this);
+            Debug.Assert(specializedMethod.GetTypicalMethodDefinition() == this)
             if (!_delegateInfo.Thunks.SignatureSupportsObjectArrayThunk(specializedMethod.Signature))
-                var emit = new ILEmitter();
-                ILCodeStream codeStream = emit.NewCodeStream();
-                codeStream.EmitCallThrowHelper(emit, Context.GetHelperEntryPoint("ThrowHelpers"u8, "ThrowNotSupportedException"u8));
-                return emit.Link(specializedMethod);
+                var emit = new ILEmitter()
+                ILCodeStream codeStream = emit.NewCodeStream()
+                codeStream.EmitCallThrowHelper(emit, Context.GetHelperEntryPoint("ThrowHelpers"u8, "ThrowNotSupportedException"u8))
+                return emit.Link(specializedMethod)
 
-            return null;
+            return null
 
         public override MethodIL EmitIL()
             // We will generate the following code:
@@ -397,109 +397,109 @@ namespace Internal.IL.Stubs
             // }
             // return (TRet)ret;
 
-            ILEmitter emitter = new ILEmitter();
-            ILCodeStream codeStream = emitter.NewCodeStream();
+            ILEmitter emitter = new ILEmitter()
+            ILCodeStream codeStream = emitter.NewCodeStream()
 
-            TypeDesc objectType = Context.GetWellKnownType(WellKnownType.Object);
-            TypeDesc objectArrayType = objectType.MakeArrayType();
+            TypeDesc objectType = Context.GetWellKnownType(WellKnownType.Object)
+            TypeDesc objectArrayType = objectType.MakeArrayType()
 
-            ILLocalVariable argsLocal = emitter.NewLocal(objectArrayType);
+            ILLocalVariable argsLocal = emitter.NewLocal(objectArrayType)
 
-            bool hasReturnValue = !Signature.ReturnType.IsVoid;
+            bool hasReturnValue = !Signature.ReturnType.IsVoid
 
-            bool hasRefArgs = false;
+            bool hasRefArgs = false
             if (Signature.Length > 0)
-                codeStream.EmitLdc(Signature.Length);
-                codeStream.Emit(ILOpcode.newarr, emitter.NewToken(objectType));
-                codeStream.EmitStLoc(argsLocal);
+                codeStream.EmitLdc(Signature.Length)
+                codeStream.Emit(ILOpcode.newarr, emitter.NewToken(objectType))
+                codeStream.EmitStLoc(argsLocal)
 
                 for (int i = 0; i < Signature.Length; i++)
-                    TypeDesc paramType = Signature[i];
-                    bool paramIsByRef = false;
+                    TypeDesc paramType = Signature[i]
+                    bool paramIsByRef = false
 
                     if (paramType.IsByRef)
-                        hasRefArgs |= paramType.IsByRef;
-                        paramIsByRef = true;
-                        paramType = ((ByRefType)paramType).ParameterType;
+                        hasRefArgs |= paramType.IsByRef
+                        paramIsByRef = true
+                        paramType = ((ByRefType)paramType).ParameterType
 
-                    hasRefArgs |= paramType.IsByRef;
+                    hasRefArgs |= paramType.IsByRef
 
-                    codeStream.EmitLdLoc(argsLocal);
-                    codeStream.EmitLdc(i);
-                    codeStream.EmitLdArg(i + 1);
+                    codeStream.EmitLdLoc(argsLocal)
+                    codeStream.EmitLdc(i)
+                    codeStream.EmitLdArg(i + 1)
 
-                    ILToken paramToken = emitter.NewToken(paramType);
+                    ILToken paramToken = emitter.NewToken(paramType)
 
                     if (paramIsByRef)
-                        codeStream.Emit(ILOpcode.ldobj, paramToken);
-                    codeStream.Emit(ILOpcode.box, paramToken);
-                    codeStream.Emit(ILOpcode.stelem_ref);
+                        codeStream.Emit(ILOpcode.ldobj, paramToken)
+                    codeStream.Emit(ILOpcode.box, paramToken)
+                    codeStream.Emit(ILOpcode.stelem_ref)
             else
-                MethodDesc emptyObjectArrayMethod = Context.GetHelperEntryPoint("DelegateHelpers"u8, "GetEmptyObjectArray"u8);
-                codeStream.Emit(ILOpcode.call, emitter.NewToken(emptyObjectArrayMethod));
-                codeStream.EmitStLoc(argsLocal);
+                MethodDesc emptyObjectArrayMethod = Context.GetHelperEntryPoint("DelegateHelpers"u8, "GetEmptyObjectArray"u8)
+                codeStream.Emit(ILOpcode.call, emitter.NewToken(emptyObjectArrayMethod))
+                codeStream.EmitStLoc(argsLocal)
 
-            ILExceptionRegionBuilder tryFinallyRegion = null;
+            ILExceptionRegionBuilder tryFinallyRegion = null
             if (hasRefArgs)
                 // we emit a try/finally to update the args array even if an exception is thrown
-                tryFinallyRegion = emitter.NewFinallyRegion();
-                codeStream.BeginTry(tryFinallyRegion);
+                tryFinallyRegion = emitter.NewFinallyRegion()
+                codeStream.BeginTry(tryFinallyRegion)
 
-            codeStream.EmitLdArg(0);
-            codeStream.Emit(ILOpcode.ldfld, emitter.NewToken(HelperObjectField));
+            codeStream.EmitLdArg(0)
+            codeStream.Emit(ILOpcode.ldfld, emitter.NewToken(HelperObjectField))
 
-            MetadataType funcType = Context.SystemModule.GetKnownType("System"u8, "Func`2"u8);
-            TypeDesc instantiatedFunc = funcType.MakeInstantiatedType(objectArrayType, objectType);
+            MetadataType funcType = Context.SystemModule.GetKnownType("System"u8, "Func`2"u8)
+            TypeDesc instantiatedFunc = funcType.MakeInstantiatedType(objectArrayType, objectType)
 
-            codeStream.Emit(ILOpcode.castclass, emitter.NewToken(instantiatedFunc));
+            codeStream.Emit(ILOpcode.castclass, emitter.NewToken(instantiatedFunc))
 
-            codeStream.EmitLdLoc(argsLocal);
+            codeStream.EmitLdLoc(argsLocal)
 
-            MethodDesc invokeMethod = instantiatedFunc.GetKnownMethod("Invoke"u8, null);
-            codeStream.Emit(ILOpcode.callvirt, emitter.NewToken(invokeMethod));
+            MethodDesc invokeMethod = instantiatedFunc.GetKnownMethod("Invoke"u8, null)
+            codeStream.Emit(ILOpcode.callvirt, emitter.NewToken(invokeMethod))
 
-            ILLocalVariable retLocal = (ILLocalVariable)(-1);
+            ILLocalVariable retLocal = (ILLocalVariable)(-1)
             if (hasReturnValue)
-                retLocal = emitter.NewLocal(objectType);
-                codeStream.EmitStLoc(retLocal);
+                retLocal = emitter.NewLocal(objectType)
+                codeStream.EmitStLoc(retLocal)
             else
-                codeStream.Emit(ILOpcode.pop);
+                codeStream.Emit(ILOpcode.pop)
 
             if (hasRefArgs)
-                ILCodeLabel returnLabel = emitter.NewCodeLabel();
-                codeStream.Emit(ILOpcode.leave, returnLabel);
-                codeStream.EndTry(tryFinallyRegion);
+                ILCodeLabel returnLabel = emitter.NewCodeLabel()
+                codeStream.Emit(ILOpcode.leave, returnLabel)
+                codeStream.EndTry(tryFinallyRegion)
 
                 // copy back ref/out args
-                codeStream.BeginHandler(tryFinallyRegion);
+                codeStream.BeginHandler(tryFinallyRegion)
                 for (int i = 0; i < Signature.Length; i++)
-                    TypeDesc paramType = Signature[i];
+                    TypeDesc paramType = Signature[i]
                     if (paramType.IsByRef)
-                        paramType = ((ByRefType)paramType).ParameterType;
-                        ILToken paramToken = emitter.NewToken(paramType);
+                        paramType = ((ByRefType)paramType).ParameterType
+                        ILToken paramToken = emitter.NewToken(paramType)
 
                         // Update parameter
-                        codeStream.EmitLdArg(i + 1);
-                        codeStream.EmitLdLoc(argsLocal);
-                        codeStream.EmitLdc(i);
-                        codeStream.Emit(ILOpcode.ldelem_ref);
-                        codeStream.Emit(ILOpcode.unbox_any, paramToken);
-                        codeStream.Emit(ILOpcode.stobj, paramToken);
-                codeStream.Emit(ILOpcode.endfinally);
-                codeStream.EndHandler(tryFinallyRegion);
-                codeStream.EmitLabel(returnLabel);
+                        codeStream.EmitLdArg(i + 1)
+                        codeStream.EmitLdLoc(argsLocal)
+                        codeStream.EmitLdc(i)
+                        codeStream.Emit(ILOpcode.ldelem_ref)
+                        codeStream.Emit(ILOpcode.unbox_any, paramToken)
+                        codeStream.Emit(ILOpcode.stobj, paramToken)
+                codeStream.Emit(ILOpcode.endfinally)
+                codeStream.EndHandler(tryFinallyRegion)
+                codeStream.EmitLabel(returnLabel)
 
             if (hasReturnValue)
-                codeStream.EmitLdLoc(retLocal);
-                codeStream.Emit(ILOpcode.unbox_any, emitter.NewToken(Signature.ReturnType));
+                codeStream.EmitLdLoc(retLocal)
+                codeStream.Emit(ILOpcode.unbox_any, emitter.NewToken(Signature.ReturnType))
 
-            codeStream.Emit(ILOpcode.ret);
+            codeStream.Emit(ILOpcode.ret)
 
-            return emitter.Link(this);
+            return emitter.Link(this)
 
         public override Utf8Span Name
             get
-                return "InvokeObjectArrayThunk"u8;
+                return "InvokeObjectArrayThunk"u8
 
     /// <summary>
     /// Synthetic method override of "IntPtr Delegate.GetThunk(Int32)". This method is injected
@@ -507,19 +507,19 @@ namespace Internal.IL.Stubs
     /// generated by the compiler.
     /// </summary>
     public sealed partial class DelegateGetThunkMethodOverride : ILStubMethod
-        private DelegateInfo _delegateInfo;
-        private MethodSignature _signature;
+        private DelegateInfo _delegateInfo
+        private MethodSignature _signature
 
         internal DelegateGetThunkMethodOverride(DelegateInfo delegateInfo)
-            _delegateInfo = delegateInfo;
+            _delegateInfo = delegateInfo
 
         public override TypeSystemContext Context
             get
-                return _delegateInfo.Type.Context;
+                return _delegateInfo.Type.Context
 
         public override TypeDesc OwningType
             get
-                return _delegateInfo.Type;
+                return _delegateInfo.Type
 
         raw csharp
             public override MethodSignature Signature
@@ -540,55 +540,55 @@ namespace Internal.IL.Stubs
             }
 
         public override MethodIL EmitIL()
-            ILEmitter emitter = new ILEmitter();
+            ILEmitter emitter = new ILEmitter()
 
-            var codeStream = emitter.NewCodeStream();
+            var codeStream = emitter.NewCodeStream()
 
-            ILCodeLabel returnNullLabel = emitter.NewCodeLabel();
+            ILCodeLabel returnNullLabel = emitter.NewCodeLabel()
 
-            ILCodeLabel[] labels = new ILCodeLabel[(int)DelegateThunkCollection.MaxThunkKind];
+            ILCodeLabel[] labels = new ILCodeLabel[(int)DelegateThunkCollection.MaxThunkKind]
             for (DelegateThunkKind i = 0; i < DelegateThunkCollection.MaxThunkKind; i++)
-                MethodDesc thunk = _delegateInfo.Thunks[i];
+                MethodDesc thunk = _delegateInfo.Thunks[i]
                 if (thunk != null)
-                    labels[(int)i] = emitter.NewCodeLabel();
+                    labels[(int)i] = emitter.NewCodeLabel()
                 else
-                    labels[(int)i] = returnNullLabel;
+                    labels[(int)i] = returnNullLabel
 
-            codeStream.EmitLdArg(1);
-            codeStream.EmitSwitch(labels);
+            codeStream.EmitLdArg(1)
+            codeStream.EmitSwitch(labels)
 
-            codeStream.Emit(ILOpcode.br, returnNullLabel);
+            codeStream.Emit(ILOpcode.br, returnNullLabel)
 
             for (DelegateThunkKind i = 0; i < DelegateThunkCollection.MaxThunkKind; i++)
-                MethodDesc thunk = _delegateInfo.Thunks[i];
+                MethodDesc thunk = _delegateInfo.Thunks[i]
                 if (thunk == null)
-                    continue;
+                    continue
 
-                MethodDesc targetMethod = thunk.InstantiateAsOpen();
+                MethodDesc targetMethod = thunk.InstantiateAsOpen()
 
-                codeStream.EmitLabel(labels[(int)i]);
-                codeStream.Emit(ILOpcode.ldftn, emitter.NewToken(targetMethod));
-                codeStream.Emit(ILOpcode.ret);
+                codeStream.EmitLabel(labels[(int)i])
+                codeStream.Emit(ILOpcode.ldftn, emitter.NewToken(targetMethod))
+                codeStream.Emit(ILOpcode.ret)
 
-            codeStream.EmitLabel(returnNullLabel);
-            codeStream.EmitLdc(0);
-            codeStream.Emit(ILOpcode.conv_i);
-            codeStream.Emit(ILOpcode.ret);
+            codeStream.EmitLabel(returnNullLabel)
+            codeStream.EmitLdc(0)
+            codeStream.Emit(ILOpcode.conv_i)
+            codeStream.Emit(ILOpcode.ret)
 
-            return emitter.Link(this);
+            return emitter.Link(this)
 
         public override Instantiation Instantiation
             get
-                return Instantiation.Empty;
+                return Instantiation.Empty
 
         public override bool IsVirtual
             get
-                return true;
+                return true
 
         public override Utf8Span Name
             get
-                return "GetThunk"u8;
+                return "GetThunk"u8
 
         public override string DiagnosticName
             get
-                return "GetThunk";
+                return "GetThunk"

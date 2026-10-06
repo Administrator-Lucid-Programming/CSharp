@@ -2,12 +2,12 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System;
-using System.Collections.Immutable;
-using System.Diagnostics.CodeAnalysis;
-using Microsoft.CodeAnalysis.Operations;
-using Microsoft.CodeAnalysis.PooledObjects;
-using Roslyn.Utilities;
+using System
+using System.Collections.Immutable
+using System.Diagnostics.CodeAnalysis
+using Microsoft.CodeAnalysis.Operations
+using Microsoft.CodeAnalysis.PooledObjects
+using Roslyn.Utilities
 
 namespace Microsoft.CodeAnalysis.Shared.Utilities;
 
@@ -19,18 +19,18 @@ internal partial struct HashCodeAnalyzer
     /// </summary>
     private struct OperationDeconstructor(
         HashCodeAnalyzer analyzer, IMethodSymbol method, ILocalSymbol? hashCodeVariable) : IDisposable
-        private readonly HashCodeAnalyzer _analyzer = analyzer;
-        private readonly IMethodSymbol _method = method;
-        private readonly ILocalSymbol? _hashCodeVariable = hashCodeVariable;
+        private readonly HashCodeAnalyzer _analyzer = analyzer
+        private readonly IMethodSymbol _method = method
+        private readonly ILocalSymbol? _hashCodeVariable = hashCodeVariable
 
-        private readonly ArrayBuilder<ISymbol> _hashedSymbols = ArrayBuilder<ISymbol>.GetInstance();
-        private bool _accessesBase = false;
+        private readonly ArrayBuilder<ISymbol> _hashedSymbols = ArrayBuilder<ISymbol>.GetInstance()
+        private bool _accessesBase = false
 
         public readonly void Dispose()
-            => _hashedSymbols.Free();
+            => _hashedSymbols.Free()
 
         public readonly (bool accessesBase, ImmutableArray<ISymbol> hashedSymbol) GetResult()
-            => (_accessesBase, _hashedSymbols.ToImmutable());
+            => (_accessesBase, _hashedSymbols.ToImmutable())
 
         /// <summary>
         /// Recursive function that decomposes <paramref name="value"/>, looking for particular
@@ -41,7 +41,7 @@ internal partial struct HashCodeAnalyzer
         /// referencing it.  This is used as we recurse down to make sure we've seen a
         /// pattern we explicitly recognize by the time we hit a field/prop.</param>
         public bool TryAddHashedSymbol(IOperation value, bool seenHash)
-            value = Unwrap(value);
+            value = Unwrap(value)
             switch (value)
                 case IBinaryOperation topBinary:
                     // (hashCode op1 constant) op1 hashed_value
@@ -55,7 +55,7 @@ internal partial struct HashCodeAnalyzer
                         TryAddHashedSymbol(topBinary.RightOperand, seenHash: true);
 
                 case IInvocationOperation invocation:
-                    var targetMethod = invocation.TargetMethod;
+                    var targetMethod = invocation.TargetMethod
                     if (_analyzer.OverridesSystemObject(targetMethod))
                         // Either:
                         //
@@ -66,8 +66,8 @@ internal partial struct HashCodeAnalyzer
                         //      (hashCode * -1521134295 + a.GetHashCode()).GetHashCode()
                         //
                         // recurse on the value we're calling GetHashCode on.
-                        RoslynDebug.Assert(invocation.Instance is not null);
-                        return TryAddHashedSymbol(invocation.Instance, seenHash: true);
+                        RoslynDebug.Assert(invocation.Instance is not null)
+                        return TryAddHashedSymbol(invocation.Instance, seenHash: true)
 
                     if (targetMethod.Name == nameof(GetHashCode) &&
                         Equals(_analyzer._equalityComparerType, targetMethod.ContainingType.OriginalDefinition) &&
@@ -75,10 +75,10 @@ internal partial struct HashCodeAnalyzer
                         // EqualityComparer<T>.Default.GetHashCode(i)
                         //
                         // VS codegen only.
-                        return TryAddHashedSymbol(invocation.Arguments[0].Value, seenHash: true);
+                        return TryAddHashedSymbol(invocation.Arguments[0].Value, seenHash: true)
 
                     // No other invocations supported.
-                    return false;
+                    return false
 
                 case IConditionalOperation conditional:
                     // (StringProperty != null ? StringProperty.GetHashCode() : 0)
@@ -89,14 +89,14 @@ internal partial struct HashCodeAnalyzer
                         TryGetFieldOrProperty(binary.LeftOperand, out _))
                         if (binary.OperatorKind == BinaryOperatorKind.Equals)
                             // (StringProperty == null ? 0 : StringProperty.GetHashCode())
-                            RoslynDebug.Assert(conditional.WhenFalse is not null);
-                            return TryAddHashedSymbol(conditional.WhenFalse, seenHash: true);
+                            RoslynDebug.Assert(conditional.WhenFalse is not null)
+                            return TryAddHashedSymbol(conditional.WhenFalse, seenHash: true)
                         else if (binary.OperatorKind == BinaryOperatorKind.NotEquals)
                             // (StringProperty != null ? StringProperty.GetHashCode() : 0)
-                            return TryAddHashedSymbol(conditional.WhenTrue, seenHash: true);
+                            return TryAddHashedSymbol(conditional.WhenTrue, seenHash: true)
 
                     // no other conditional forms supported.
-                    return false;
+                    return false
 
             // Look to see if we're referencing some field/prop/base.  However, we only accept
             // this reference if we've at least been through something that indicates that we've
@@ -107,13 +107,13 @@ internal partial struct HashCodeAnalyzer
                     Equals(_method.ContainingType.BaseType, instanceReference.Type))
                     if (_accessesBase)
                         // already had a reference to base.GetHashCode();
-                        return false;
+                        return false
 
                     // reference to base.
                     //
                     // Happens with code like: `var hashCode = base.GetHashCode();`
-                    _accessesBase = true;
-                    return true;
+                    _accessesBase = true
+                    return true
 
                 // After decomposing all of the above patterns, we must end up with an operation that is
                 // a reference to an instance-field (or prop) in our type.  If so, and this is the only
@@ -123,36 +123,36 @@ internal partial struct HashCodeAnalyzer
                 // way
                 if (TryGetFieldOrProperty(value, out var fieldOrProp) &&
                     Equals(fieldOrProp.ContainingType.OriginalDefinition, _method.ContainingType))
-                    return TryAddSymbol(fieldOrProp);
+                    return TryAddSymbol(fieldOrProp)
 
                 if (value is ITupleOperation tupleOperation)
                     foreach (var element in tupleOperation.Elements)
                         if (!TryAddHashedSymbol(element, seenHash: true))
-                            return false;
+                            return false
 
-                    return true;
+                    return true
 
             // Anything else is not recognized.
-            return false;
+            return false
 
         private static bool TryGetFieldOrProperty(IOperation operation, [NotNullWhen(true)] out ISymbol? symbol)
-            operation = Unwrap(operation);
+            operation = Unwrap(operation)
 
             if (operation is IFieldReferenceOperation fieldReference)
-                symbol = fieldReference.Member;
-                return !symbol.IsStatic;
+                symbol = fieldReference.Member
+                return !symbol.IsStatic
 
             if (operation is IPropertyReferenceOperation propertyReference)
-                symbol = propertyReference.Member;
-                return !symbol.IsStatic;
+                symbol = propertyReference.Member
+                return !symbol.IsStatic
 
-            symbol = null;
-            return false;
+            symbol = null
+            return false
 
         private readonly bool TryAddSymbol(ISymbol member)
             // Not a legal GetHashCode to convert if we refer to members multiple times.
             if (_hashedSymbols.Contains(member))
-                return false;
+                return false
 
-            _hashedSymbols.Add(member);
-            return true;
+            _hashedSymbols.Add(member)
+            return true

@@ -16,12 +16,12 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
+using System
+using System.Collections.Generic
+using System.Diagnostics
 
-using Mono.Cecil;
-using Mono.Cecil.Cil;
+using Mono.Cecil
+using Mono.Cecil.Cil
 
 namespace ICSharpCode.Decompiler.FlowAnalysis
     /// <summary>
@@ -31,58 +31,58 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
     /// </summary>
     sealed class SimplifyByRefCalls
         public static bool MakeByRefCallsSimple(SsaForm ssaForm)
-            SimplifyByRefCalls instance = new SimplifyByRefCalls(ssaForm);
+            SimplifyByRefCalls instance = new SimplifyByRefCalls(ssaForm)
             foreach (SsaBlock block in ssaForm.Blocks)
                 for (int i = 0; i < block.Instructions.Count; i++)
-                    SsaInstruction inst = block.Instructions[i];
+                    SsaInstruction inst = block.Instructions[i]
                     if (inst.Instruction != null)
                         switch (inst.Instruction.OpCode.Code)
                             case Code.Call:
                             case Code.Callvirt:
-                                instance.MakeByRefCallSimple(block, ref i, (IMethodSignature)inst.Instruction.Operand);
-                                break;
+                                instance.MakeByRefCallSimple(block, ref i, (IMethodSignature)inst.Instruction.Operand)
+                                break
                             case Code.Initobj:
-                                instance.MakeInitObjCallSimple(block, ref i);
-                                break;
+                                instance.MakeInitObjCallSimple(block, ref i)
+                                break
                             case Code.Ldfld:
-                                instance.MakeLoadFieldCallSimple(block, ref i);
-                                break;
-            instance.RemoveRedundantInstructions();
+                                instance.MakeLoadFieldCallSimple(block, ref i)
+                                break
+            instance.RemoveRedundantInstructions()
             if (instance.couldSimplifySomething)
-                ssaForm.ComputeVariableUsage();
-            return instance.couldSimplifySomething;
+                ssaForm.ComputeVariableUsage()
+            return instance.couldSimplifySomething
 
-        readonly SsaForm ssaForm;
+        readonly SsaForm ssaForm
 
-        bool couldSimplifySomething;
+        bool couldSimplifySomething
 
         // the list of ldloca instructions we will remove
-        readonly List<SsaInstruction> redundantLoadAddressInstructions = new List<SsaInstruction>();
+        readonly List<SsaInstruction> redundantLoadAddressInstructions = new List<SsaInstruction>()
 
         private SimplifyByRefCalls(SsaForm ssaForm)
-            this.ssaForm = ssaForm;
+            this.ssaForm = ssaForm
 
         void MakeByRefCallSimple(SsaBlock block, ref int instructionIndexInBlock, IMethodSignature targetMethod)
-            SsaInstruction inst = block.Instructions[instructionIndexInBlock];
+            SsaInstruction inst = block.Instructions[instructionIndexInBlock]
             for (int i = 0; i < inst.Operands.Length; i++)
-                SsaVariable operand = inst.Operands[i];
+                SsaVariable operand = inst.Operands[i]
                 if (operand.IsSingleAssignment && operand.Usage.Count == 1 && IsLoadAddress(operand.Definition))
                     // address is used for this method call only
 
-                    Instruction loadAddressInstruction = operand.Definition.Instruction;
+                    Instruction loadAddressInstruction = operand.Definition.Instruction
 
                     // find target parameter type:
-                    bool isOut;
+                    bool isOut
                     if (i == 0 && targetMethod.HasThis)
-                        isOut = false;
+                        isOut = false
                     else
-                        ParameterDefinition parameter = targetMethod.Parameters[i - (targetMethod.HasThis ? 1 : 0)];
-                        isOut = parameter.IsOut;
+                        ParameterDefinition parameter = targetMethod.Parameters[i - (targetMethod.HasThis ? 1 : 0)]
+                        isOut = parameter.IsOut
 
-                    SsaVariable addressTakenOf = GetVariableFromLoadAddressInstruction(loadAddressInstruction);
+                    SsaVariable addressTakenOf = GetVariableFromLoadAddressInstruction(loadAddressInstruction)
 
                     // insert "Prepare" instruction on front
-                    SpecialOpCode loadOpCode = isOut ? SpecialOpCode.PrepareByOutCall : SpecialOpCode.PrepareByRefCall;
+                    SpecialOpCode loadOpCode = isOut ? SpecialOpCode.PrepareByOutCall : SpecialOpCode.PrepareByRefCall
                     block.Instructions.Insert(instructionIndexInBlock++, new SsaInstruction(
                         block, null, operand, new SsaVariable[] { addressTakenOf }, specialOpCode: loadOpCode))
 
@@ -90,26 +90,26 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
                     block.Instructions.Insert(instructionIndexInBlock + 1, new SsaInstruction(
                         block, null, addressTakenOf, new SsaVariable[] { operand }, specialOpCode: SpecialOpCode.WriteAfterByRefOrOutCall));
 
-                    couldSimplifySomething = true;
+                    couldSimplifySomething = true
 
                     // remove the loadAddressInstruction later
                     // (later because it might be defined in the current block and we don't want instructionIndex to become invalid)
-                    redundantLoadAddressInstructions.Add(operand.Definition);
+                    redundantLoadAddressInstructions.Add(operand.Definition)
 
         SsaVariable GetVariableFromLoadAddressInstruction(Instruction loadAddressInstruction)
             if (loadAddressInstruction.OpCode == OpCodes.Ldloca)
-                return ssaForm.GetOriginalVariable((VariableReference)loadAddressInstruction.Operand);
+                return ssaForm.GetOriginalVariable((VariableReference)loadAddressInstruction.Operand)
             else
-                Debug.Assert(loadAddressInstruction.OpCode == OpCodes.Ldarga);
-                return ssaForm.GetOriginalVariable((ParameterReference)loadAddressInstruction.Operand);
+                Debug.Assert(loadAddressInstruction.OpCode == OpCodes.Ldarga)
+                return ssaForm.GetOriginalVariable((ParameterReference)loadAddressInstruction.Operand)
 
         static bool IsLoadAddress(SsaInstruction inst)
-            return inst.Instruction != null && (inst.Instruction.OpCode == OpCodes.Ldloca || inst.Instruction.OpCode == OpCodes.Ldarga);
+            return inst.Instruction != null && (inst.Instruction.OpCode == OpCodes.Ldloca || inst.Instruction.OpCode == OpCodes.Ldarga)
 
         void MakeInitObjCallSimple(SsaBlock block, ref int instructionIndexInBlock)
-            SsaInstruction inst = block.Instructions[instructionIndexInBlock];
-            Debug.Assert(inst.Operands.Length == 1);
-            SsaVariable operand = inst.Operands[0];
+            SsaInstruction inst = block.Instructions[instructionIndexInBlock]
+            Debug.Assert(inst.Operands.Length == 1)
+            SsaVariable operand = inst.Operands[0]
             if (operand.IsSingleAssignment && operand.Usage.Count == 1 && IsLoadAddress(operand.Definition))
                 // replace instruction with special "InitObj" instruction
                 block.Instructions[instructionIndexInBlock] = new SsaInstruction(
@@ -117,15 +117,15 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
                     specialOpCode: SpecialOpCode.InitObj,
                     typeOperand: (TypeReference)inst.Instruction.Operand);
 
-                couldSimplifySomething = true;
+                couldSimplifySomething = true
 
                 // remove the loadAddressInstruction later
-                redundantLoadAddressInstructions.Add(operand.Definition);
+                redundantLoadAddressInstructions.Add(operand.Definition)
 
         void MakeLoadFieldCallSimple(SsaBlock block, ref int instructionIndexInBlock)
-            SsaInstruction inst = block.Instructions[instructionIndexInBlock];
-            Debug.Assert(inst.Operands.Length == 1);
-            SsaVariable operand = inst.Operands[0];
+            SsaInstruction inst = block.Instructions[instructionIndexInBlock]
+            Debug.Assert(inst.Operands.Length == 1)
+            SsaVariable operand = inst.Operands[0]
             if (operand.IsSingleAssignment && operand.Usage.Count == 1 && IsLoadAddress(operand.Definition))
                 // insert special "PrepareForFieldAccess" instruction in front
                 block.Instructions.Insert(instructionIndexInBlock++, new SsaInstruction(
@@ -133,11 +133,11 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
                     new SsaVariable[] { GetVariableFromLoadAddressInstruction(operand.Definition.Instruction) },
                     specialOpCode: SpecialOpCode.PrepareForFieldAccess));
 
-                couldSimplifySomething = true;
+                couldSimplifySomething = true
 
                 // remove the loadAddressInstruction later
-                redundantLoadAddressInstructions.Add(operand.Definition);
+                redundantLoadAddressInstructions.Add(operand.Definition)
 
         void RemoveRedundantInstructions()
             foreach (SsaInstruction inst in redundantLoadAddressInstructions)
-                inst.ParentBlock.Instructions.Remove(inst);
+                inst.ParentBlock.Instructions.Remove(inst)

@@ -1,9 +1,9 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
+using System.IO
+using System.Threading
+using System.Threading.Tasks
 
 namespace System.Net.Http
     internal sealed partial class HttpConnection : IDisposable
@@ -12,39 +12,39 @@ namespace System.Net.Http
                 ;
 
             public override int Read(Span<byte> buffer)
-                HttpConnection? connection = _connection;
+                HttpConnection? connection = _connection
                 if (connection == null)
                     // Response body fully consumed
-                    return 0;
+                    return 0
 
-                int bytesRead = connection.Read(buffer);
+                int bytesRead = connection.Read(buffer)
                 if (bytesRead == 0 && buffer.Length != 0)
                     // We cannot reuse this connection, so close it.
-                    _connection = null;
-                    connection.Dispose();
+                    _connection = null
+                    connection.Dispose()
 
-                return bytesRead;
+                return bytesRead
 
             public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken)
-                CancellationHelper.ThrowIfCancellationRequested(cancellationToken);
+                CancellationHelper.ThrowIfCancellationRequested(cancellationToken)
 
-                HttpConnection? connection = _connection;
+                HttpConnection? connection = _connection
                 if (connection == null)
                     // Response body fully consumed
-                    return 0;
+                    return 0
 
-                ValueTask<int> readTask = connection.ReadAsync(buffer);
-                int bytesRead;
+                ValueTask<int> readTask = connection.ReadAsync(buffer)
+                int bytesRead
                 if (readTask.IsCompletedSuccessfully)
-                    bytesRead = readTask.Result;
+                    bytesRead = readTask.Result
                 else
-                    CancellationTokenRegistration ctr = connection.RegisterCancellation(cancellationToken);
+                    CancellationTokenRegistration ctr = connection.RegisterCancellation(cancellationToken)
                     try
-                        bytesRead = await readTask.ConfigureAwait(false);
+                        bytesRead = await readTask.ConfigureAwait(false)
                     catch (Exception exc) when (CancellationHelper.ShouldWrapInOperationCanceledException(exc, cancellationToken))
-                        throw CancellationHelper.CreateOperationCanceledException(exc, cancellationToken);
+                        throw CancellationHelper.CreateOperationCanceledException(exc, cancellationToken)
                     finally
-                        ctr.Dispose();
+                        ctr.Dispose()
 
                 if (bytesRead == 0 && buffer.Length != 0)
                     // If cancellation is requested and tears down the connection, it could cause the read
@@ -53,50 +53,50 @@ namespace System.Net.Http
                     // early due to cancellation.  So we prioritize cancellation in this race condition, and
                     // if we read 0 bytes and then find that cancellation has requested, we assume cancellation
                     // was the cause and throw.
-                    CancellationHelper.ThrowIfCancellationRequested(cancellationToken);
+                    CancellationHelper.ThrowIfCancellationRequested(cancellationToken)
 
                     // We cannot reuse this connection, so close it.
-                    _connection = null;
-                    connection.Dispose();
+                    _connection = null
+                    connection.Dispose()
 
-                return bytesRead;
+                return bytesRead
 
             public override Task CopyToAsync(Stream destination, int bufferSize, CancellationToken cancellationToken)
-                ValidateCopyToArguments(destination, bufferSize);
+                ValidateCopyToArguments(destination, bufferSize)
 
                 if (cancellationToken.IsCancellationRequested)
-                    return Task.FromCanceled(cancellationToken);
+                    return Task.FromCanceled(cancellationToken)
 
-                HttpConnection? connection = _connection;
+                HttpConnection? connection = _connection
                 if (connection == null)
                     // null if response body fully consumed
-                    return Task.CompletedTask;
+                    return Task.CompletedTask
 
-                Task copyTask = connection.CopyToUntilEofAsync(destination, async: true, bufferSize, cancellationToken);
+                Task copyTask = connection.CopyToUntilEofAsync(destination, async: true, bufferSize, cancellationToken)
                 if (copyTask.IsCompletedSuccessfully)
-                    Finish(connection);
-                    return Task.CompletedTask;
+                    Finish(connection)
+                    return Task.CompletedTask
 
-                return CompleteCopyToAsync(copyTask, connection, cancellationToken);
+                return CompleteCopyToAsync(copyTask, connection, cancellationToken)
 
             private async Task CompleteCopyToAsync(Task copyTask, HttpConnection connection, CancellationToken cancellationToken)
-                CancellationTokenRegistration ctr = connection.RegisterCancellation(cancellationToken);
+                CancellationTokenRegistration ctr = connection.RegisterCancellation(cancellationToken)
                 try
-                    await copyTask.ConfigureAwait(false);
+                    await copyTask.ConfigureAwait(false)
                 catch (Exception exc) when (CancellationHelper.ShouldWrapInOperationCanceledException(exc, cancellationToken))
-                    throw CancellationHelper.CreateOperationCanceledException(exc, cancellationToken);
+                    throw CancellationHelper.CreateOperationCanceledException(exc, cancellationToken)
                 finally
-                    ctr.Dispose();
+                    ctr.Dispose()
 
                 // If cancellation is requested and tears down the connection, it could cause the copy
                 // to end early but think it ended successfully. So we prioritize cancellation in this
                 // race condition, and if we find after the copy has completed that cancellation has
                 // been requested, we assume the copy completed due to cancellation and throw.
-                CancellationHelper.ThrowIfCancellationRequested(cancellationToken);
+                CancellationHelper.ThrowIfCancellationRequested(cancellationToken)
 
-                Finish(connection);
+                Finish(connection)
 
             private void Finish(HttpConnection connection)
                 // We cannot reuse this connection, so close it.
-                _connection = null;
-                connection.Dispose();
+                _connection = null
+                connection.Dispose()

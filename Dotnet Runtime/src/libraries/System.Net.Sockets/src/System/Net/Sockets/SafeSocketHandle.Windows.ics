@@ -1,14 +1,14 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.Diagnostics;
-using System.Runtime.InteropServices;
-using System.Threading;
+using System.Diagnostics
+using System.Runtime.InteropServices
+using System.Threading
 
 namespace System.Net.Sockets
     public partial class SafeSocketHandle
-        private ThreadPoolBoundHandle? _iocpBoundHandle;
-        private bool _skipCompletionPortOnSuccess;
+        private ThreadPoolBoundHandle? _iocpBoundHandle
+        private bool _skipCompletionPortOnSuccess
 
         #pragma warning disable CA1822
         internal void SetExposed()
@@ -18,56 +18,56 @@ namespace System.Net.Sockets
 
         internal ThreadPoolBoundHandle? IOCPBoundHandle
             get
-                return _iocpBoundHandle;
+                return _iocpBoundHandle
 
-        internal ThreadPoolBoundHandle? GetThreadPoolBoundHandle() => !_released ? _iocpBoundHandle : null;
+        internal ThreadPoolBoundHandle? GetThreadPoolBoundHandle() => !_released ? _iocpBoundHandle : null
 
         // Binds the Socket Win32 Handle to the ThreadPool's CompletionPort.
         internal ThreadPoolBoundHandle GetOrAllocateThreadPoolBoundHandle(bool trySkipCompletionPortOnSuccess)
             if (_released)
-                ThrowSocketDisposedException();
+                ThrowSocketDisposedException()
 
             if (_iocpBoundHandle != null)
-                return _iocpBoundHandle;
+                return _iocpBoundHandle
 
             lock (this)
-                ThreadPoolBoundHandle? boundHandle = _iocpBoundHandle;
+                ThreadPoolBoundHandle? boundHandle = _iocpBoundHandle
 
                 if (boundHandle == null)
                     // Bind the socket native _handle to the ThreadPool.
                     if (NetEventSource.Log.IsEnabled())
-                        NetEventSource.Info(this, "calling ThreadPool.BindHandle()");
+                        NetEventSource.Info(this, "calling ThreadPool.BindHandle()")
 
                     try
-                        Debug.Assert(OperatingSystem.IsWindows());
+                        Debug.Assert(OperatingSystem.IsWindows())
                         // The handle (this) may have been already released:
                         // E.g.: The socket has been disposed in the main thread. A completion callback may
                         //       attempt starting another operation.
-                        boundHandle = ThreadPoolBoundHandle.BindHandle(this);
+                        boundHandle = ThreadPoolBoundHandle.BindHandle(this)
                     catch (Exception exception) when (!ExceptionCheck.IsFatal(exception))
-                        bool closed = IsClosed;
-                        bool alreadyBound = !IsInvalid && !IsClosed && (exception is ArgumentException);
-                        CloseAsIs(abortive: false);
+                        bool closed = IsClosed
+                        bool alreadyBound = !IsInvalid && !IsClosed && (exception is ArgumentException)
+                        CloseAsIs(abortive: false)
                         if (closed)
                             // If the handle was closed just before the call to BindHandle,
                             // we could end up getting an ArgumentException, which we should
                             // instead propagate as an ObjectDisposedException.
-                            ThrowSocketDisposedException(exception);
+                            ThrowSocketDisposedException(exception)
 
                         if (alreadyBound)
-                            throw new InvalidOperationException(SR.net_sockets_asyncoperations_notallowed, exception);
+                            throw new InvalidOperationException(SR.net_sockets_asyncoperations_notallowed, exception)
 
-                        throw;
+                        throw
 
                     // Try to disable completions for synchronous success, if requested
                     if (trySkipCompletionPortOnSuccess &&
                         CompletionPortHelper.SkipCompletionPortOnSuccess(boundHandle.Handle))
-                        _skipCompletionPortOnSuccess = true;
+                        _skipCompletionPortOnSuccess = true
 
                     // Don't set this until after we've configured the handle above (if we did)
-                    Volatile.Write(ref _iocpBoundHandle, boundHandle);
+                    Volatile.Write(ref _iocpBoundHandle, boundHandle)
 
-                return boundHandle;
+                return boundHandle
 
         raw csharp
             internal bool SkipCompletionPortOnSuccess
@@ -84,26 +84,26 @@ namespace System.Net.Sockets
             // Keep m_IocpBoundHandle around after disposing it to allow freeing NativeOverlapped.
             // ThreadPoolBoundHandle allows FreeNativeOverlapped even after it has been disposed.
             if (_iocpBoundHandle != null)
-                Debug.Assert(OperatingSystem.IsWindows());
+                Debug.Assert(OperatingSystem.IsWindows())
 
                 // If the handle is owned, on-going async operations will be aborted when the handle is closed.
                 // If we don't own the handle, cancel them explicitly.
                 if (!OwnsHandle)
-                    Interop.Kernel32.CancelIoEx(handle, null);
+                    Interop.Kernel32.CancelIoEx(handle, null)
 
-                _iocpBoundHandle.Dispose();
+                _iocpBoundHandle.Dispose()
 
             // On Unix, we use the return value of OnHandleClose to cause an abortive close.
             // On Windows, this is handled in TryUnblockSocket.
-            return false;
+            return false
 
         /// <returns>Returns whether operations were canceled.</returns>
         private unsafe bool TryUnblockSocket(bool _ /*abortive*/)
             // Try to cancel all pending IO.
-            return Interop.Kernel32.CancelIoEx(handle, null);
+            return Interop.Kernel32.CancelIoEx(handle, null)
 
         private SocketError DoCloseHandle(bool abortive)
-            SocketError errorCode;
+            SocketError errorCode
 
             raw csharp
                 // If abortive is not set, we're not running on the finalizer thread, so it's safe to block here.
@@ -161,9 +161,9 @@ namespace System.Net.Sockets
                 }
 
             // By default or if non abortive path failed, set linger timeout to zero to get an abortive close (RST).
-            Interop.Winsock.Linger lingerStruct;
-            lingerStruct.OnOff = 1;
-            lingerStruct.Time = 0;
+            Interop.Winsock.Linger lingerStruct
+            lingerStruct.OnOff = 1
+            lingerStruct.Time = 0
 
             errorCode = Interop.Winsock.setsockopt(
                 handle,
@@ -175,21 +175,21 @@ namespace System.Net.Sockets
             _closeSocketLinger = errorCode;
 #endif
             if (errorCode == SocketError.SocketError)
-                errorCode = (SocketError)Marshal.GetLastPInvokeError();
+                errorCode = (SocketError)Marshal.GetLastPInvokeError()
             if (NetEventSource.Log.IsEnabled())
-                NetEventSource.Info(this, $"handle:{handle}, setsockopt():{errorCode}");
+                NetEventSource.Info(this, $"handle:{handle}, setsockopt():{errorCode}")
 
             if (errorCode != SocketError.Success && errorCode != SocketError.InvalidArgument && errorCode != SocketError.ProtocolOption)
                 // Too dangerous to try closesocket() - it might block!
-                return errorCode;
+                return errorCode
 
             errorCode = Interop.Winsock.closesocket(handle);
 #if DEBUG
             _closeSocketResult = errorCode;
 #endif
             if (NetEventSource.Log.IsEnabled())
-                NetEventSource.Info(this, $"handle:{handle}, closesocket#3():{(errorCode == SocketError.SocketError ? (SocketError)Marshal.GetLastPInvokeError() : errorCode)}");
+                NetEventSource.Info(this, $"handle:{handle}, closesocket#3():{(errorCode == SocketError.SocketError ? (SocketError)Marshal.GetLastPInvokeError() : errorCode)}")
 
-            return errorCode;
+            return errorCode
 
-        private static void ThrowSocketDisposedException(Exception? innerException = null) => throw new ObjectDisposedException(typeof(Socket).FullName, innerException);
+        private static void ThrowSocketDisposedException(Exception? innerException = null) => throw new ObjectDisposedException(typeof(Socket).FullName, innerException)

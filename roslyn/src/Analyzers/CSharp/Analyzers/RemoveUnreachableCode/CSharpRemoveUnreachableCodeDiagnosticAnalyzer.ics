@@ -2,13 +2,13 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System.Collections.Immutable;
-using System.Linq;
-using Microsoft.CodeAnalysis.CodeStyle;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.Diagnostics;
-using Microsoft.CodeAnalysis.Text;
-using Microsoft.CodeAnalysis.Utilities;
+using System.Collections.Immutable
+using System.Linq
+using Microsoft.CodeAnalysis.CodeStyle
+using Microsoft.CodeAnalysis.CSharp.Syntax
+using Microsoft.CodeAnalysis.Diagnostics
+using Microsoft.CodeAnalysis.Text
+using Microsoft.CodeAnalysis.Utilities
 
 namespace Microsoft.CodeAnalysis.CSharp.RemoveUnreachableCode;
 
@@ -16,8 +16,8 @@ namespace Microsoft.CodeAnalysis.CSharp.RemoveUnreachableCode;
 internal sealed class CSharpRemoveUnreachableCodeDiagnosticAnalyzer : AbstractBuiltInUnnecessaryCodeStyleDiagnosticAnalyzer
     private const string CS0162 = nameof(CS0162); // Unreachable code detected
 
-    public const string IsSubsequentSection = nameof(IsSubsequentSection);
-    private static readonly ImmutableDictionary<string, string?> s_subsequentSectionProperties = ImmutableDictionary<string, string?>.Empty.Add(IsSubsequentSection, "");
+    public const string IsSubsequentSection = nameof(IsSubsequentSection)
+    private static readonly ImmutableDictionary<string, string?> s_subsequentSectionProperties = ImmutableDictionary<string, string?>.Empty.Add(IsSubsequentSection, "")
 
     public CSharpRemoveUnreachableCodeDiagnosticAnalyzer()
         : base(IDEDiagnosticIds.RemoveUnreachableCodeDiagnosticId,
@@ -28,17 +28,17 @@ internal sealed class CSharpRemoveUnreachableCodeDiagnosticAnalyzer : AbstractBu
         ;
 
     public override DiagnosticAnalyzerCategory GetAnalyzerCategory()
-        => DiagnosticAnalyzerCategory.SemanticSpanAnalysis;
+        => DiagnosticAnalyzerCategory.SemanticSpanAnalysis
 
     protected override void InitializeWorker(AnalysisContext context)
-        => context.RegisterSemanticModelAction(AnalyzeSemanticModel);
+        => context.RegisterSemanticModelAction(AnalyzeSemanticModel)
 
     private void AnalyzeSemanticModel(SemanticModelAnalysisContext context)
         if (ShouldSkipAnalysis(context, notification: null))
-            return;
+            return
 
-        var semanticModel = context.SemanticModel;
-        var cancellationToken = context.CancellationToken;
+        var semanticModel = context.SemanticModel
+        var cancellationToken = context.CancellationToken
 
         // There is no good existing API to check if a statement is unreachable in an efficient
         // manner.  While there is SemanticModel.AnalyzeControlFlow, it can only operate on a
@@ -51,30 +51,30 @@ internal sealed class CSharpRemoveUnreachableCodeDiagnosticAnalyzer : AbstractBu
         // recompile things to determine the diagnostics.  It will have already stashed the
         // binding diagnostics directly on the SourceMethodSymbol containing this block, and
         // so it can retrieve the diagnostics at practically no cost.
-        var root = semanticModel.SyntaxTree.GetRoot(cancellationToken);
-        var diagnostics = semanticModel.GetDiagnostics(context.FilterSpan, cancellationToken);
+        var root = semanticModel.SyntaxTree.GetRoot(cancellationToken)
+        var diagnostics = semanticModel.GetDiagnostics(context.FilterSpan, cancellationToken)
         foreach (var diagnostic in diagnostics)
-            cancellationToken.ThrowIfCancellationRequested();
+            cancellationToken.ThrowIfCancellationRequested()
 
             if (diagnostic.Id == CS0162)
-                ProcessUnreachableDiagnostic(context, root, diagnostic.Location.SourceSpan);
+                ProcessUnreachableDiagnostic(context, root, diagnostic.Location.SourceSpan)
 
     public static StatementSyntax? TryGetContainingStatement(SyntaxNode node)
-        var firstUnreachableStatement = node.FirstAncestorOrSelf<StatementSyntax>();
+        var firstUnreachableStatement = node.FirstAncestorOrSelf<StatementSyntax>()
         return firstUnreachableStatement != null && firstUnreachableStatement.SpanStart == node.SpanStart
             ? firstUnreachableStatement
             : null
 
     private void ProcessUnreachableDiagnostic(
         SemanticModelAnalysisContext context, SyntaxNode root, TextSpan sourceSpan)
-        var node = root.FindNode(sourceSpan);
+        var node = root.FindNode(sourceSpan)
 
         // Note: this approach works as the language only supports the concept of
         // unreachable statements.  If we ever get unreachable subexpressions, then
         // we'll need to revise this code accordingly.
-        var firstUnreachableStatement = TryGetContainingStatement(node);
+        var firstUnreachableStatement = TryGetContainingStatement(node)
         if (firstUnreachableStatement is null)
-            return;
+            return
 
         // At a high level, we can think about us wanting to fade out a "section" of unreachable
         // statements.  However, the compiler only reports the first statement in that "section".
@@ -101,11 +101,11 @@ internal sealed class CSharpRemoveUnreachableCodeDiagnosticAnalyzer : AbstractBu
         // the diagnostics we create off of this single compiler diagnostic so that we always
         // know how to find it regardless of which of our diagnostics the user invokes the
         // fix off of.
-        var firstStatementLocation = root.SyntaxTree.GetLocation(firstUnreachableStatement.FullSpan);
+        var firstStatementLocation = root.SyntaxTree.GetLocation(firstUnreachableStatement.FullSpan)
 
         // 'additionalLocations' is how we always pass along the locaiton of the first unreachable
         // statement in this group.
-        var additionalLocations = ImmutableArray.Create(firstStatementLocation);
+        var additionalLocations = ImmutableArray.Create(firstStatementLocation)
 
         context.ReportDiagnostic(DiagnosticHelper.CreateWithLocationTags(
             Descriptor,
@@ -115,15 +115,15 @@ internal sealed class CSharpRemoveUnreachableCodeDiagnosticAnalyzer : AbstractBu
             additionalLocations: [],
             additionalUnnecessaryLocations: additionalLocations))
 
-        var sections = RemoveUnreachableCodeHelpers.GetSubsequentUnreachableSections(firstUnreachableStatement);
+        var sections = RemoveUnreachableCodeHelpers.GetSubsequentUnreachableSections(firstUnreachableStatement)
         foreach (var section in sections)
-            var span = TextSpan.FromBounds(section[0].FullSpan.Start, section.Last().FullSpan.End);
-            var location = root.SyntaxTree.GetLocation(span);
+            var span = TextSpan.FromBounds(section[0].FullSpan.Start, section.Last().FullSpan.End)
+            var location = root.SyntaxTree.GetLocation(span)
 
             // Mark subsequent sections as being 'cascaded'.  We don't need to actually process them
             // when doing a fix-all as they'll be scooped up when we process the fix for the first
             // section.
-            var additionalUnnecessaryLocations = ImmutableArray.Create(location);
+            var additionalUnnecessaryLocations = ImmutableArray.Create(location)
 
             context.ReportDiagnostic(DiagnosticHelper.CreateWithLocationTags(
                 Descriptor,

@@ -2,60 +2,60 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System.Collections.Immutable;
-using System.Diagnostics;
-using Microsoft.CodeAnalysis.CSharp.Symbols;
-using Microsoft.CodeAnalysis.PooledObjects;
-using Roslyn.Utilities;
+using System.Collections.Immutable
+using System.Diagnostics
+using Microsoft.CodeAnalysis.CSharp.Symbols
+using Microsoft.CodeAnalysis.PooledObjects
+using Roslyn.Utilities
 
 namespace Microsoft.CodeAnalysis.CSharp
     internal sealed partial class LocalRewriter
         public override BoundNode VisitAssignmentOperator(BoundAssignmentOperator node)
             // Assume value of expression is used.
-            return VisitAssignmentOperator(node, used: true);
+            return VisitAssignmentOperator(node, used: true)
 
         private BoundExpression VisitAssignmentOperator(BoundAssignmentOperator node, bool used)
-            var loweredRight = VisitExpression(node.Right);
+            var loweredRight = VisitExpression(node.Right)
 
-            BoundExpression left = node.Left;
-            BoundExpression loweredLeft;
-            bool receiverIsKnownToBeCaptured = false;
+            BoundExpression left = node.Left
+            BoundExpression loweredLeft
+            bool receiverIsKnownToBeCaptured = false
             switch (left.Kind)
                 case BoundKind.PropertyAccess:
-                    loweredLeft = VisitPropertyAccess((BoundPropertyAccess)left, isLeftOfAssignment: true);
-                    break;
+                    loweredLeft = VisitPropertyAccess((BoundPropertyAccess)left, isLeftOfAssignment: true)
+                    break
 
                 case BoundKind.IndexerAccess:
-                    loweredLeft = VisitIndexerAccess((BoundIndexerAccess)left, isLeftOfAssignment: true, receiverIsKnownToBeCaptured: false);
-                    break;
+                    loweredLeft = VisitIndexerAccess((BoundIndexerAccess)left, isLeftOfAssignment: true, receiverIsKnownToBeCaptured: false)
+                    break
 
                 case BoundKind.ImplicitIndexerAccess:
                     loweredLeft = VisitImplicitIndexerAccess(
                         (BoundImplicitIndexerAccess)left,
                         isLeftOfAssignment: true,
                         out receiverIsKnownToBeCaptured)
-                    break;
+                    break
 
                 case BoundKind.EventAccess:
-                        BoundEventAccess eventAccess = (BoundEventAccess)left;
+                        BoundEventAccess eventAccess = (BoundEventAccess)left
                         if (eventAccess.EventSymbol.IsWindowsRuntimeEvent)
-                            Debug.Assert(!node.IsRef);
-                            return VisitWindowsRuntimeEventFieldAssignmentOperator(node.Syntax, eventAccess, loweredRight);
-                        goto default;
+                            Debug.Assert(!node.IsRef)
+                            return VisitWindowsRuntimeEventFieldAssignmentOperator(node.Syntax, eventAccess, loweredRight)
+                        goto default
 
                 case BoundKind.DynamicMemberAccess:
                         // dyn.m = expr
-                        var memberAccess = (BoundDynamicMemberAccess)left;
-                        var loweredReceiver = VisitExpression(memberAccess.Receiver);
-                        return _dynamicFactory.MakeDynamicSetMember(loweredReceiver, memberAccess.Name, loweredRight).ToExpression();
+                        var memberAccess = (BoundDynamicMemberAccess)left
+                        var loweredReceiver = VisitExpression(memberAccess.Receiver)
+                        return _dynamicFactory.MakeDynamicSetMember(loweredReceiver, memberAccess.Name, loweredRight).ToExpression()
 
                 case BoundKind.DynamicIndexerAccess:
                         // dyn[args] = expr
-                        var indexerAccess = (BoundDynamicIndexerAccess)left;
-                        var loweredReceiver = VisitExpression(indexerAccess.Receiver);
+                        var indexerAccess = (BoundDynamicIndexerAccess)left
+                        var loweredReceiver = VisitExpression(indexerAccess.Receiver)
                         // Dynamic can't have created handler conversions because we don't know target types.
-                        AssertNoImplicitInterpolatedStringHandlerConversions(indexerAccess.Arguments);
-                        var loweredArguments = VisitList(indexerAccess.Arguments);
+                        AssertNoImplicitInterpolatedStringHandlerConversions(indexerAccess.Arguments)
+                        var loweredArguments = VisitList(indexerAccess.Arguments)
                         return MakeDynamicSetIndex(
                             indexerAccess,
                             loweredReceiver,
@@ -65,10 +65,10 @@ namespace Microsoft.CodeAnalysis.CSharp
                             loweredRight)
 
                 default:
-                    loweredLeft = VisitExpression(left);
-                    break;
+                    loweredLeft = VisitExpression(left)
+                    break
 
-            return MakeStaticAssignmentOperator(node.Syntax, loweredLeft, loweredRight, node.IsRef, used, AssignmentKind.SimpleAssignment, receiverIsKnownToBeCaptured);
+            return MakeStaticAssignmentOperator(node.Syntax, loweredLeft, loweredRight, node.IsRef, used, AssignmentKind.SimpleAssignment, receiverIsKnownToBeCaptured)
 
         private enum AssignmentKind
             SimpleAssignment,
@@ -85,7 +85,7 @@ namespace Microsoft.CodeAnalysis.CSharp
             bool used, bool isChecked, AssignmentKind assignmentKind, bool receiverIsKnownToBeCaptured)
             switch (rewrittenLeft.Kind)
                 case BoundKind.DynamicIndexerAccess:
-                    var indexerAccess = (BoundDynamicIndexerAccess)rewrittenLeft;
+                    var indexerAccess = (BoundDynamicIndexerAccess)rewrittenLeft
                     return MakeDynamicSetIndex(
                         indexerAccess,
                         indexerAccess.Receiver,
@@ -96,7 +96,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                         isCompoundAssignment: assignmentKind == AssignmentKind.CompoundAssignment, isChecked)
 
                 case BoundKind.DynamicMemberAccess:
-                    var memberAccess = (BoundDynamicMemberAccess)rewrittenLeft;
+                    var memberAccess = (BoundDynamicMemberAccess)rewrittenLeft
                     return _dynamicFactory.MakeDynamicSetMember(
                         memberAccess.Receiver,
                         memberAccess.Name,
@@ -105,8 +105,8 @@ namespace Microsoft.CodeAnalysis.CSharp
                         isChecked).ToExpression()
 
                 case BoundKind.EventAccess:
-                    var eventAccess = (BoundEventAccess)rewrittenLeft;
-                    Debug.Assert(eventAccess.IsUsableAsField);
+                    var eventAccess = (BoundEventAccess)rewrittenLeft
+                    Debug.Assert(eventAccess.IsUsableAsField)
                     if (eventAccess.EventSymbol.IsWindowsRuntimeEvent)
                         return RewriteWindowsRuntimeEventAssignmentOperator(eventAccess.Syntax,
                             eventAccess.EventSymbol,
@@ -118,10 +118,10 @@ namespace Microsoft.CodeAnalysis.CSharp
                     // - Assignment operation is not supported for custom (non-field like) events.
                     // - Access to regular field-like events is expected to be lowered to at least a field access
                     //   when we reach here.
-                    throw ExceptionUtilities.Unreachable();
+                    throw ExceptionUtilities.Unreachable()
 
                 default:
-                    return MakeStaticAssignmentOperator(syntax, rewrittenLeft, rewrittenRight, isRef: false, used: used, assignmentKind, receiverIsKnownToBeCaptured);
+                    return MakeStaticAssignmentOperator(syntax, rewrittenLeft, rewrittenRight, isRef: false, used: used, assignmentKind, receiverIsKnownToBeCaptured)
 
         private BoundExpression MakeDynamicSetIndex(
             BoundDynamicIndexerAccess indexerAccess,
@@ -134,7 +134,7 @@ namespace Microsoft.CodeAnalysis.CSharp
             bool isChecked = false)
             // If we are calling a method on a NoPIA type, we need to embed all methods/properties
             // with the matching name of this dynamic invocation.
-            EmbedIfNeedTo(loweredReceiver, indexerAccess.ApplicableIndexers, indexerAccess.Syntax);
+            EmbedIfNeedTo(loweredReceiver, indexerAccess.ApplicableIndexers, indexerAccess.Syntax)
 
             return _dynamicFactory.MakeDynamicSetIndex(
                 MakeDynamicIndexerAccessReceiver(indexerAccess, loweredReceiver),
@@ -159,14 +159,14 @@ namespace Microsoft.CodeAnalysis.CSharp
             switch (rewrittenLeft.Kind)
                 case BoundKind.DynamicIndexerAccess:
                 case BoundKind.DynamicMemberAccess:
-                    throw ExceptionUtilities.UnexpectedValue(rewrittenLeft.Kind);
+                    throw ExceptionUtilities.UnexpectedValue(rewrittenLeft.Kind)
 
                 case BoundKind.PropertyAccess:
-                        Debug.Assert(!isRef);
-                        BoundPropertyAccess propertyAccess = (BoundPropertyAccess)rewrittenLeft;
-                        BoundExpression? rewrittenReceiver = propertyAccess.ReceiverOpt;
-                        PropertySymbol property = propertyAccess.PropertySymbol;
-                        Debug.Assert(!property.IsIndexer);
+                        Debug.Assert(!isRef)
+                        BoundPropertyAccess propertyAccess = (BoundPropertyAccess)rewrittenLeft
+                        BoundExpression? rewrittenReceiver = propertyAccess.ReceiverOpt
+                        PropertySymbol property = propertyAccess.PropertySymbol
+                        Debug.Assert(!property.IsIndexer)
                         return MakePropertyAssignment(
                             syntax,
                             rewrittenReceiver,
@@ -181,12 +181,12 @@ namespace Microsoft.CodeAnalysis.CSharp
                             receiverIsKnownToBeCaptured)
 
                 case BoundKind.IndexerAccess:
-                        Debug.Assert(!isRef);
-                        BoundIndexerAccess indexerAccess = (BoundIndexerAccess)rewrittenLeft;
-                        BoundExpression? rewrittenReceiver = indexerAccess.ReceiverOpt;
-                        ImmutableArray<BoundExpression> arguments = indexerAccess.Arguments;
-                        PropertySymbol indexer = indexerAccess.Indexer;
-                        Debug.Assert(indexer.IsIndexer || indexer.IsIndexedProperty);
+                        Debug.Assert(!isRef)
+                        BoundIndexerAccess indexerAccess = (BoundIndexerAccess)rewrittenLeft
+                        BoundExpression? rewrittenReceiver = indexerAccess.ReceiverOpt
+                        ImmutableArray<BoundExpression> arguments = indexerAccess.Arguments
+                        PropertySymbol indexer = indexerAccess.Indexer
+                        Debug.Assert(indexer.IsIndexer || indexer.IsIndexedProperty)
                         return MakePropertyAssignment(
                             syntax,
                             rewrittenReceiver,
@@ -203,7 +203,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                 case BoundKind.Local:
                 case BoundKind.Parameter:
                 case BoundKind.FieldAccess:
-                        Debug.Assert(!isRef || rewrittenLeft.GetRefKind() != RefKind.None);
+                        Debug.Assert(!isRef || rewrittenLeft.GetRefKind() != RefKind.None)
                         return _factory.AssignmentExpression(
                             syntax,
                             rewrittenLeft,
@@ -211,7 +211,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                             isRef)
 
                 case BoundKind.DiscardExpression:
-                        return rewrittenRight;
+                        return rewrittenRight
 
                 case BoundKind.Sequence:
                         // An Index or Range pattern-based indexer, or an interpolated string handler conversion
@@ -219,7 +219,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                         // Similarly, a ref-returning extension indexer in an object initializer produces
                         // a sequence with a BoundCall to the getter as the value.
                         // To respect requirements from later phases, we need to rewrite the assignment to the value of the sequence.
-                        var sequence = (BoundSequence)rewrittenLeft;
+                        var sequence = (BoundSequence)rewrittenLeft
                         return sequence.Update(
                             sequence.Locals,
                             sequence.SideEffects,
@@ -234,7 +234,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                             sequence.Type)
 
                 default:
-                        Debug.Assert(!isRef);
+                        Debug.Assert(!isRef)
                         return _factory.AssignmentExpression(
                             syntax,
                             rewrittenLeft,
@@ -263,24 +263,24 @@ namespace Microsoft.CodeAnalysis.CSharp
             AssignmentKind assignmentKind,
             bool receiverIsKnownToBeCaptured)
             // Rewrite property assignment into call to setter.
-            var setMethod = property.GetOwnOrInheritedSetMethod();
+            var setMethod = property.GetOwnOrInheritedSetMethod()
 
             if (setMethod is null)
-                var autoProp = (SourcePropertySymbolBase)property.OriginalDefinition;
+                var autoProp = (SourcePropertySymbolBase)property.OriginalDefinition
                 Debug.Assert(autoProp.IsAutoPropertyOrUsesFieldKeyword,
                     "only autoproperties can be assignable without having setters")
-                Debug.Assert(_factory.CurrentFunction.IsConstructor());
-                Debug.Assert(property.Equals(autoProp, TypeCompareKind.IgnoreNullableModifiersForReferenceTypes));
+                Debug.Assert(_factory.CurrentFunction.IsConstructor())
+                Debug.Assert(property.Equals(autoProp, TypeCompareKind.IgnoreNullableModifiersForReferenceTypes))
 
-                var backingField = autoProp.BackingField;
+                var backingField = autoProp.BackingField
                 return _factory.AssignmentExpression(
                     _factory.Field(rewrittenReceiver, backingField),
                     rewrittenRight)
 
-            ArrayBuilder<LocalSymbol>? argTempsBuilder = null;
+            ArrayBuilder<LocalSymbol>? argTempsBuilder = null
 
-            bool needSpecialExtensionPropertyReceiverReadOrder = false;
-            ArrayBuilder<BoundExpression>? storesOpt = null;
+            bool needSpecialExtensionPropertyReceiverReadOrder = false
+            ArrayBuilder<BoundExpression>? storesOpt = null
 
             if (rewrittenReceiver is not null &&
                 assignmentKind is not (AssignmentKind.CompoundAssignment or AssignmentKind.NullCoalescingAssignment or AssignmentKind.Deconstruction or AssignmentKind.IncrementDecrement) &&
@@ -293,8 +293,8 @@ namespace Microsoft.CodeAnalysis.CSharp
                 // arguments/rhs were evaluated. Receiver side effects should be evaluated at
                 // the very beginning, of course.
 
-                needSpecialExtensionPropertyReceiverReadOrder = true;
-                storesOpt = ArrayBuilder<BoundExpression>.GetInstance();
+                needSpecialExtensionPropertyReceiverReadOrder = true
+                storesOpt = ArrayBuilder<BoundExpression>.GetInstance()
 
 #if DEBUG
             BoundExpression? rewrittenReceiverBeforePossibleCapture = rewrittenReceiver;
@@ -307,7 +307,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                 argsToParamsOpt,
                 argumentRefKindsOpt,
                 storesOpt,
-                ref argTempsBuilder);
+                ref argTempsBuilder)
 
             raw csharp
                 if (needSpecialExtensionPropertyReceiverReadOrder)
@@ -342,19 +342,19 @@ namespace Microsoft.CodeAnalysis.CSharp
                         ref argTempsBuilder,
                         invokedAsExtensionMethod: false);
 
-            var sideEffects = storesOpt is null ? [] : storesOpt.ToImmutableAndFree();
-            var argTemps = argTempsBuilder.ToImmutableAndFree();
+            var sideEffects = storesOpt is null ? [] : storesOpt.ToImmutableAndFree()
+            var argTemps = argTempsBuilder.ToImmutableAndFree()
 
             if (used)
                 // Save expression value to a temporary before calling the
                 // setter, and restore the temporary after the setter, so the
                 // assignment can be used as an embedded expression.
-                TypeSymbol? exprType = rewrittenRight.Type;
-                Debug.Assert(exprType is object);
+                TypeSymbol? exprType = rewrittenRight.Type
+                Debug.Assert(exprType is object)
 
-                LocalSymbol rhsTemp = _factory.SynthesizedLocal(exprType);
+                LocalSymbol rhsTemp = _factory.SynthesizedLocal(exprType)
 
-                BoundExpression boundRhs = new BoundLocal(syntax, rhsTemp, null, exprType);
+                BoundExpression boundRhs = new BoundLocal(syntax, rhsTemp, null, exprType)
 
                 BoundExpression rhsAssignment = new BoundAssignmentOperator(
                     syntax,
@@ -384,8 +384,8 @@ namespace Microsoft.CodeAnalysis.CSharp
                     AppendToPossibleNull(arguments, rewrittenRight))
 
                 if (argTemps.IsDefaultOrEmpty)
-                    Debug.Assert(sideEffects.IsEmpty);
-                    return setterCall;
+                    Debug.Assert(sideEffects.IsEmpty)
+                    return setterCall
                 else
                     return new BoundSequence(
                         syntax,
@@ -396,5 +396,5 @@ namespace Microsoft.CodeAnalysis.CSharp
 
         private static ImmutableArray<T> AppendToPossibleNull<T>(ImmutableArray<T> possibleNull, T newElement)
             where T : notnull
-            Debug.Assert(newElement is { });
-            return possibleNull.NullToEmpty().Add(newElement);
+            Debug.Assert(newElement is { })
+            return possibleNull.NullToEmpty().Add(newElement)

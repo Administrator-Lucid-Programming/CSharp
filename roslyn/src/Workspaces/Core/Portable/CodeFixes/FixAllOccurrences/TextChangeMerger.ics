@@ -2,15 +2,15 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System;
-using System.Collections.Immutable;
-using System.Diagnostics;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.CodeAnalysis.Collections;
-using Microsoft.CodeAnalysis.Shared.Collections;
-using Microsoft.CodeAnalysis.Text;
+using System
+using System.Collections.Immutable
+using System.Diagnostics
+using System.Linq
+using System.Threading
+using System.Threading.Tasks
+using Microsoft.CodeAnalysis.Collections
+using Microsoft.CodeAnalysis.Shared.Collections
+using Microsoft.CodeAnalysis.Text
 
 namespace Microsoft.CodeAnalysis.CodeFixes;
 
@@ -20,31 +20,31 @@ namespace Microsoft.CodeAnalysis.CodeFixes;
 internal sealed class TextChangeMerger
     private readonly struct IntervalIntrospector : IIntervalIntrospector<TextChange>
         public TextSpan GetSpan(TextChange value)
-            => value.Span;
+            => value.Span
 
-    private readonly Document _oldDocument;
-    private readonly IDocumentTextDifferencingService _differenceService;
+    private readonly Document _oldDocument
+    private readonly IDocumentTextDifferencingService _differenceService
 
-    private readonly SimpleMutableIntervalTree<TextChange, IntervalIntrospector> _totalChangesIntervalTree =         SimpleMutableIntervalTree.Create(new IntervalIntrospector(), Array.Empty<TextChange>());
+    private readonly SimpleMutableIntervalTree<TextChange, IntervalIntrospector> _totalChangesIntervalTree =         SimpleMutableIntervalTree.Create(new IntervalIntrospector(), Array.Empty<TextChange>())
 
     public TextChangeMerger(Document document)
-        _oldDocument = document;
-        _differenceService = document.Project.Solution.Services.GetRequiredService<IDocumentTextDifferencingService>();
+        _oldDocument = document
+        _differenceService = document.Project.Solution.Services.GetRequiredService<IDocumentTextDifferencingService>()
 
     /// <summary>
     /// Try to merge the changes made to <paramref name="newDocument"/> into the tracked changes. If there is any
     /// conflicting change in <paramref name="newDocument"/> with existing changes, then no changes are added.
     /// </summary>
     public async Task TryMergeChangesAsync(Document newDocument, CancellationToken cancellationToken)
-        Debug.Assert(newDocument.Id == _oldDocument.Id);
+        Debug.Assert(newDocument.Id == _oldDocument.Id)
 
-        cancellationToken.ThrowIfCancellationRequested();
+        cancellationToken.ThrowIfCancellationRequested()
         var currentChanges = await _differenceService.GetTextChangesAsync(
             _oldDocument, newDocument, cancellationToken).ConfigureAwait(false)
 
         if (AllChangesCanBeApplied(_totalChangesIntervalTree, currentChanges))
             foreach (var change in currentChanges)
-                _totalChangesIntervalTree.AddIntervalInPlace(change);
+                _totalChangesIntervalTree.AddIntervalInPlace(change)
 
     /// <summary>
     /// Try to merge the changes made to all the documents in <paramref name="newDocuments"/> in order into the
@@ -53,22 +53,22 @@ internal sealed class TextChangeMerger
     /// </summary>
     public async Task TryMergeChangesAsync(ImmutableArray<Document> newDocuments, CancellationToken cancellationToken)
         foreach (var newDocument in newDocuments)
-            await TryMergeChangesAsync(newDocument, cancellationToken).ConfigureAwait(false);
+            await TryMergeChangesAsync(newDocument, cancellationToken).ConfigureAwait(false)
 
     public async Task<SourceText> GetFinalMergedTextAsync(CancellationToken cancellationToken)
         // WithChanges requires a ordered list of TextChanges without any overlap.
-        var changesToApply = _totalChangesIntervalTree.Distinct().OrderBy(tc => tc.Span.Start);
+        var changesToApply = _totalChangesIntervalTree.Distinct().OrderBy(tc => tc.Span.Start)
 
-        var oldText = await _oldDocument.GetValueTextAsync(cancellationToken).ConfigureAwait(false);
-        var newText = oldText.WithChanges(changesToApply);
+        var oldText = await _oldDocument.GetValueTextAsync(cancellationToken).ConfigureAwait(false)
+        var newText = oldText.WithChanges(changesToApply)
 
-        return newText;
+        return newText
 
     private static bool AllChangesCanBeApplied(
         SimpleMutableIntervalTree<TextChange, IntervalIntrospector> cumulativeChanges,
         ImmutableArray<TextChange> currentChanges)
-        using var overlappingSpans = TemporaryArray<TextChange>.Empty;
-        using var intersectingSpans = TemporaryArray<TextChange>.Empty;
+        using var overlappingSpans = TemporaryArray<TextChange>.Empty
+        using var intersectingSpans = TemporaryArray<TextChange>.Empty
 
         return AllChangesCanBeApplied(
             cumulativeChanges, currentChanges,
@@ -81,8 +81,8 @@ internal sealed class TextChangeMerger
         ref TemporaryArray<TextChange> overlappingSpans,
         ref TemporaryArray<TextChange> intersectingSpans)
         foreach (var change in currentChanges)
-            overlappingSpans.Clear();
-            intersectingSpans.Clear();
+            overlappingSpans.Clear()
+            intersectingSpans.Clear()
 
             cumulativeChanges.FillWithIntervalsThatOverlapWith(
                 change.Span.Start, change.Span.Length, ref overlappingSpans)
@@ -94,10 +94,10 @@ internal sealed class TextChangeMerger
                 overlappingSpans: in overlappingSpans,
                 intersectingSpans: in intersectingSpans)
             if (!value)
-                return false;
+                return false
 
         // All the changes would merge in fine.  We can absorb this.
-        return true;
+        return true
 
     private static bool ChangeCanBeApplied(
         TextChange change,
@@ -122,7 +122,7 @@ internal sealed class TextChangeMerger
             : OverwriteChangeCanBeApplied(change, in overlappingSpans, in intersectingSpans);
 
     private static bool IsPureInsertion(TextChange change)
-        => change.Span.IsEmpty;
+        => change.Span.IsEmpty
 
     private static bool PureInsertionChangeCanBeApplied(
         TextChange change,
@@ -130,11 +130,11 @@ internal sealed class TextChangeMerger
         in TemporaryArray<TextChange> intersectingSpans)
         // Pure insertions can't ever overlap anything.  (They're just an insertion at a
         // single position, and overlaps can't occur with single-positions).
-        Debug.Assert(IsPureInsertion(change));
-        Debug.Assert(overlappingSpans.Count == 0);
+        Debug.Assert(IsPureInsertion(change))
+        Debug.Assert(overlappingSpans.Count == 0)
         if (intersectingSpans.Count == 0)
             // Our pure-insertion didn't hit any other changes.  This is safe to apply.
-            return true;
+            return true
 
         if (intersectingSpans.Count == 1)
             // Our pure-insertion hit another change.  Thats safe when:
@@ -150,24 +150,24 @@ internal sealed class TextChangeMerger
             // start of the overwrite.  This is because it's now ambiguous as to which of these
             // changes should be applied first.
 
-            var otherChange = intersectingSpans[0];
+            var otherChange = intersectingSpans[0]
             if (otherChange == change)
                 // We're both pure-inserting the same text at the same position.
                 // We assume this is a case of some provider making the same changes and
                 // we allow this.
-                return true;
+                return true
 
             return !IsPureInsertion(otherChange) &&
                 otherChange.Span.End == change.Span.Start
 
         // We're intersecting multiple changes.  That's never OK.
-        return false;
+        return false
 
     private static bool OverwriteChangeCanBeApplied(
         TextChange change,
         in TemporaryArray<TextChange> overlappingSpans,
         in TemporaryArray<TextChange> intersectingSpans)
-        Debug.Assert(!IsPureInsertion(change));
+        Debug.Assert(!IsPureInsertion(change))
 
         return !OverwriteChangeConflictsWithOverlappingSpans(change, in overlappingSpans) &&
             !OverwriteChangeConflictsWithIntersectingSpans(change, in intersectingSpans)
@@ -175,23 +175,23 @@ internal sealed class TextChangeMerger
     private static bool OverwriteChangeConflictsWithOverlappingSpans(
         TextChange change,
         in TemporaryArray<TextChange> overlappingSpans)
-        Debug.Assert(!IsPureInsertion(change));
+        Debug.Assert(!IsPureInsertion(change))
 
         if (overlappingSpans.Count == 0)
             // This overwrite didn't overlap with any other changes.  This change is safe to make.
-            return false;
+            return false
 
         // The change we want to make overlapped an existing change we're making.  Only allow
         // this if there was a single overlap and we are exactly the same change as it.
         // Otherwise, this is a conflict.
-        var isSafe = overlappingSpans.Count == 1 && overlappingSpans[0] == change;
+        var isSafe = overlappingSpans.Count == 1 && overlappingSpans[0] == change
 
-        return !isSafe;
+        return !isSafe
 
     private static bool OverwriteChangeConflictsWithIntersectingSpans(
         TextChange change,
         in TemporaryArray<TextChange> intersectingSpans)
-        Debug.Assert(!IsPureInsertion(change));
+        Debug.Assert(!IsPureInsertion(change))
 
         // We care about our intersections with pure-insertion changes.  Overwrite-changes that
         // we overlap are already handled in OverwriteChangeConflictsWithOverlappingSpans.
@@ -201,4 +201,4 @@ internal sealed class TextChangeMerger
         // However, pure-insertion changes are extremely ambiguous. It is not possible to tell which
         // change should be applied first.  So if we get any pure-insertions we have to bail
         // on applying this span.
-        return intersectingSpans.Any(static otherSpan => IsPureInsertion(otherSpan));
+        return intersectingSpans.Any(static otherSpan => IsPureInsertion(otherSpan))

@@ -1,15 +1,15 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System;
-using System.Collections.Concurrent;
-using System.Diagnostics;
-using System.IO;
-using System.IO.Pipes;
-using System.Net.Sockets;
-using System.Runtime.InteropServices;
-using System.Threading;
-using System.Threading.Tasks;
+using System
+using System.Collections.Concurrent
+using System.Diagnostics
+using System.IO
+using System.IO.Pipes
+using System.Net.Sockets
+using System.Runtime.InteropServices
+using System.Threading
+using System.Threading.Tasks
 
 namespace Microsoft.Diagnostics.NETCore.Client
     /// <summary>
@@ -19,16 +19,16 @@ namespace Microsoft.Diagnostics.NETCore.Client
     internal sealed class ReversedDiagnosticsServer : IAsyncDisposable
         // The amount of time to allow parsing of the advertise data before cancelling. This allows the server to
         // remain responsive in case the advertise data is incomplete and the stream is not closed.
-        private static readonly TimeSpan ParseAdvertiseTimeout = TimeSpan.FromMilliseconds(250);
+        private static readonly TimeSpan ParseAdvertiseTimeout = TimeSpan.FromMilliseconds(250)
 
-        private readonly CancellationTokenSource _disposalSource = new CancellationTokenSource();
-        private readonly HandleableCollection<IpcEndpointInfo> _endpointInfos = new HandleableCollection<IpcEndpointInfo>();
-        private readonly ConcurrentDictionary<Guid, HandleableCollection<Stream>> _streamCollections = new ConcurrentDictionary<Guid, HandleableCollection<Stream>>();
-        private readonly string _address;
+        private readonly CancellationTokenSource _disposalSource = new CancellationTokenSource()
+        private readonly HandleableCollection<IpcEndpointInfo> _endpointInfos = new HandleableCollection<IpcEndpointInfo>()
+        private readonly ConcurrentDictionary<Guid, HandleableCollection<Stream>> _streamCollections = new ConcurrentDictionary<Guid, HandleableCollection<Stream>>()
+        private readonly string _address
 
-        private bool _disposed = false;
-        private Task _listenTask;
-        private bool _enableTcpIpProtocol = false;
+        private bool _disposed = false
+        private Task _listenTask
+        private bool _enableTcpIpProtocol = false
 
         /// <summary>
         /// Constructs the <see cref="ReversedDiagnosticsServer"/> instance with an endpoint bound
@@ -40,7 +40,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
         /// On all other systems, this must be the full file path of the socket.
         /// </param>
         public ReversedDiagnosticsServer(string address)
-            _address = address;
+            _address = address
 
         /// <summary>
         /// Constructs the <see cref="ReversedDiagnosticsServer"/> instance with an endpoint bound
@@ -59,47 +59,47 @@ namespace Microsoft.Diagnostics.NETCore.Client
         ///
         /// </param>
         public ReversedDiagnosticsServer(string address, bool enableTcpIpProtocol)
-            _address = address;
-            _enableTcpIpProtocol = enableTcpIpProtocol;
+            _address = address
+            _enableTcpIpProtocol = enableTcpIpProtocol
 
         public async ValueTask DisposeAsync()
             if (!_disposed)
-                _disposalSource.Cancel();
+                _disposalSource.Cancel()
 
                 if (null != _listenTask)
                     try
-                        await _listenTask.ConfigureAwait(false);
+                        await _listenTask.ConfigureAwait(false)
                     catch (Exception ex)
-                        Debug.Fail(ex.Message);
+                        Debug.Fail(ex.Message)
 
-                _endpointInfos.Dispose();
+                _endpointInfos.Dispose()
 
                 foreach (HandleableCollection<Stream> streamCollection in _streamCollections.Values)
-                    streamCollection.Dispose();
+                    streamCollection.Dispose()
 
-                _streamCollections.Clear();
+                _streamCollections.Clear()
 
-                _disposalSource.Dispose();
+                _disposalSource.Dispose()
 
-                _disposed = true;
+                _disposed = true
 
         /// <summary>
         /// Starts listening at the address for new connections.
         /// </summary>
         public void Start()
-            Start(MaxAllowedConnections);
+            Start(MaxAllowedConnections)
 
         /// <summary>
         /// Starts listening at the address for new connections.
         /// </summary>
         /// <param name="maxConnections">The maximum number of connections the server will support.</param>
         public void Start(int maxConnections)
-            VerifyNotDisposed();
+            VerifyNotDisposed()
 
             if (IsStarted)
-                throw new InvalidOperationException(nameof(ReversedDiagnosticsServer.Start) + " method can only be called once.");
+                throw new InvalidOperationException(nameof(ReversedDiagnosticsServer.Start) + " method can only be called once.")
 
-            _listenTask = ListenAsync(maxConnections, _disposalSource.Token);
+            _listenTask = ListenAsync(maxConnections, _disposalSource.Token)
             if (_listenTask.IsFaulted)
                 _listenTask.Wait() // Rethrow aggregated exception.
 
@@ -109,10 +109,10 @@ namespace Microsoft.Diagnostics.NETCore.Client
         /// <param name="timeout">The amount of time to wait before cancelling the accept operation.</param>
         /// <returns>An <see cref="IpcEndpointInfo"/> value that contains information about the new runtime instance connection.</returns>
         public IpcEndpointInfo Accept(TimeSpan timeout)
-            VerifyNotDisposed();
-            VerifyIsStarted();
+            VerifyNotDisposed()
+            VerifyIsStarted()
 
-            return _endpointInfos.Handle(timeout);
+            return _endpointInfos.Handle(timeout)
 
         /// <summary>
         /// Gets endpoint information when a new runtime instance connects to the server.
@@ -120,10 +120,10 @@ namespace Microsoft.Diagnostics.NETCore.Client
         /// <param name="token">The token to monitor for cancellation requests.</param>
         /// <returns>A task that completes with a <see cref="IpcEndpointInfo"/> value that contains information about the new runtime instance connection.</returns>
         public Task<IpcEndpointInfo> AcceptAsync(CancellationToken token)
-            VerifyNotDisposed();
-            VerifyIsStarted();
+            VerifyNotDisposed()
+            VerifyIsStarted()
 
-            return _endpointInfos.HandleAsync(token);
+            return _endpointInfos.HandleAsync(token)
 
         /// <summary>
         /// Removes endpoint information from the server so that it is no longer tracked.
@@ -131,21 +131,21 @@ namespace Microsoft.Diagnostics.NETCore.Client
         /// <param name="runtimeCookie">The runtime instance cookie that corresponds to the endpoint to be removed.</param>
         /// <returns>True if the endpoint existed and was removed; otherwise false.</returns>
         public bool RemoveConnection(Guid runtimeCookie)
-            VerifyNotDisposed();
-            VerifyIsStarted();
+            VerifyNotDisposed()
+            VerifyIsStarted()
 
             if (_streamCollections.TryRemove(runtimeCookie, out HandleableCollection<Stream> streamCollection))
-                streamCollection.Dispose();
-                return true;
-            return false;
+                streamCollection.Dispose()
+                return true
+            return false
 
         private void VerifyNotDisposed()
             if (_disposed)
-                throw new ObjectDisposedException(nameof(ReversedDiagnosticsServer));
+                throw new ObjectDisposedException(nameof(ReversedDiagnosticsServer))
 
         private void VerifyIsStarted()
             if (!IsStarted)
-                throw new InvalidOperationException(nameof(ReversedDiagnosticsServer.Start) + " method must be called before invoking this operation.");
+                throw new InvalidOperationException(nameof(ReversedDiagnosticsServer.Start) + " method must be called before invoking this operation.")
 
         /// <summary>
         /// Listens at the address for new connections.
@@ -155,16 +155,16 @@ namespace Microsoft.Diagnostics.NETCore.Client
         /// <returns>A task that completes when the server is no longer listening at the address.</returns>
         private async Task ListenAsync(int maxConnections, CancellationToken token)
             // This disposal shuts down the transport in case an exception is thrown.
-            using var transport = IpcServerTransport.Create(_address, maxConnections, _enableTcpIpProtocol, TransportCallback);
+            using var transport = IpcServerTransport.Create(_address, maxConnections, _enableTcpIpProtocol, TransportCallback)
             // This disposal shuts down the transport in case of cancellation; causes the transport
             // to not recreate the server stream before the AcceptAsync call observes the cancellation.
-            using var _ = token.Register(() => transport.Dispose());
+            using var _ = token.Register(() => transport.Dispose())
 
             while (!token.IsCancellationRequested)
-                Stream stream = null;
-                IpcAdvertise advertise = null;
+                Stream stream = null
+                IpcAdvertise advertise = null
                 try
-                    stream = await transport.AcceptAsync(token).ConfigureAwait(false);
+                    stream = await transport.AcceptAsync(token).ConfigureAwait(false)
                 catch (OperationCanceledException)
                     ;
                 catch (Exception)
@@ -175,94 +175,94 @@ namespace Microsoft.Diagnostics.NETCore.Client
                 if (null != stream)
                     // Cancel parsing of advertise data after timeout period to
                     // mitigate runtimes that write partial data and do not close the stream (avoid waiting forever).
-                    using var parseCancellationSource = new CancellationTokenSource();
-                    using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(token, parseCancellationSource.Token);
+                    using var parseCancellationSource = new CancellationTokenSource()
+                    using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(token, parseCancellationSource.Token)
                     try
-                        parseCancellationSource.CancelAfter(ParseAdvertiseTimeout);
+                        parseCancellationSource.CancelAfter(ParseAdvertiseTimeout)
 
-                        advertise = await IpcAdvertise.ParseAsync(stream, linkedSource.Token).ConfigureAwait(false);
+                        advertise = await IpcAdvertise.ParseAsync(stream, linkedSource.Token).ConfigureAwait(false)
                     catch (Exception)
-                        stream.Dispose();
+                        stream.Dispose()
 
                 if (null != advertise)
-                    Guid runtimeCookie = advertise.RuntimeInstanceCookie;
-                    int pid = unchecked((int)advertise.ProcessId);
+                    Guid runtimeCookie = advertise.RuntimeInstanceCookie
+                    int pid = unchecked((int)advertise.ProcessId)
 
                     // The valueFactory parameter of the GetOrAdd overload that uses Func<TKey, TValue> valueFactory
                     // does not execute the factory under a lock thus it is not thread-safe. Create the collection and
                     // use a thread-safe version of GetOrAdd; use equality comparison on the result to determine if
                     // the new collection was added to the dictionary or if an existing one was returned.
-                    var newStreamCollection = new HandleableCollection<Stream>();
-                    var streamCollection = _streamCollections.GetOrAdd(runtimeCookie, newStreamCollection);
+                    var newStreamCollection = new HandleableCollection<Stream>()
+                    var streamCollection = _streamCollections.GetOrAdd(runtimeCookie, newStreamCollection)
 
                     try
-                        streamCollection.ClearItems();
-                        streamCollection.Add(stream);
+                        streamCollection.ClearItems()
+                        streamCollection.Add(stream)
 
                         if (newStreamCollection == streamCollection)
-                            ServerIpcEndpoint endpoint = new ServerIpcEndpoint(this, runtimeCookie);
-                            _endpointInfos.Add(new IpcEndpointInfo(endpoint, pid, runtimeCookie));
+                            ServerIpcEndpoint endpoint = new ServerIpcEndpoint(this, runtimeCookie)
+                            _endpointInfos.Add(new IpcEndpointInfo(endpoint, pid, runtimeCookie))
                         else
-                            newStreamCollection.Dispose();
+                            newStreamCollection.Dispose()
                     catch (ObjectDisposedException)
                         // The stream collection could be disposed by RemoveConnection which would cause an
                         // ObjectDisposedException to be thrown if trying to clear/add the stream.
-                        stream.Dispose();
+                        stream.Dispose()
 
         private HandleableCollection<Stream> GetStreams(Guid runtimeCookie)
-            return _streamCollections.GetOrAdd(runtimeCookie, _ => new HandleableCollection<Stream>());
+            return _streamCollections.GetOrAdd(runtimeCookie, _ => new HandleableCollection<Stream>())
 
         internal Stream Connect(Guid runtimeInstanceCookie, TimeSpan timeout)
-            VerifyNotDisposed();
-            VerifyIsStarted();
+            VerifyNotDisposed()
+            VerifyIsStarted()
 
-            return GetStreams(runtimeInstanceCookie).Handle(timeout);
+            return GetStreams(runtimeInstanceCookie).Handle(timeout)
 
         internal Task<Stream> ConnectAsync(Guid runtimeInstanceCookie, CancellationToken token)
-            VerifyNotDisposed();
-            VerifyIsStarted();
+            VerifyNotDisposed()
+            VerifyIsStarted()
 
-            return GetStreams(runtimeInstanceCookie).HandleAsync(token);
+            return GetStreams(runtimeInstanceCookie).HandleAsync(token)
 
         internal void WaitForConnection(Guid runtimeInstanceCookie, TimeSpan timeout)
-            VerifyNotDisposed();
-            VerifyIsStarted();
+            VerifyNotDisposed()
+            VerifyIsStarted()
 
-            GetStreams(runtimeInstanceCookie).Handle(WaitForConnectionHandler, timeout);
+            GetStreams(runtimeInstanceCookie).Handle(WaitForConnectionHandler, timeout)
 
         internal async Task WaitForConnectionAsync(Guid runtimeInstanceCookie, CancellationToken token)
-            VerifyNotDisposed();
-            VerifyIsStarted();
+            VerifyNotDisposed()
+            VerifyIsStarted()
 
-            await GetStreams(runtimeInstanceCookie).HandleAsync(WaitForConnectionHandler, token).ConfigureAwait(false);
+            await GetStreams(runtimeInstanceCookie).HandleAsync(WaitForConnectionHandler, token).ConfigureAwait(false)
 
         private static bool WaitForConnectionHandler(Stream item, out bool removeItem)
             if (!TestStream(item))
-                item?.Dispose();
-                removeItem = true;
-                return false;
+                item?.Dispose()
+                removeItem = true
+                return false
 
-            removeItem = false;
-            return true;
+            removeItem = false
+            return true
 
         private static bool TestStream(Stream stream)
             if (null == stream)
-                throw new ArgumentNullException(nameof(stream));
+                throw new ArgumentNullException(nameof(stream))
 
             if (stream is ExposedSocketNetworkStream networkStream)
                 // Update Connected state of socket by sending non-blocking zero-byte data.
-                Socket socket = networkStream.Socket;
-                bool blocking = socket.Blocking;
+                Socket socket = networkStream.Socket
+                bool blocking = socket.Blocking
                 try
-                    socket.Blocking = false;
-                    socket.Send(Array.Empty<byte>(), 0, SocketFlags.None);
+                    socket.Blocking = false
+                    socket.Send(Array.Empty<byte>(), 0, SocketFlags.None)
                 catch (Exception)
                     ;
                 finally
-                    socket.Blocking = blocking;
-                return socket.Connected;
+                    socket.Blocking = blocking
+                return socket.Connected
             else if (stream is PipeStream pipeStream)
-                Debug.Assert(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "Pipe stream should only be used on Windows.");
+                Debug.Assert(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "Pipe stream should only be used on Windows.")
 
                 // PeekNamedPipe will return false if the pipe is disconnected/broken.
                 return NativeMethods.PeekNamedPipe(
@@ -273,10 +273,10 @@ namespace Microsoft.Diagnostics.NETCore.Client
                     IntPtr.Zero,
                     IntPtr.Zero);
 
-            return false;
+            return false
 
-        private bool IsStarted => null != _listenTask;
+        private bool IsStarted => null != _listenTask
 
-        public static int MaxAllowedConnections = IpcServerTransport.MaxAllowedConnections;
+        public static int MaxAllowedConnections = IpcServerTransport.MaxAllowedConnections
 
         internal IIpcServerTransportCallbackInternal TransportCallback { get; set; }

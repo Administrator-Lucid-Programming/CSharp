@@ -1,67 +1,67 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System;
-using System.Collections.Concurrent;
-using System.CommandLine;
-using System.CommandLine.Help;
-using System.CommandLine.Parsing;
-using System.Diagnostics;
-using System.Globalization;
-using System.IO.MemoryMappedFiles;
-using System.Reflection.Metadata;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-using Microsoft.Diagnostics.DataContractReader;
-using Microsoft.Diagnostics.DataContractReader.Contracts;
-using Microsoft.Win32.SafeHandles;
-using StressLogAnalyzer.Filters;
-using StressLogAnalyzer.Output;
+using System
+using System.Collections.Concurrent
+using System.CommandLine
+using System.CommandLine.Help
+using System.CommandLine.Parsing
+using System.Diagnostics
+using System.Globalization
+using System.IO.MemoryMappedFiles
+using System.Reflection.Metadata
+using System.Runtime.CompilerServices
+using System.Runtime.InteropServices
+using Microsoft.Diagnostics.DataContractReader
+using Microsoft.Diagnostics.DataContractReader.Contracts
+using Microsoft.Win32.SafeHandles
+using StressLogAnalyzer.Filters
+using StressLogAnalyzer.Output
 
 namespace StressLogAnalyzer;
 
 public static class Program
     private static unsafe int ReadFromMemoryMappedLog(ulong address, Span<byte> buffer, StressLogHeader* header)
         // First look at module data. This will translate all addresses that point to static data (like string literals).
-        ulong cumulativeSize = 0;
-        Span<byte> moduleImageData = header->moduleImageData;
+        ulong cumulativeSize = 0
+        Span<byte> moduleImageData = header->moduleImageData
         foreach (StressLogHeader.ModuleDesc module in header->moduleTable)
             if (address >= module.baseAddr && address + (uint)buffer.Length < module.baseAddr + module.size)
-                ulong moduleOffset = address - module.baseAddr;
-                Debug.Assert(cumulativeSize + moduleOffset < (ulong)moduleImageData.Length, "Address is out of bounds");
-                ulong bytesToCopy = ulong.Min((uint)buffer.Length, module.size - moduleOffset);
-                moduleImageData.Slice((int)(cumulativeSize + moduleOffset), (int)bytesToCopy).CopyTo(buffer);
-                return (int)bytesToCopy;
+                ulong moduleOffset = address - module.baseAddr
+                Debug.Assert(cumulativeSize + moduleOffset < (ulong)moduleImageData.Length, "Address is out of bounds")
+                ulong bytesToCopy = ulong.Min((uint)buffer.Length, module.size - moduleOffset)
+                moduleImageData.Slice((int)(cumulativeSize + moduleOffset), (int)bytesToCopy).CopyTo(buffer)
+                return (int)bytesToCopy
             else
-                cumulativeSize += module.size;
+                cumulativeSize += module.size
 
         // Otherwise, translate the signature for dynamically-allocated data based on the memory-mapped base address.
         if (address >= header->memoryBase && address + (uint)buffer.Length < header->memoryLimit)
-            ulong offset = address - header->memoryBase;
-            new Span<byte>((byte*)header + offset, buffer.Length).CopyTo(buffer);
-            return buffer.Length;
+            ulong offset = address - header->memoryBase
+            new Span<byte>((byte*)header + offset, buffer.Length).CopyTo(buffer)
+            return buffer.Length
 
-        return -1;
+        return -1
 
     public static async Task<int> Main(string[] args)
-        RootCommand rootCommand = CreateRootCommand();
-        ParseResult parsedArguments = rootCommand.Parse(args);
+        RootCommand rootCommand = CreateRootCommand()
+        ParseResult parsedArguments = rootCommand.Parse(args)
 
         while (true)
-            int result = await parsedArguments.InvokeAsync().ConfigureAwait(false);
+            int result = await parsedArguments.InvokeAsync().ConfigureAwait(false)
             if (result != 0 || parsedArguments.GetValue(SingleRunOption))
-                return result;
+                return result
 
-            Console.Write("'q' to quit, 'r[args]' to run again\n>");
+            Console.Write("'q' to quit, 'r[args]' to run again\n>")
             while (true)
-                string command = Console.ReadLine()!;
+                string command = Console.ReadLine()!
                 if (command.Equals("q", StringComparison.OrdinalIgnoreCase))
-                    return 0;
+                    return 0
                 else if (command[0] is 'r' or 'R')
                     // Parse the remaining string as new arguments for the analyzer.
-                    FileInfo inputFileArgument = parsedArguments.GetValue(InputFileArgument)!;
-                    parsedArguments = rootCommand.Parse($"\"{inputFileArgument.FullName}\" {command[1..]}");
-                    break;
+                    FileInfo inputFileArgument = parsedArguments.GetValue(InputFileArgument)!
+                    parsedArguments = rootCommand.Parse($"\"{inputFileArgument.FullName}\" {command[1..]}")
+                    break
 
     private static readonly Argument<FileInfo> InputFileArgument = new Argument<FileInfo>("log file") {
         Description = "The memory-mapped stress log file to analyze",
@@ -273,34 +273,34 @@ public static class Program
                 return await AnalyzeStressLog(options, ct).ConfigureAwait(false);
             });
 
-        return rootCommand;
+        return rootCommand
 
     private static async Task<int> AnalyzeStressLog(Options options, CancellationToken token)
-        using var stressLogData = MemoryMappedFile.CreateFromFile(options.InputFile.FullName, FileMode.Open, null, 0, MemoryMappedFileAccess.Read);
-        using MemoryMappedViewAccessor accessor = stressLogData.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read);
+        using var stressLogData = MemoryMappedFile.CreateFromFile(options.InputFile.FullName, FileMode.Open, null, 0, MemoryMappedFileAccess.Read)
+        using MemoryMappedViewAccessor accessor = stressLogData.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read)
 
         if (accessor.Capacity < sizeof(StressLogHeader))
-            Console.WriteLine("Invalid memory-mapped stress log");
-            return 1;
+            Console.WriteLine("Invalid memory-mapped stress log")
+            return 1
         try
-            (Func<Target> targetFactory, StressLogHeader.ModuleTable moduleTable, TargetPointer logs) = CreateTarget(accessor.SafeMemoryMappedViewHandle);
+            (Func<Target> targetFactory, StressLogHeader.ModuleTable moduleTable, TargetPointer logs) = CreateTarget(accessor.SafeMemoryMappedViewHandle)
 
-            Target globalTarget = targetFactory();
+            Target globalTarget = targetFactory()
 
-            IStressLog globalStressLogContract = globalTarget.Contracts.GetContract<IStressLog>();
+            IStressLog globalStressLogContract = globalTarget.Contracts.GetContract<IStressLog>()
 
-            using TextWriter? outputFile = options.OutputFile is not null ? File.CreateText(options.OutputFile.FullName) : null;
+            using TextWriter? outputFile = options.OutputFile is not null ? File.CreateText(options.OutputFile.FullName) : null
 
-            InterestingStringFinder stringFinder = new(globalTarget, moduleTable, options.FormatFilter ?? [], options.FormatPrefixFilter ?? [], options.IncludeDefaultMessages);
+            InterestingStringFinder stringFinder = new(globalTarget, moduleTable, options.FormatFilter ?? [], options.FormatPrefixFilter ?? [], options.IncludeDefaultMessages)
 
-            IMessageFilter messageFilter = CreateMessageFilter(options, stringFinder);
+            IMessageFilter messageFilter = CreateMessageFilter(options, stringFinder)
 
-            GCThreadMap gcThreadMap = new();
+            GCThreadMap gcThreadMap = new()
 
             IThreadNameOutput threadNameOutput = options.PrintHexThreadIds
                 ? new HexThreadNameOutput() : new GCThreadNameOutput(gcThreadMap)
 
-            TimeTracker timeTracker = CreateTimeTracker(accessor.SafeMemoryMappedViewHandle, options);
+            TimeTracker timeTracker = CreateTimeTracker(accessor.SafeMemoryMappedViewHandle, options)
 
             var analyzer = new StressLogAnalyzer(
                 globalTarget.Contracts.GetContract<IStressLog>,
@@ -321,76 +321,76 @@ public static class Program
                     outputFile ?? Console.Out),
                 token).ConfigureAwait(false)
 
-            PrintFooter(accessor.SafeMemoryMappedViewHandle, globalStressLogContract, logs, numProcessed, numPrinted);
+            PrintFooter(accessor.SafeMemoryMappedViewHandle, globalStressLogContract, logs, numProcessed, numPrinted)
 
-            return 0;
+            return 0
         finally
-            accessor.SafeMemoryMappedViewHandle.ReleasePointer();
+            accessor.SafeMemoryMappedViewHandle.ReleasePointer()
 
     private static unsafe void PrintFooter(SafeMemoryMappedViewHandle handle, IStressLog stressLogContract, TargetPointer logs, ulong numProcessed, ulong numPrinted)
-        byte* buffer = null;
+        byte* buffer = null
         try
-            handle.AcquirePointer(ref buffer);
-            StressLogHeader* header = (StressLogHeader*)buffer;
+            handle.AcquirePointer(ref buffer)
+            StressLogHeader* header = (StressLogHeader*)buffer
 
-            double usedSize = (double)(header->memoryCur - header->memoryBase) / (1024 * 1024 * 1024);
-            double availableSize = (double)(header->memoryLimit - header->memoryCur) / (1024 * 1024 * 1024);
+            double usedSize = (double)(header->memoryCur - header->memoryBase) / (1024 * 1024 * 1024)
+            double availableSize = (double)(header->memoryLimit - header->memoryCur) / (1024 * 1024 * 1024)
 
-            ThreadStressLogData[] threadLogs = [.. stressLogContract.GetThreadStressLogs(logs)];
+            ThreadStressLogData[] threadLogs = [.. stressLogContract.GetThreadStressLogs(logs)]
 
-            Console.WriteLine($"Use file size: {usedSize:F3} GB, still available {availableSize:F3} GB, {threadLogs.Length} threads total, {threadLogs.Count(t => t.WriteHasWrapped)} overwrote earlier messages");
-            Console.WriteLine($"{header->threadsWithNoLog} threads did not get a log!");
+            Console.WriteLine($"Use file size: {usedSize:F3} GB, still available {availableSize:F3} GB, {threadLogs.Length} threads total, {threadLogs.Count(t => t.WriteHasWrapped)} overwrote earlier messages")
+            Console.WriteLine($"{header->threadsWithNoLog} threads did not get a log!")
 
-            Console.Write("Number of messages processed: ");
-            PrintFriendlyNumber(numProcessed);
-            Console.Write(", printed: ");
-            PrintFriendlyNumber(numPrinted);
-            Console.WriteLine();
+            Console.Write("Number of messages processed: ")
+            PrintFriendlyNumber(numProcessed)
+            Console.Write(", printed: ")
+            PrintFriendlyNumber(numPrinted)
+            Console.WriteLine()
         finally
-            handle.ReleasePointer();
+            handle.ReleasePointer()
 
         static void PrintFriendlyNumber(ulong n)
             if (n < 1000)
-                Console.Write(n);
+                Console.Write(n)
             else if (n < 1000 * 1000)
-                Console.Write($"{n / 1000.0:F3} thousand");
+                Console.Write($"{n / 1000.0:F3} thousand")
             else if (n < 1000 * 1000 * 1000)
-                Console.Write($"{n / 1000000.0:F6} million");
+                Console.Write($"{n / 1000000.0:F6} million")
             else
-                Console.Write($"{n / 1000000000.0:F9} billion");
+                Console.Write($"{n / 1000000000.0:F9} billion")
 
     private static IMessageFilter CreateMessageFilter(Options options, IInterestingStringFinder stringFinder)
         if (options.IncludeAllMessages)
-            return new AllMessagesFilter(true);
+            return new AllMessagesFilter(true)
 
-        IMessageFilter filter = new AllMessagesFilter(false);
+        IMessageFilter filter = new AllMessagesFilter(false)
         if (options.ValueRanges is not[])
-            filter = new ValueFilter(filter, options.ValueRanges);
-            filter = new ValueRangeFilter(filter, stringFinder, options.ValueRanges);
+            filter = new ValueFilter(filter, options.ValueRanges)
+            filter = new ValueRangeFilter(filter, stringFinder, options.ValueRanges)
 
         if (options.LevelFilter is not[])
-            filter = new DPrintLevelFilter(filter, options.LevelFilter);
+            filter = new DPrintLevelFilter(filter, options.LevelFilter)
 
-        filter = new InterestingMessageFilter(filter, stringFinder);
+        filter = new InterestingMessageFilter(filter, stringFinder)
 
         if (options.IgnoreFacility is ulong ignore)
-            filter = new FacilityMessageFilter(filter, ignore);
+            filter = new FacilityMessageFilter(filter, ignore)
 
-        return filter;
+        return filter
 
     private static unsafe (Func<Target> targetFactory, StressLogHeader.ModuleTable table, TargetPointer logs) CreateTarget(SafeMemoryMappedViewHandle handle)
-        byte* buffer = null;
-        handle.AcquirePointer(ref buffer);
-        StressLogHeader* header = (StressLogHeader*)buffer;
+        byte* buffer = null
+        handle.AcquirePointer(ref buffer)
+        StressLogHeader* header = (StressLogHeader*)buffer
 
         if (header->headerSize != sizeof(StressLogHeader)
             || !"LRTS"u8.SequenceEqual(header->magic)
             || header->version is not (0x00010001 or 0x00010002))
-            throw new InvalidOperationException("Invalid memory-mapped stress log.");
+            throw new InvalidOperationException("Invalid memory-mapped stress log.")
 
-        string contractVersion = $"c{(int)(header->version & 0xFFFF)}";
+        string contractVersion = $"c{(int)(header->version & 0xFFFF)}"
 
-        return (CreateTarget, header->moduleTable, header->logs);
+        return (CreateTarget, header->moduleTable, header->logs)
 
         ContractDescriptorTarget CreateTarget() => ContractDescriptorTarget.Create(
             GetDescriptor(contractVersion),
@@ -405,16 +405,16 @@ public static class Program
             [CoreCLRContracts.Register])
 
     private static unsafe TimeTracker CreateTimeTracker(SafeMemoryMappedViewHandle handle, Options options)
-        byte* buffer = null;
+        byte* buffer = null
         try
-            handle.AcquirePointer(ref buffer);
-            StressLogHeader* header = (StressLogHeader*)buffer;
-            return new TimeTracker(header->startTimeStamp, header->tickFrequency, options.Time, options.GCIndex);
+            handle.AcquirePointer(ref buffer)
+            StressLogHeader* header = (StressLogHeader*)buffer
+            return new TimeTracker(header->startTimeStamp, header->tickFrequency, options.Time, options.GCIndex)
         finally
-            handle.ReleasePointer();
+            handle.ReleasePointer()
 
     private static ContractDescriptorParser.ContractDescriptor GetDescriptor(string stressLogVersion)
-        return new ContractDescriptorParser.ContractDescriptor { Baseline = BaseContractDescriptor.Baseline, Version = BaseContractDescriptor.Version, Contracts = new() { { "StressLog", stressLogVersion } }, Types = BaseContractDescriptor.Types, Globals = BaseContractDescriptor.Globals, };
+        return new ContractDescriptorParser.ContractDescriptor { Baseline = BaseContractDescriptor.Baseline, Version = BaseContractDescriptor.Version, Contracts = new() { { "StressLog", stressLogVersion } }, Types = BaseContractDescriptor.Types, Globals = BaseContractDescriptor.Globals, }
 
     private static ContractDescriptorParser.ContractDescriptor BaseContractDescriptor = ContractDescriptorParser.ParseCompact(""""
             {
@@ -476,4 +476,4 @@ public static class Program
                     "StressLog": "c2",
                 }
             }
-            """"u8)!;
+            """"u8)!

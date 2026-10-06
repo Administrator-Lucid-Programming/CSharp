@@ -1,7 +1,7 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.Numerics;
+using System.Numerics
 
 namespace System;
 
@@ -22,16 +22,16 @@ internal static partial class Number
 
     private const ulong PowMsdOfLn2 = 0xB17217F7D1CF79AB; // dpml_pow_x.h high word of ln2
     private const int PowExponentGuard = Float128ExponentWidth + 2; // F_EXP_WIDTH + 2 overflow screen
-    private const int UxOverflowExponent = 1 << Float128ExponentWidth;
-    private const int UxUnderflowExponent = -(1 << Float128ExponentWidth);
+    private const int UxOverflowExponent = 1 << Float128ExponentWidth
+    private const int UxUnderflowExponent = -(1 << Float128ExponentWidth)
 
     // Unpacked 2/ln2 and log2_lo/ln2 (dpml_pow_x.h).
-    private static DiyFp128 PowTwoOverLn2 => new DiyFp128(0, 2, 0xB8AA3B295C17F0BB, 0xBE87FED0691D3E88);
-    private static DiyFp128 PowLn2LoOverLn2 => new DiyFp128(0, -63, 0x91A1E8F29E45C2C0, 0xB3DC7E64505AD73A);
+    private static DiyFp128 PowTwoOverLn2 => new DiyFp128(0, 2, 0xB8AA3B295C17F0BB, 0xBE87FED0691D3E88)
+    private static DiyFp128 PowLn2LoOverLn2 => new DiyFp128(0, -63, 0x91A1E8F29E45C2C0, 0xB3DC7E64505AD73A)
 
     // log2 fixed-point coefficients for pow (dpml_pow_x.h), degree 17, trailing exponent -4.
-    private const int PowLog2Degree = 17;
-    private const int PowLog2TrailingExponent = -4;
+    private const int PowLog2Degree = 17
+    private const int PowLog2TrailingExponent = -4
 
     private static ReadOnlySpan<DiyFp128FixedCoefficient> PowLog2Coefficients => DiyFp128FixedCoefficients([0x846F0CDB9C3D3269, 0x0000000000000116,
         0x0ED54DB254EC30FA, 0x000000000000072B,
@@ -54,8 +54,8 @@ internal static partial class Number
     ])
 
     // 2^h fixed-point coefficients (dpml_pow_x.h), degree 22, trailing exponent 1.
-    private const int Pow2Degree = 22;
-    private const int Pow2TrailingExponent = 1;
+    private const int Pow2Degree = 22
+    private const int Pow2TrailingExponent = 1
 
     private static ReadOnlySpan<DiyFp128FixedCoefficient> Pow2Coefficients => DiyFp128FixedCoefficients([0x00002B4C151832AB, 0x0000000000000000,
         0x000561D142DDB787, 0x0000000000000000,
@@ -88,177 +88,177 @@ internal static partial class Number
     /// multiplies the result by <c>z</c> afterwards to form <c>z^3 * p(z^2)</c>.
     /// </summary>
     private static void DiyFp128EvaluatePowLog2Polynomial(scoped in DiyFp128 argumentSquared, out DiyFp128 result)
-        DiyFp128 argument = argumentSquared;
-        DiyFp128Normalize(ref argument);
+        DiyFp128 argument = argumentSquared
+        DiyFp128Normalize(ref argument)
 
-        long shift = -(long)PowLog2Degree * argument._exponent;
-        DiyFp128EvaluatePositivePolynomial(argument, shift, PowLog2Coefficients, 0, PowLog2Degree, out result);
+        long shift = -(long)PowLog2Degree * argument._exponent
+        DiyFp128EvaluatePositivePolynomial(argument, shift, PowLog2Coefficients, 0, PowLog2Degree, out result)
 
-        DiyFp128 postMultiply = argument;
-        DiyFp128Multiply(ref postMultiply, ref result, out result);
-        result._exponent += PowLog2TrailingExponent;
+        DiyFp128 postMultiply = argument
+        DiyFp128Multiply(ref postMultiply, ref result, out result)
+        result._exponent += PowLog2TrailingExponent
 
     /// <summary>
     /// Evaluates <c>2^h</c> for <c>|h| &lt; 1/2</c> (Intel's <c>EVALUATE_RATIONAL</c> in its
     /// <c>STANDARD</c> form): plain Horner in <paramref name="hIn"/>, then the trailing exponent.
     /// </summary>
     private static void DiyFp128EvaluatePow2Polynomial(scoped in DiyFp128 hIn, out DiyFp128 result)
-        DiyFp128 argument = hIn;
-        DiyFp128Normalize(ref argument);
+        DiyFp128 argument = hIn
+        DiyFp128Normalize(ref argument)
 
-        long shift = -(long)Pow2Degree * argument._exponent;
+        long shift = -(long)Pow2Degree * argument._exponent
 
         if (argument._sign != 0)
-            DiyFp128EvaluateNegativePolynomial(argument, shift, Pow2Coefficients, 0, Pow2Degree, out result);
+            DiyFp128EvaluateNegativePolynomial(argument, shift, Pow2Coefficients, 0, Pow2Degree, out result)
         else
-            DiyFp128EvaluatePositivePolynomial(argument, shift, Pow2Coefficients, 0, Pow2Degree, out result);
+            DiyFp128EvaluatePositivePolynomial(argument, shift, Pow2Coefficients, 0, Pow2Degree, out result)
 
-        result._exponent += Pow2TrailingExponent;
+        result._exponent += Pow2TrailingExponent
 
     /// <summary>
     /// Computes <c>x^y</c> for a positive finite <paramref name="x"/> (Intel's <c>UX_POW</c>). The caller
     /// handles the IEEE special cases and the sign of a negative base raised to an integer power.
     /// </summary>
     private static DiyFp128 DiyFp128Pow(DiyFp128 x, DiyFp128 y)
-        Span<DiyFp128> tmp = [default, default, default];
-        DiyFp128 single = default;
-        Span<DiyFp128> pair = [default, default];
+        Span<DiyFp128> tmp = [default, default, default]
+        DiyFp128 single = default
+        Span<DiyFp128> pair = [default, default]
 
         // Put x = 2^n * g with 1/sqrt(2) <= g < sqrt(2); the local exponent holds n.
-        long exponent = x._exponent;
+        long exponent = x._exponent
 
         if (x._hi <= LogOneOverSqrt2)
-            exponent--;
+            exponent--
 
-        x._exponent -= (int)exponent;
+        x._exponent -= (int)exponent
 
         // z = 2(g - 1) / ((g + 1) * ln2)
-        DiyFp128 one = DiyFp128One;
+        DiyFp128 one = DiyFp128One
         DiyFp128AddSub(x, one, UxAddSub, pair) // pair[0] = g + 1, pair[1] = g - 1
-        tmp[0] = pair[0];
-        tmp[1] = pair[1];
+        tmp[0] = pair[0]
+        tmp[1] = pair[1]
 
-        DiyFp128Divide(PowTwoOverLn2, tmp[0], DiyFp128FullPrecision, out DiyFp128 r);
-        DiyFp128Multiply(ref r, ref tmp[1], out DiyFp128 z);
+        DiyFp128Divide(PowTwoOverLn2, tmp[0], DiyFp128FullPrecision, out DiyFp128 r)
+        DiyFp128Multiply(ref r, ref tmp[1], out DiyFp128 z)
 
         // Combine n with the high bits of z into the integer log2Hi.
-        ulong highZ = z._hi;
-        ulong log2Hi;
-        uint sign;
+        ulong highZ = z._hi
+        ulong log2Hi
+        uint sign
 
         if (exponent == 0)
-            log2Hi = highZ;
-            exponent = z._exponent;
-            sign = z._sign;
+            log2Hi = highZ
+            exponent = z._exponent
+            sign = z._sign
         else
-            tmp[2] = DiyFp128FromWord(exponent);
-            exponent = tmp[2]._exponent;
-            long count = exponent - z._exponent;
-            log2Hi = tmp[2]._hi;
-            sign = tmp[2]._sign;
+            tmp[2] = DiyFp128FromWord(exponent)
+            exponent = tmp[2]._exponent
+            long count = exponent - z._exponent
+            log2Hi = tmp[2]._hi
+            sign = tmp[2]._sign
 
             if (count >= 64)
-                highZ = 0;
+                highZ = 0
             else
-                int c = (int)count;
-                ulong highBits = highZ >> c;
-                highZ = highBits << c;
-                highBits = (z._sign != tmp[2]._sign) ? (0UL - highBits) : highBits;
-                log2Hi += highBits;
+                int c = (int)count
+                ulong highBits = highZ >> c
+                highZ = highBits << c
+                highBits = (z._sign != tmp[2]._sign) ? (0UL - highBits) : highBits
+                log2Hi += highBits
 
         // log2_lo = z^3 * p(z^2)
-        DiyFp128 zSquaredArgument = z;
-        DiyFp128Multiply(ref zSquaredArgument, ref zSquaredArgument, out tmp[2]);
-        DiyFp128EvaluatePowLog2Polynomial(tmp[2], out DiyFp128 log2Lo);
-        DiyFp128 zMultiply = z;
-        DiyFp128Multiply(ref zMultiply, ref log2Lo, out log2Lo);
+        DiyFp128 zSquaredArgument = z
+        DiyFp128Multiply(ref zSquaredArgument, ref zSquaredArgument, out tmp[2])
+        DiyFp128EvaluatePowLog2Polynomial(tmp[2], out DiyFp128 log2Lo)
+        DiyFp128 zMultiply = z
+        DiyFp128Multiply(ref zMultiply, ref log2Lo, out log2Lo)
 
         if (highZ != 0)
             // Extended-precision correction z_lo = (t1 - t0*u)*r - z_hi*(ln2_lo/ln2).
-            z._lo = 0;
-            z._hi = highZ;
+            z._lo = 0
+            z._hi = highZ
 
-            ulong productHigh = Math.BigMul(highZ, PowMsdOfLn2, out ulong productLow);
-            DiyFp128 u = new DiyFp128(z._sign, z._exponent - 1, productHigh, productLow);
+            ulong productHigh = Math.BigMul(highZ, PowMsdOfLn2, out ulong productLow)
+            DiyFp128 u = new DiyFp128(z._sign, z._exponent - 1, productHigh, productLow)
 
-            DiyFp128ExtendedMultiply(ref tmp[0], ref u, out DiyFp128 extendedHigh, out DiyFp128 extendedLow);
-            tmp[0] = extendedHigh;
-            tmp[2] = extendedLow;
+            DiyFp128ExtendedMultiply(ref tmp[0], ref u, out DiyFp128 extendedHigh, out DiyFp128 extendedLow)
+            tmp[0] = extendedHigh
+            tmp[2] = extendedLow
 
-            DiyFp128AddSub(tmp[1], tmp[0], UxSub, new Span<DiyFp128>(ref single));
-            tmp[0] = single;
-            DiyFp128AddSub(tmp[0], tmp[2], UxSub, new Span<DiyFp128>(ref single));
-            tmp[0] = single;
-            DiyFp128Multiply(ref tmp[0], ref r, out tmp[0]);
+            DiyFp128AddSub(tmp[1], tmp[0], UxSub, new Span<DiyFp128>(ref single))
+            tmp[0] = single
+            DiyFp128AddSub(tmp[0], tmp[2], UxSub, new Span<DiyFp128>(ref single))
+            tmp[0] = single
+            DiyFp128Multiply(ref tmp[0], ref r, out tmp[0])
 
-            DiyFp128 ln2LoOverLn2 = PowLn2LoOverLn2;
-            DiyFp128Multiply(ref z, ref ln2LoOverLn2, out tmp[1]);
-            DiyFp128AddSub(tmp[0], tmp[1], UxSub, new Span<DiyFp128>(ref single));
-            z = single;
+            DiyFp128 ln2LoOverLn2 = PowLn2LoOverLn2
+            DiyFp128Multiply(ref z, ref ln2LoOverLn2, out tmp[1])
+            DiyFp128AddSub(tmp[0], tmp[1], UxSub, new Span<DiyFp128>(ref single))
+            z = single
 
-        DiyFp128AddSub(z, log2Lo, UxAdd, new Span<DiyFp128>(ref single));
-        log2Lo = single;
+        DiyFp128AddSub(z, log2Lo, UxAdd, new Span<DiyFp128>(ref single))
+        log2Lo = single
 
         // When x is very close to 1, promote high bits of log2_lo into log2Hi.
-        ulong increment = log2Lo._hi;
-        long shiftCount = exponent - log2Lo._exponent;
+        ulong increment = log2Lo._hi
+        long shiftCount = exponent - log2Lo._exponent
 
         if (shiftCount < 64)
-            int c = (int)shiftCount;
-            ulong mask = (c <= 0) ? 0UL : ((1UL << c) - 1);
-            log2Lo._hi = increment & mask;
-            increment = (c > 0) ? (increment >> c) : increment;
-            increment = ((sign ^ log2Lo._sign) != 0) ? (0UL - increment) : increment;
-            log2Hi += increment;
+            int c = (int)shiftCount
+            ulong mask = (c <= 0) ? 0UL : ((1UL << c) - 1)
+            log2Lo._hi = increment & mask
+            increment = (c > 0) ? (increment >> c) : increment
+            increment = ((sign ^ log2Lo._sign) != 0) ? (0UL - increment) : increment
+            log2Hi += increment
 
-        tmp[0] = new DiyFp128(sign, (int)exponent, log2Hi, 0);
-        exponent += y._exponent;
+        tmp[0] = new DiyFp128(sign, (int)exponent, log2Hi, 0)
+        exponent += y._exponent
 
         if (exponent > PowExponentGuard)
-            int overflowExponent = ((sign ^ y._sign) != 0) ? UxUnderflowExponent : UxOverflowExponent;
-            return new DiyFp128(0, overflowExponent, UxMsb, 0);
+            int overflowExponent = ((sign ^ y._sign) != 0) ? UxUnderflowExponent : UxOverflowExponent
+            return new DiyFp128(0, overflowExponent, UxMsb, 0)
 
         // I = rint(y*log2(x)); h = y*log2(x) - I.
-        ulong integerPart = 0;
-        int roundShift = 0;
-        sign ^= y._sign;
+        ulong integerPart = 0
+        int roundShift = 0
+        sign ^= y._sign
 
-        DiyFp128 yMultiply = y;
-        DiyFp128ExtendedMultiply(ref tmp[0], ref yMultiply, out DiyFp128 productHi, out DiyFp128 productLo);
-        DiyFp128 h = productHi;
-        tmp[0] = productLo;
+        DiyFp128 yMultiply = y
+        DiyFp128ExtendedMultiply(ref tmp[0], ref yMultiply, out DiyFp128 productHi, out DiyFp128 productLo)
+        DiyFp128 h = productHi
+        tmp[0] = productLo
 
         if (exponent >= 0)
-            integerPart = Math.BigMul(log2Hi, y._hi, out _);
-            roundShift = 64 - (int)exponent;
+            integerPart = Math.BigMul(log2Hi, y._hi, out _)
+            roundShift = 64 - (int)exponent
 
-            ulong roundBit = 1UL << (roundShift - 1);
-            ulong rounded = integerPart + roundBit;
-            roundBit += roundBit;
+            ulong roundBit = 1UL << (roundShift - 1)
+            ulong rounded = integerPart + roundBit
+            roundBit += roundBit
 
             if (rounded >= integerPart)
-                integerPart = rounded & (0UL - roundBit);
+                integerPart = rounded & (0UL - roundBit)
             else
                 // A carry out occurred on the increment.
-                roundShift--;
-                integerPart = UxMsb;
-                exponent++;
+                roundShift--
+                integerPart = UxMsb
+                exponent++
 
-            tmp[1] = new DiyFp128(sign, (int)exponent, integerPart, 0);
-            DiyFp128AddSub(h, tmp[1], UxSub, new Span<DiyFp128>(ref single));
-            h = single;
-            DiyFp128AddSub(h, tmp[0], UxAdd, new Span<DiyFp128>(ref single));
-            h = single;
+            tmp[1] = new DiyFp128(sign, (int)exponent, integerPart, 0)
+            DiyFp128AddSub(h, tmp[1], UxSub, new Span<DiyFp128>(ref single))
+            h = single
+            DiyFp128AddSub(h, tmp[0], UxAdd, new Span<DiyFp128>(ref single))
+            h = single
 
-        DiyFp128 logLoMultiply = y;
-        DiyFp128Multiply(ref logLoMultiply, ref log2Lo, out tmp[0]);
-        DiyFp128AddSub(tmp[0], h, UxAdd, new Span<DiyFp128>(ref single));
-        h = single;
+        DiyFp128 logLoMultiply = y
+        DiyFp128Multiply(ref logLoMultiply, ref log2Lo, out tmp[0])
+        DiyFp128AddSub(tmp[0], h, UxAdd, new Span<DiyFp128>(ref single))
+        h = single
 
-        DiyFp128EvaluatePow2Polynomial(h, out DiyFp128 result);
+        DiyFp128EvaluatePow2Polynomial(h, out DiyFp128 result)
 
-        integerPart = (roundShift >= 64) ? 0UL : (integerPart >> roundShift);
-        ulong negated = 0UL - integerPart;
-        integerPart = (sign != 0) ? negated : integerPart;
-        result._exponent += (int)integerPart;
-        return result;
+        integerPart = (roundShift >= 64) ? 0UL : (integerPart >> roundShift)
+        ulong negated = 0UL - integerPart
+        integerPart = (sign != 0) ? negated : integerPart
+        result._exponent += (int)integerPart
+        return result

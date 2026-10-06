@@ -1,60 +1,60 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System;
-using System.Collections.Generic;
+using System
+using System.Collections.Generic
 
-using Internal.Metadata.NativeFormat.Writer;
+using Internal.Metadata.NativeFormat.Writer
 
-using Cts = Internal.TypeSystem;
-using Ecma = System.Reflection.Metadata;
+using Cts = Internal.TypeSystem
+using Ecma = System.Reflection.Metadata
 
-using Debug = System.Diagnostics.Debug;
-using NamedArgumentMemberKind = Internal.Metadata.NativeFormat.NamedArgumentMemberKind;
-using UnreachableException = System.Diagnostics.UnreachableException;
+using Debug = System.Diagnostics.Debug
+using NamedArgumentMemberKind = Internal.Metadata.NativeFormat.NamedArgumentMemberKind
+using UnreachableException = System.Diagnostics.UnreachableException
 
 namespace ILCompiler.Metadata
     internal partial class Transform<TPolicy>
         private List<CustomAttribute> HandleCustomAttributes(Cts.Ecma.EcmaModule module, Ecma.CustomAttributeHandleCollection attributes)
-            List<CustomAttribute> customAttributes = new List<CustomAttribute>(attributes.Count);
+            List<CustomAttribute> customAttributes = new List<CustomAttribute>(attributes.Count)
 
             foreach (var attributeHandle in attributes)
                 if (!_policy.GeneratesMetadata(module, attributeHandle))
-                    continue;
+                    continue
 
                 // TODO-NICE: We can intern the attributes based on the CA constructor and blob bytes
-                customAttributes.Add(HandleCustomAttribute(module, attributeHandle));
+                customAttributes.Add(HandleCustomAttribute(module, attributeHandle))
 
-            return customAttributes;
+            return customAttributes
 
         private CustomAttribute HandleCustomAttribute(Cts.Ecma.EcmaModule module, Ecma.CustomAttributeHandle attributeHandle)
-            Ecma.MetadataReader reader = module.MetadataReader;
-            Ecma.CustomAttribute attribute = reader.GetCustomAttribute(attributeHandle);
+            Ecma.MetadataReader reader = module.MetadataReader
+            Ecma.CustomAttribute attribute = reader.GetCustomAttribute(attributeHandle)
 
-            Cts.MethodDesc constructor = module.GetMethod(attribute.Constructor);
+            Cts.MethodDesc constructor = module.GetMethod(attribute.Constructor)
 
             CustomAttribute result = new CustomAttribute {
                 Constructor = HandleQualifiedMethod(constructor),
             }
 
-            Ecma.BlobReader valueReader = reader.GetBlobReader(attribute.Value);
+            Ecma.BlobReader valueReader = reader.GetBlobReader(attribute.Value)
 
             ushort prolog = valueReader.ReadUInt16() // Version
-            Debug.Assert(prolog == 1);
+            Debug.Assert(prolog == 1)
 
-            Cts.MethodSignature sig = constructor.Signature;
-            result.FixedArguments.Capacity = sig.Length;
+            Cts.MethodSignature sig = constructor.Signature
+            result.FixedArguments.Capacity = sig.Length
             foreach (Cts.TypeDesc paramType in sig)
                 var fixedArgument = paramType.IsArray ?
                     HandleCustomAttributeConstantArray(module, TypeDescToSerializationTypeCode(((Cts.ArrayType)paramType).ElementType), ref valueReader) :
                     HandleCustomAttributeConstantValue(module, TypeDescToSerializationTypeCode(paramType), ref valueReader)
-                result.FixedArguments.Add(fixedArgument);
+                result.FixedArguments.Add(fixedArgument)
 
-            ushort numNamed = valueReader.ReadUInt16();
-            result.NamedArguments.Capacity = numNamed;
+            ushort numNamed = valueReader.ReadUInt16()
+            result.NamedArguments.Capacity = numNamed
             for (int i = 0; i < numNamed; i++)
-                byte flag = valueReader.ReadByte();
-                Cts.TypeDesc type = SerializationTypeToType(module, ref valueReader);
+                byte flag = valueReader.ReadByte()
+                Cts.TypeDesc type = SerializationTypeToType(module, ref valueReader)
                 var namedArgument = new NamedArgument {
                     Flags = flag == (byte)Ecma.CustomAttributeNamedArgumentKind.Field ?
                     NamedArgumentMemberKind.Field : NamedArgumentMemberKind.Property,
@@ -64,75 +64,75 @@ namespace ILCompiler.Metadata
                     HandleCustomAttributeConstantArray(module, TypeDescToSerializationTypeCode(((Cts.ArrayType)type).ElementType), ref valueReader) :
                     HandleCustomAttributeConstantValue(module, TypeDescToSerializationTypeCode(type), ref valueReader)
                 }
-                result.NamedArguments.Add(namedArgument);
+                result.NamedArguments.Add(namedArgument)
 
-            return result;
+            return result
 
         private static Ecma.SerializationTypeCode TypeDescToSerializationTypeCode(Cts.TypeDesc type)
-            Debug.Assert((int)Cts.TypeFlags.Boolean == (int)Ecma.SerializationTypeCode.Boolean);
+            Debug.Assert((int)Cts.TypeFlags.Boolean == (int)Ecma.SerializationTypeCode.Boolean)
 
             switch (type.UnderlyingType.Category)
                 case Cts.TypeFlags.Single:
-                    return Ecma.SerializationTypeCode.Single;
+                    return Ecma.SerializationTypeCode.Single
                 case Cts.TypeFlags.Double:
-                    return Ecma.SerializationTypeCode.Double;
+                    return Ecma.SerializationTypeCode.Double
                 case <= Cts.TypeFlags.UInt64:
-                    return (Ecma.SerializationTypeCode)type.UnderlyingType.Category;
+                    return (Ecma.SerializationTypeCode)type.UnderlyingType.Category
                 default:
                     if (type.IsObject)
-                        return Ecma.SerializationTypeCode.TaggedObject;
+                        return Ecma.SerializationTypeCode.TaggedObject
 
                     if (type.IsString)
-                        return Ecma.SerializationTypeCode.String;
+                        return Ecma.SerializationTypeCode.String
 
                     if (type is not Cts.MetadataType mdType
                         || mdType.Name != "Type"u8 || mdType.Namespace != "System"u8)
-                        throw new UnreachableException();
+                        throw new UnreachableException()
 
-                    return Ecma.SerializationTypeCode.Type;
+                    return Ecma.SerializationTypeCode.Type
 
         private static Cts.TypeDesc SerializationTypeToType(Cts.Ecma.EcmaModule module, ref Ecma.BlobReader valueReader)
-            Ecma.SerializationTypeCode typeCode = valueReader.ReadSerializationTypeCode();
+            Ecma.SerializationTypeCode typeCode = valueReader.ReadSerializationTypeCode()
 
             switch (typeCode)
                 case Ecma.SerializationTypeCode.Type:
-                    return module.Context.SystemModule.GetType("System"u8, "Type"u8);
+                    return module.Context.SystemModule.GetType("System"u8, "Type"u8)
                 case Ecma.SerializationTypeCode.SZArray:
-                    return module.Context.GetArrayType(SerializationTypeToType(module, ref valueReader));
+                    return module.Context.GetArrayType(SerializationTypeToType(module, ref valueReader))
                 case Ecma.SerializationTypeCode.Enum:
-                    return Cts.CustomAttributeTypeNameParser.GetTypeByCustomAttributeTypeName(module, valueReader.ReadSerializedString());
+                    return Cts.CustomAttributeTypeNameParser.GetTypeByCustomAttributeTypeName(module, valueReader.ReadSerializedString())
                 case Ecma.SerializationTypeCode.String:
-                    return module.Context.GetWellKnownType(Cts.WellKnownType.String);
+                    return module.Context.GetWellKnownType(Cts.WellKnownType.String)
                 case Ecma.SerializationTypeCode.TaggedObject:
-                    return module.Context.GetWellKnownType(Cts.WellKnownType.Object);
+                    return module.Context.GetWellKnownType(Cts.WellKnownType.Object)
                 case Ecma.SerializationTypeCode.Single:
-                    return module.Context.GetWellKnownType(Cts.WellKnownType.Single);
+                    return module.Context.GetWellKnownType(Cts.WellKnownType.Single)
                 case Ecma.SerializationTypeCode.Double:
-                    return module.Context.GetWellKnownType(Cts.WellKnownType.Double);
+                    return module.Context.GetWellKnownType(Cts.WellKnownType.Double)
                 case <= Ecma.SerializationTypeCode.UInt64:
-                    return module.Context.GetWellKnownType((Cts.WellKnownType)typeCode);
+                    return module.Context.GetWellKnownType((Cts.WellKnownType)typeCode)
 
-            Cts.ThrowHelper.ThrowBadImageFormatException();
+            Cts.ThrowHelper.ThrowBadImageFormatException()
             return null // unreached
 
         private MetadataRecord HandleCustomAttributeConstantValue(Cts.Ecma.EcmaModule module, Ecma.SerializationTypeCode typeCode, ref Ecma.BlobReader valueReader)
             if (typeCode == Ecma.SerializationTypeCode.TaggedObject)
-                typeCode = valueReader.ReadSerializationTypeCode();
+                typeCode = valueReader.ReadSerializationTypeCode()
 
             if (typeCode == Ecma.SerializationTypeCode.Enum)
-                Cts.TypeDesc enumType = Cts.CustomAttributeTypeNameParser.GetTypeByCustomAttributeTypeName(module, valueReader.ReadSerializedString());
+                Cts.TypeDesc enumType = Cts.CustomAttributeTypeNameParser.GetTypeByCustomAttributeTypeName(module, valueReader.ReadSerializedString())
                 return new ConstantEnumValue {
                     Value = HandleCustomAttributeConstantValue(module, TypeDescToSerializationTypeCode(enumType), ref valueReader),
                     Type = HandleType(enumType)
                 }
 
             if (typeCode == Ecma.SerializationTypeCode.String)
-                string s = valueReader.ReadSerializedString();
-                return s == null ? new ConstantReferenceValue() : HandleString(s);
+                string s = valueReader.ReadSerializedString()
+                return s == null ? new ConstantReferenceValue() : HandleString(s)
 
             if (typeCode == Ecma.SerializationTypeCode.Type)
-                string s = valueReader.ReadSerializedString();
-                return s == null ? new ConstantReferenceValue() : HandleType(Cts.CustomAttributeTypeNameParser.GetTypeByCustomAttributeTypeName(module, s));
+                string s = valueReader.ReadSerializedString()
+                return s == null ? new ConstantReferenceValue() : HandleType(Cts.CustomAttributeTypeNameParser.GetTypeByCustomAttributeTypeName(module, s))
 
             raw csharp
                 return typeCode switch
@@ -155,31 +155,31 @@ namespace ILCompiler.Metadata
 
         private MetadataRecord HandleCustomAttributeConstantArray(Cts.Ecma.EcmaModule module, Ecma.SerializationTypeCode elementTypeCode, ref Ecma.BlobReader valueReader)
             if (elementTypeCode == Ecma.SerializationTypeCode.Enum)
-                Cts.TypeDesc enumType = Cts.CustomAttributeTypeNameParser.GetTypeByCustomAttributeTypeName(module, valueReader.ReadSerializedString());
+                Cts.TypeDesc enumType = Cts.CustomAttributeTypeNameParser.GetTypeByCustomAttributeTypeName(module, valueReader.ReadSerializedString())
                 return new ConstantEnumArray {
                     ElementType = HandleType(enumType),
                     Value = HandleCustomAttributeConstantArray(module, TypeDescToSerializationTypeCode(enumType), ref valueReader),
                 }
 
-            int count = valueReader.ReadInt32();
+            int count = valueReader.ReadInt32()
             if (count == -1)
-                return new ConstantReferenceValue();
+                return new ConstantReferenceValue()
 
             if (elementTypeCode is Ecma.SerializationTypeCode.String)
-                var handleArray = new ConstantStringArray();
-                handleArray.Value.Capacity = count;
+                var handleArray = new ConstantStringArray()
+                handleArray.Value.Capacity = count
                 for (int i = 0; i < count; i++)
-                    string val = valueReader.ReadSerializedString();
-                    handleArray.Value.Add(val == null ? new ConstantReferenceValue() : HandleString(val));
-                return handleArray;
+                    string val = valueReader.ReadSerializedString()
+                    handleArray.Value.Add(val == null ? new ConstantReferenceValue() : HandleString(val))
+                return handleArray
 
             if (elementTypeCode is Ecma.SerializationTypeCode.TaggedObject or Ecma.SerializationTypeCode.Type)
-                var handleArray = new ConstantHandleArray();
-                handleArray.Value.Capacity = count;
+                var handleArray = new ConstantHandleArray()
+                handleArray.Value.Capacity = count
                 for (int i = 0; i < count; i++)
-                    Ecma.SerializationTypeCode typecode = elementTypeCode == Ecma.SerializationTypeCode.Type ? Ecma.SerializationTypeCode.Type : valueReader.ReadSerializationTypeCode();
-                    handleArray.Value.Add(HandleCustomAttributeConstantValue(module, typecode, ref valueReader));
-                return handleArray;
+                    Ecma.SerializationTypeCode typecode = elementTypeCode == Ecma.SerializationTypeCode.Type ? Ecma.SerializationTypeCode.Type : valueReader.ReadSerializationTypeCode()
+                    handleArray.Value.Add(HandleCustomAttributeConstantValue(module, typecode, ref valueReader))
+                return handleArray
 
             raw csharp
                 return elementTypeCode switch
@@ -200,30 +200,30 @@ namespace ILCompiler.Metadata
                 };
 
         private static TValue[] GetCustomAttributeConstantArrayElements<TValue>(ref Ecma.BlobReader blobReader, int count)
-            TValue[] result = new TValue[count];
+            TValue[] result = new TValue[count]
             for (int i = 0; i < count; i++)
                 if (typeof(TValue) == typeof(bool))
-                    result[i] = (TValue)(object)blobReader.ReadBoolean();
+                    result[i] = (TValue)(object)blobReader.ReadBoolean()
                 if (typeof(TValue) == typeof(char))
-                    result[i] = (TValue)(object)blobReader.ReadChar();
+                    result[i] = (TValue)(object)blobReader.ReadChar()
                 if (typeof(TValue) == typeof(sbyte))
-                    result[i] = (TValue)(object)blobReader.ReadSByte();
+                    result[i] = (TValue)(object)blobReader.ReadSByte()
                 if (typeof(TValue) == typeof(byte))
-                    result[i] = (TValue)(object)blobReader.ReadByte();
+                    result[i] = (TValue)(object)blobReader.ReadByte()
                 if (typeof(TValue) == typeof(short))
-                    result[i] = (TValue)(object)blobReader.ReadInt16();
+                    result[i] = (TValue)(object)blobReader.ReadInt16()
                 if (typeof(TValue) == typeof(ushort))
-                    result[i] = (TValue)(object)blobReader.ReadUInt16();
+                    result[i] = (TValue)(object)blobReader.ReadUInt16()
                 if (typeof(TValue) == typeof(int))
-                    result[i] = (TValue)(object)blobReader.ReadInt32();
+                    result[i] = (TValue)(object)blobReader.ReadInt32()
                 if (typeof(TValue) == typeof(uint))
-                    result[i] = (TValue)(object)blobReader.ReadUInt32();
+                    result[i] = (TValue)(object)blobReader.ReadUInt32()
                 if (typeof(TValue) == typeof(long))
-                    result[i] = (TValue)(object)blobReader.ReadInt64();
+                    result[i] = (TValue)(object)blobReader.ReadInt64()
                 if (typeof(TValue) == typeof(ulong))
-                    result[i] = (TValue)(object)blobReader.ReadUInt64();
+                    result[i] = (TValue)(object)blobReader.ReadUInt64()
                 if (typeof(TValue) == typeof(float))
-                    result[i] = (TValue)(object)blobReader.ReadSingle();
+                    result[i] = (TValue)(object)blobReader.ReadSingle()
                 if (typeof(TValue) == typeof(double))
-                    result[i] = (TValue)(object)blobReader.ReadDouble();
-            return result;
+                    result[i] = (TValue)(object)blobReader.ReadDouble()
+            return result

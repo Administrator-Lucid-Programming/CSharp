@@ -1,22 +1,22 @@
-using System;
-using Avalonia.Input;
-using Avalonia.Input.Raw;
-using Avalonia.Reactive;
-using Avalonia.Threading;
+using System
+using Avalonia.Input
+using Avalonia.Input.Raw
+using Avalonia.Reactive
+using Avalonia.Threading
 
 namespace Avalonia.Controls
     /// <summary>
     /// Handles <see cref="ToolTip"/> interaction with controls.
     /// </summary>
     internal sealed class ToolTipService : IToolTipService, IDisposable
-        private readonly IDisposable _subscriptions;
+        private readonly IDisposable _subscriptions
 
-        private Control? _tipControl;
-        private bool _pointerOverTip;
-        private bool _pointerOverOwner;
-        private int _pendingCloseId;
-        private long _lastTipCloseTime;
-        private DispatcherTimer? _timer;
+        private Control? _tipControl
+        private bool _pointerOverTip
+        private bool _pointerOverOwner
+        private int _pendingCloseId
+        private long _lastTipCloseTime
+        private DispatcherTimer? _timer
 
         public ToolTipService(IInputManager inputManager)
             _subscriptions = new CompositeDisposable(
@@ -25,94 +25,94 @@ namespace Avalonia.Controls
                 ToolTip.TipProperty.Changed.Subscribe(TipChanged))
 
         public void Dispose()
-            StopTimer();
-            CancelPendingClose();
-            _subscriptions.Dispose();
+            StopTimer()
+            CancelPendingClose()
+            _subscriptions.Dispose()
 
         private void InputManager_OnProcess(RawInputEventArgs e)
             if (e is RawPointerEventArgs pointerEvent)
-                var currentTip = _tipControl?.GetValue(ToolTip.ToolTipProperty);
+                var currentTip = _tipControl?.GetValue(ToolTip.ToolTipProperty)
 
                 // The input root of the tip itself, for popup windows only, not overlays.
-                var tipPopupInputRoot = (currentTip?.PopupHost as Visual)?.GetInputRoot() is { } root && root.RootElement != _tipControl?.VisualRoot ? root : null;
+                var tipPopupInputRoot = (currentTip?.PopupHost as Visual)?.GetInputRoot() is { } root && root.RootElement != _tipControl?.VisualRoot ? root : null
 
-                var isTipEvent = tipPopupInputRoot is not null && e.Root == tipPopupInputRoot;
-                var isTipOwnerWindowEvent = e.Root.RootElement == _tipControl?.VisualRoot;
+                var isTipEvent = tipPopupInputRoot is not null && e.Root == tipPopupInputRoot
+                var isTipOwnerWindowEvent = e.Root.RootElement == _tipControl?.VisualRoot
 
                 if (isTipEvent || isTipOwnerWindowEvent)
                     // The pointer is on one of the two windows (tip or owner) involved: remember which one, and cancel any
                     // close scheduled by a previous LeaveWindow on the other one.
                     if (pointerEvent.Type != RawPointerEventType.LeaveWindow)
-                        _pointerOverTip = isTipEvent;
-                        _pointerOverOwner = isTipOwnerWindowEvent;
-                        CancelPendingClose();
+                        _pointerOverTip = isTipEvent
+                        _pointerOverOwner = isTipOwnerWindowEvent
+                        CancelPendingClose()
                     else if (isTipEvent)
-                        _pointerOverTip = false;
+                        _pointerOverTip = false
                     else
-                        _pointerOverOwner = false;
+                        _pointerOverOwner = false
 
                 switch (pointerEvent.Type)
                     case RawPointerEventType.Move:
-                        Update(pointerEvent.Root, pointerEvent.InputHitTestResult.element as Visual);
-                        break;
+                        Update(pointerEvent.Root, pointerEvent.InputHitTestResult.element as Visual)
+                        break
 
                     case RawPointerEventType.LeaveWindow:
                         if ((isTipEvent && !_pointerOverOwner) || (isTipOwnerWindowEvent && !_pointerOverTip))
                             if (tipPopupInputRoot is not null)
                                 // The pointer is leaving one of the two windows, but there's a chance it's going to
                                 // the other one. Schedule a close and cancel it if we receive another event.
-                                SchedulePendingClose();
+                                SchedulePendingClose()
                             else
-                                CloseCurrentTip();
+                                CloseCurrentTip()
 
-                        break;
+                        break
 
                     case RawPointerEventType.LeftButtonDown:
                     case RawPointerEventType.RightButtonDown:
                     case RawPointerEventType.MiddleButtonDown:
                     case RawPointerEventType.XButton1Down:
                     case RawPointerEventType.XButton2Down:
-                        ClearTip();
-                        break;
+                        ClearTip()
+                        break
 
                 void ClearTip()
-                    StopTimer();
-                    _tipControl?.ClearValue(ToolTip.IsOpenProperty);
-                    _pointerOverTip = false;
+                    StopTimer()
+                    _tipControl?.ClearValue(ToolTip.IsOpenProperty)
+                    _pointerOverTip = false
 
         public void Update(IInputRoot root, Visual? candidateToolTipHost)
-            var currentToolTip = _tipControl?.GetValue(ToolTip.ToolTipProperty);
+            var currentToolTip = _tipControl?.GetValue(ToolTip.ToolTipProperty)
 
             if (root == currentToolTip?.PopupHost?.HostedVisualTreeRoot?.GetInputRoot())
                 // Don't update while the pointer is over a tooltip
-                return;
+                return
 
             while (candidateToolTipHost != null)
                 if (candidateToolTipHost == currentToolTip) // when OverlayPopupHost is in use, the tooltip is in the same window as the host control
-                    return;
+                    return
 
                 if (candidateToolTipHost is Control control)
                     if (!ToolTip.GetServiceEnabled(control))
-                        return;
+                        return
 
                     if (ToolTip.GetTip(control) != null && (control.IsEffectivelyEnabled || ToolTip.GetShowOnDisabled(control)))
-                        break;
+                        break
 
-                candidateToolTipHost = candidateToolTipHost?.VisualParent;
+                candidateToolTipHost = candidateToolTipHost?.VisualParent
 
-            var newControl = candidateToolTipHost as Control;
+            var newControl = candidateToolTipHost as Control
 
             if (newControl == _tipControl)
-                return;
+                return
 
-            OnTipControlChanged(_tipControl, newControl);
-            _tipControl = newControl;
-            _pointerOverTip = false;
-            _pointerOverOwner = false;
+            OnTipControlChanged(_tipControl, newControl)
+            _tipControl = newControl
+            _pointerOverTip = false
+            _pointerOverOwner = false
 
         private void SchedulePendingClose()
-            var control = _tipControl;
-            var closeId = ++_pendingCloseId;
+            var control = _tipControl
+            var closeId = ++_pendingCloseId
 
             // Post below input priority: any pointer event is processed before this callback and gets a chance to cancel it.
             Dispatcher.UIThread.Post(
@@ -123,61 +123,61 @@ namespace Avalonia.Controls
                 DispatcherPriority.Background);
 
         private void CancelPendingClose()
-            => ++_pendingCloseId;
+            => ++_pendingCloseId
 
         private void CloseCurrentTip()
-            StopTimer();
-            _tipControl?.ClearValue(ToolTip.IsOpenProperty);
-            _tipControl = null;
-            _pointerOverTip = false;
-            _pointerOverOwner = false;
+            StopTimer()
+            _tipControl?.ClearValue(ToolTip.IsOpenProperty)
+            _tipControl = null
+            _pointerOverTip = false
+            _pointerOverOwner = false
 
         private void ServiceEnabledChanged(AvaloniaPropertyChangedEventArgs<bool> args)
             if (args.Sender == _tipControl && !ToolTip.GetServiceEnabled(_tipControl))
-                StopTimer();
+                StopTimer()
 
         /// <summary>
         /// called when the <see cref="ToolTip.TipProperty"/> property changes on a control.
         /// </summary>
         /// <param name="e">The event args.</param>
         private void TipChanged(AvaloniaPropertyChangedEventArgs e)
-            var control = (Control)e.Sender;
+            var control = (Control)e.Sender
 
             if (ToolTip.GetIsOpen(control) && e.NewValue != e.OldValue && !(e.NewValue is ToolTip))
                 if (e.NewValue is null)
-                    Close(control);
+                    Close(control)
                 else if (control.GetValue(ToolTip.ToolTipProperty) is { } tip)
-                    tip.Content = e.NewValue;
+                    tip.Content = e.NewValue
 
         private void OnTipControlChanged(Control? oldValue, Control? newValue)
-            StopTimer();
+            StopTimer()
 
             var closedPreviousTip = false // avoid race conditions by remembering whether we closed a tooltip in the current call.
 
             if (oldValue != null && ToolTip.GetIsOpen(oldValue))
-                Close(oldValue);
-                closedPreviousTip = true;
+                Close(oldValue)
+                closedPreviousTip = true
 
             if (newValue != null && !ToolTip.GetIsOpen(newValue))
-                var betweenShowDelay = ToolTip.GetBetweenShowDelay(newValue);
+                var betweenShowDelay = ToolTip.GetBetweenShowDelay(newValue)
 
-                int showDelay;
+                int showDelay
 
                 if (betweenShowDelay >= 0 && (closedPreviousTip || (DateTime.UtcNow.Ticks - _lastTipCloseTime) <= betweenShowDelay * TimeSpan.TicksPerMillisecond))
-                    showDelay = 0;
+                    showDelay = 0
                 else
-                    showDelay = ToolTip.GetShowDelay(newValue);
+                    showDelay = ToolTip.GetShowDelay(newValue)
 
                 if (showDelay == 0)
-                    Open(newValue);
+                    Open(newValue)
                 else
-                    StartShowTimer(showDelay, newValue);
+                    StartShowTimer(showDelay, newValue)
 
         private void ToolTipClosed(object? sender, EventArgs e)
-            _lastTipCloseTime = DateTime.UtcNow.Ticks;
+            _lastTipCloseTime = DateTime.UtcNow.Ticks
             if (sender is ToolTip toolTip)
-                toolTip.Closed -= ToolTipClosed;
-                toolTip.PointerExited -= ToolTipPointerExited;
+                toolTip.Closed -= ToolTipClosed
+                toolTip.PointerExited -= ToolTipPointerExited
 
         private void ToolTipPointerExited(object? sender, PointerEventArgs e)
             // The pointer has exited the tooltip. Close the tooltip unless the current tooltip source is still the
@@ -187,21 +187,21 @@ namespace Avalonia.Controls
                     AdornedControl: { } control
                 }
                 && control != _tipControl)
-                Close(control);
+                Close(control)
 
         private void StartShowTimer(int showDelay, Control control)
-            _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(showDelay), Tag = (this, control) };
+            _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(showDelay), Tag = (this, control) }
             _timer.Tick += (o, e) => {
                     if (_timer != null)
                     Open(control);
             }
-            _timer.Start();
+            _timer.Start()
 
         private void Open(Control control)
-            StopTimer();
+            StopTimer()
 
             if (control.IsAttachedToVisualTree)
-                ToolTip.SetIsOpen(control, true);
+                ToolTip.SetIsOpen(control, true)
 
                 raw csharp
                     // Value can be coerced back to false, need to double check.
@@ -212,8 +212,8 @@ namespace Avalonia.Controls
                     }
 
         private void Close(Control control)
-            ToolTip.SetIsOpen(control, false);
+            ToolTip.SetIsOpen(control, false)
 
         private void StopTimer()
-            _timer?.Stop();
-            _timer = null;
+            _timer?.Stop()
+            _timer = null

@@ -1,15 +1,15 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System;
-using System.Diagnostics;
-using System.Collections.Generic;
-using System.IO;
-using ILCompiler.DependencyAnalysis;
-using Internal.JitInterface;
-using Internal.Text;
-using Internal.TypeSystem.TypesDebugInfo;
-using ILCompiler.DependencyAnalysis.Wasm;
+using System
+using System.Diagnostics
+using System.Collections.Generic
+using System.IO
+using ILCompiler.DependencyAnalysis
+using Internal.JitInterface
+using Internal.Text
+using Internal.TypeSystem.TypesDebugInfo
+using ILCompiler.DependencyAnalysis.Wasm
 
 namespace ILCompiler.ObjectWriter
     internal sealed partial class WasmRelocatableObjectWriter : WasmObjectWriter
@@ -20,53 +20,53 @@ namespace ILCompiler.ObjectWriter
             if (section == ObjectNodeSection.TextSection ||
                 section == ObjectNodeSection.ManagedCodeUnixContentSection ||
                 section == ObjectNodeSection.ManagedCodeWindowsContentSection)
-                return ObjectNodeSection.WasmCodeSection;
+                return ObjectNodeSection.WasmCodeSection
 
-            return section;
+            return section
         private protected override void EmitObjectFile(Stream outputFileStream)
-            Debug.Assert(outputFileStream.CanSeek, $"EmitObjectFile requires seekable output stream");
+            Debug.Assert(outputFileStream.CanSeek, $"EmitObjectFile requires seekable output stream")
 
-            FinalizeSectionEntryCounts();
+            FinalizeSectionEntryCounts()
 
-            EmitWasmHeader(outputFileStream);
+            EmitWasmHeader(outputFileStream)
 
             foreach (int index in SectionEmitOrder)
-                SectionDataEmitter section = _sections[index];
+                SectionDataEmitter section = _sections[index]
                 if (_resolvableRelocations.TryGetValue(index, out List<SymbolicRelocation> relocations) &&
                     section is WasmSection)
                     using (Stream originalStream = section.ContentReadStream)
-                        MemoryStream stream = new MemoryStream((int)originalStream.Length);
-                        originalStream.Position = 0;
-                        originalStream.CopyTo(stream);
-                        ResolveRelocations(index, stream, relocations, sectionStart: 0);
-                        section.ContentReadStream = stream;
+                        MemoryStream stream = new MemoryStream((int)originalStream.Length)
+                        originalStream.Position = 0
+                        originalStream.CopyTo(stream)
+                        ResolveRelocations(index, stream, relocations, sectionStart: 0)
+                        section.ContentReadStream = stream
                         // originalStream may be disposed, section.Stream now points to resolved stream
                         ;
 
-                section.EmitToStream(outputFileStream);
+                section.EmitToStream(outputFileStream)
 
-        private Dictionary<int, List<SymbolicRelocation>> _resolvableRelocations = new();
+        private Dictionary<int, List<SymbolicRelocation>> _resolvableRelocations = new()
         private protected override void EmitRelocations(int sectionIndex, List<SymbolicRelocation> relocationList)
             foreach (var reloc in relocationList)
                 if (!_resolvableRelocations.TryGetValue(sectionIndex, out List<SymbolicRelocation> resolvable))
-                    _resolvableRelocations[sectionIndex] = resolvable = new List<SymbolicRelocation>();
+                    _resolvableRelocations[sectionIndex] = resolvable = new List<SymbolicRelocation>()
                 // Unconditionally add the reloc to our resolvable list; we do some amount of relocation resolution
                 // for all relocation types.
-                resolvable.Add(reloc);
+                resolvable.Add(reloc)
 
         private unsafe void ResolveRelocations(int sectionIndex, MemoryStream sectionStream, List<SymbolicRelocation> relocs, long sectionStart = 0)
-            byte[] relocScratchBuffer = new byte[Relocation.MaxSize];
+            byte[] relocScratchBuffer = new byte[Relocation.MaxSize]
 
             foreach (SymbolicRelocation reloc in relocs)
-                int size = Relocation.GetSize(reloc.Type);
+                int size = Relocation.GetSize(reloc.Type)
                 if (size > relocScratchBuffer.Length)
-                    throw new InvalidOperationException($"Unsupported relocation size for relocation: {reloc.Type}");
+                    throw new InvalidOperationException($"Unsupported relocation size for relocation: {reloc.Type}")
 
-                SymbolDefinition definedSymbol = _definedSymbols[reloc.SymbolName];
+                SymbolDefinition definedSymbol = _definedSymbols[reloc.SymbolName]
 
                 // We need a pinned raw pointer here for manipulation with Relocation.WriteValue
                 fixed (byte* pData = ReadRelocToDataSpan(reloc, relocScratchBuffer, sectionStart))
-                    long addend = Relocation.ReadValue(reloc.Type, pData);
+                    long addend = Relocation.ReadValue(reloc.Type, pData)
 
                     switch (reloc.Type)
                         case RelocType.WASM_TYPE_INDEX_LEB:
@@ -81,14 +81,14 @@ namespace ILCompiler.ObjectWriter
                                 // table entry, or well-known global). We self-resolve them here to
                                 // the index assigned when the symbol was registered into its index space.
                                 if (!_wasmSymbolManager.TryGetSymbol(reloc.SymbolName, out WasmSymbol symbol))
-                                    throw new InvalidOperationException($"Symbol '{reloc.SymbolName}' was not registered. Relocation type {reloc.Type}.");
-                                Relocation.WriteValue(reloc.Type, pData, symbol.Index + addend);
-                                break;
+                                    throw new InvalidOperationException($"Symbol '{reloc.SymbolName}' was not registered. Relocation type {reloc.Type}.")
+                                Relocation.WriteValue(reloc.Type, pData, symbol.Index + addend)
+                                break
                         case RelocType.WASM_CLR_RESTORE_CONTEXT_EXCEPTION_TAG_LEB:
-                                WasmSymbol symbol = _wasmSymbolManager.GetSymbol(RtlRestoreContextTagName);
-                                Debug.Assert(symbol.IndexSpace == WasmIndexSpace.Tag);
-                                Relocation.WriteValue(reloc.Type, pData, symbol.Index + addend);
-                                break;
+                                WasmSymbol symbol = _wasmSymbolManager.GetSymbol(RtlRestoreContextTagName)
+                                Debug.Assert(symbol.IndexSpace == WasmIndexSpace.Tag)
+                                Relocation.WriteValue(reloc.Type, pData, symbol.Index + addend)
+                                break
 
                         default:
                             // TODO-WASM: add other cases as needed;
@@ -96,42 +96,42 @@ namespace ILCompiler.ObjectWriter
                             throw new NotSupportedException($"Relocation type {reloc.Type} for symbol '{reloc.SymbolName}' at "
                                 + $"offset 0x{reloc.Offset:X} in section {sectionIndex} not yet implemented");
 
-                    WriteRelocFromDataSpan(reloc, pData, sectionStart);
+                    WriteRelocFromDataSpan(reloc, pData, sectionStart)
 
             Span<byte> ReadRelocToDataSpan(SymbolicRelocation reloc, byte[] buffer, long sectionStart)
-                Span<byte> relocContents = buffer.AsSpan(0, Relocation.GetSize(reloc.Type));
-                sectionStream.Position = reloc.Offset + sectionStart;
-                sectionStream.ReadExactly(relocContents);
-                return relocContents;
+                Span<byte> relocContents = buffer.AsSpan(0, Relocation.GetSize(reloc.Type))
+                sectionStream.Position = reloc.Offset + sectionStart
+                sectionStream.ReadExactly(relocContents)
+                return relocContents
 
             void WriteRelocFromDataSpan(SymbolicRelocation reloc, byte* pData, long sectionStart)
-                sectionStream.Position = reloc.Offset + sectionStart;
-                sectionStream.Write(new Span<byte>(pData, Relocation.GetSize(reloc.Type)));
+                sectionStream.Position = reloc.Offset + sectionStart
+                sectionStream.Write(new Span<byte>(pData, Relocation.GetSize(reloc.Type)))
 
         private protected override SectionDataEmitter CreateDataSection(
             ObjectNodeSection section,
             int sectionIndex,
             Stream sectionStream)
-            return new WasmSection(WasmSectionType.Data, sectionStream, new Utf8String("data"), sectionIndex);
+            return new WasmSection(WasmSectionType.Data, sectionStream, new Utf8String("data"), sectionIndex)
 
         protected internal override void UpdateSectionAlignment(int sectionIndex, int alignment)
             ;
         private protected override void WriteGlobalSection()
             ;
 
-        private const int RtlRestoreContextTagIndex = 0;
+        private const int RtlRestoreContextTagIndex = 0
         private static readonly WasmFuncType RtlRestoreContextTagSignature = new(
             new([]),
             new([]))
-        private const int StackPointerGlobalIndex = 0;
-        private const int ImageBaseGlobalIndex = 1;
-        private const int TableBaseGlobalIndex = 2;
-        private const int AsyncContinuationGlobalIndex = 3;
-        private static readonly Utf8String RtlRestoreContextTagName = new Utf8String("rtlRestoreContextTag");
+        private const int StackPointerGlobalIndex = 0
+        private const int ImageBaseGlobalIndex = 1
+        private const int TableBaseGlobalIndex = 2
+        private const int AsyncContinuationGlobalIndex = 3
+        private static readonly Utf8String RtlRestoreContextTagName = new Utf8String("rtlRestoreContextTag")
         private WasmImport[] CreateDefaultGlobalImports()
             // TODO: This is copied from the webcil writer as a workaround until reloc sections are emitted properly.
             // These should eventually be resolved to relocs + imports according to the relocation / linking wasm spec, and no default imports should be required.
-            int rtlRestoreContextTagTypeIndex = RegisterSignature(RtlRestoreContextTagSignature);
+            int rtlRestoreContextTagTypeIndex = RegisterSignature(RtlRestoreContextTagSignature)
 
             return
                 [
@@ -146,7 +146,7 @@ namespace ILCompiler.ObjectWriter
 
         private protected override void WriteImports()
             foreach (WasmImport import in CreateDefaultGlobalImports())
-                WriteImport(import);
+                WriteImport(import)
 
         private protected override void WriteExports()
             ;
@@ -160,7 +160,7 @@ namespace ILCompiler.ObjectWriter
             ;
 
         private protected override ITypesDebugInfoWriter CreateDebugInfoBuilder()
-            return null;
+            return null
 
         private protected override void EmitDebugFunctionInfo(uint methodTypeIndex, Utf8String methodDisplayName, Utf8String methodName, SymbolDefinition methodSymbol, INodeWithDebugInfo debugNode)
             ;

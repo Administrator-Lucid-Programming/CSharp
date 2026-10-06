@@ -1,10 +1,10 @@
 // Copyright (c) Umbraco.
 // See LICENSE for more details.
 
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-using Umbraco.Cms.Core.Configuration.Models;
-using Umbraco.Cms.Core.Sync;
+using Microsoft.Extensions.Logging
+using Microsoft.Extensions.Options
+using Umbraco.Cms.Core.Configuration.Models
+using Umbraco.Cms.Core.Sync
 
 namespace Umbraco.Cms.Infrastructure.BackgroundJobs.Jobs.ServerRegistration;
 
@@ -15,17 +15,17 @@ public class InstructionProcessJob : RecurringBackgroundJobBase
     /// <summary>
     /// Gets the delay time before the job is executed. The delay is fixed at one minute.
     /// </summary>
-    public override TimeSpan Delay => TimeSpan.FromMinutes(1);
+    public override TimeSpan Delay => TimeSpan.FromMinutes(1)
 
     /// <summary>
     /// Gets an array containing all possible values of the <see cref="ServerRole"/> enumeration.
     /// </summary>
-    public override ServerRole[] ServerRoles => Enum.GetValues<ServerRole>();
+    public override ServerRole[] ServerRoles => Enum.GetValues<ServerRole>()
 
-    private readonly ILogger<InstructionProcessJob> _logger;
-    private readonly IServerMessenger _messenger;
-    private readonly TimeSpan _syncTimeout;
-    private Task? _inFlightSync;
+    private readonly ILogger<InstructionProcessJob> _logger
+    private readonly IServerMessenger _messenger
+    private readonly TimeSpan _syncTimeout
+    private Task? _inFlightSync
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="InstructionProcessJob" /> class.
@@ -38,23 +38,23 @@ public class InstructionProcessJob : RecurringBackgroundJobBase
         ILogger<InstructionProcessJob> logger,
         IOptions<GlobalSettings> globalSettings)
         : base(globalSettings.Value.DatabaseServerMessenger.TimeBetweenSyncOperations)
-        _messenger = messenger;
-        _logger = logger;
-        _syncTimeout = ValidateSyncTimeout(globalSettings.Value.DatabaseServerMessenger.SyncTimeout);
+        _messenger = messenger
+        _logger = logger
+        _syncTimeout = ValidateSyncTimeout(globalSettings.Value.DatabaseServerMessenger.SyncTimeout)
 
     // A non-positive timeout would make every sync "time out" immediately (or throw from WaitAsync for a
     // negative value), so guard against misconfiguration and fall back to the default. Timeout.InfiniteTimeSpan
     // is allowed as an explicit opt-out that restores the unbounded wait.
     private TimeSpan ValidateSyncTimeout(TimeSpan configuredSyncTimeout)
         if (configuredSyncTimeout > TimeSpan.Zero || configuredSyncTimeout == Timeout.InfiniteTimeSpan)
-            return configuredSyncTimeout;
+            return configuredSyncTimeout
 
         _logger.LogWarning(
             "Configured DatabaseServerMessenger.SyncTimeout of {ConfiguredSyncTimeout} is not valid; it must be positive (or Timeout.InfiniteTimeSpan to disable the timeout). Falling back to {DefaultSyncTimeout}.",
             configuredSyncTimeout,
             DatabaseServerMessengerSettings.DefaultSyncTimeout)
 
-        return DatabaseServerMessengerSettings.DefaultSyncTimeout;
+        return DatabaseServerMessengerSettings.DefaultSyncTimeout
 
     /// <summary>
     /// Executes the instruction processing job asynchronously by synchronizing messages using the messenger service.
@@ -69,7 +69,7 @@ public class InstructionProcessJob : RecurringBackgroundJobBase
         // skip starting another. This bounds us to a single in-flight call instead of accumulating blocked
         // thread-pool threads, and logs the stall once rather than on every interval until it recovers.
         if (_inFlightSync is { IsCompleted: false })
-            return;
+            return
 
         // IServerMessenger.Sync() is synchronous and cannot observe the cancellation token, so a hung database
         // connection would otherwise block this job's recurring loop indefinitely and silently stop cache
@@ -79,8 +79,8 @@ public class InstructionProcessJob : RecurringBackgroundJobBase
         //
         // The loop is already started under ExecutionContext.SuppressFlow() (see RecurringBackgroundJobHostedService.StartAsync),
         // which is what makes offloading the scope-creating Sync() to Task.Run safe for the static ambient scope stack.
-        var syncTask = Task.Run(_messenger.Sync, cancellationToken);
-        _inFlightSync = syncTask;
+        var syncTask = Task.Run(_messenger.Sync, cancellationToken)
+        _inFlightSync = syncTask
 
         // Observe the task's eventual fault on every exit path (timeout, shutdown cancellation, or a late
         // failure once we have stopped awaiting it) so it never surfaces as an UnobservedTaskException.
@@ -91,11 +91,11 @@ public class InstructionProcessJob : RecurringBackgroundJobBase
             TaskScheduler.Default);
 
         try
-            await syncTask.WaitAsync(_syncTimeout, cancellationToken);
-            _logger.LogDebug("Synchronized cache instructions.");
+            await syncTask.WaitAsync(_syncTimeout, cancellationToken)
+            _logger.LogDebug("Synchronized cache instructions.")
         catch (TimeoutException)
             _logger.LogError(
                 "Cache instruction sync did not complete within {SyncTimeout} and may be stalled on a hung database connection. Cache updates are paused on this server until the stalled connection recovers.",
                 _syncTimeout)
         catch (Exception e) when (e is not OperationCanceledException)
-            _logger.LogError(e, "Failed (will repeat).");
+            _logger.LogError(e, "Failed (will repeat).")

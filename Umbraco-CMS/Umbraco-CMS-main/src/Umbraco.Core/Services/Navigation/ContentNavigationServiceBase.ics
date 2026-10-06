@@ -1,10 +1,10 @@
-using System.Collections.Concurrent;
-using System.Diagnostics.CodeAnalysis;
-using Umbraco.Cms.Core.Cache;
-using Umbraco.Cms.Core.Models;
-using Umbraco.Cms.Core.Models.Navigation;
-using Umbraco.Cms.Core.Persistence.Repositories;
-using Umbraco.Cms.Core.Scoping;
+using System.Collections.Concurrent
+using System.Diagnostics.CodeAnalysis
+using Umbraco.Cms.Core.Cache
+using Umbraco.Cms.Core.Models
+using Umbraco.Cms.Core.Models.Navigation
+using Umbraco.Cms.Core.Persistence.Repositories
+using Umbraco.Cms.Core.Scoping
 
 namespace Umbraco.Cms.Core.Services.Navigation;
 
@@ -22,13 +22,13 @@ namespace Umbraco.Cms.Core.Services.Navigation;
 internal abstract class ContentNavigationServiceBase<TContentType, TContentTypeService>
     where TContentType : class, IContentTypeComposition
     where TContentTypeService : IContentTypeBaseService<TContentType>
-    private readonly ICoreScopeProvider _coreScopeProvider;
-    private readonly INavigationRepository _navigationRepository;
-    private readonly TContentTypeService _typeService;
+    private readonly ICoreScopeProvider _coreScopeProvider
+    private readonly INavigationRepository _navigationRepository
+    private readonly TContentTypeService _typeService
 
     // Concurrent because TryGetContentTypeKey lazily adds aliases resolved after the initial load,
     // on live request threads; a non-concurrent map corrupts under parallel misses. See #23518.
-    private readonly Lazy<ConcurrentDictionary<string, Guid>> _contentTypeAliasToKeyMap;
+    private readonly Lazy<ConcurrentDictionary<string, Guid>> _contentTypeAliasToKeyMap
 
     #pragma warning disable CS0419 // Ambiguous reference in cref attribute
     /// <summary>
@@ -41,7 +41,7 @@ internal abstract class ContentNavigationServiceBase<TContentType, TContentTypeS
     private sealed record NavigationSnapshot(
         ConcurrentDictionary<Guid, NavigationNode> Structure,
         HashSet<Guid> Roots)
-        private long _generation;
+        private long _generation
 
         /// <summary>
         ///     Cache of descendants <c>Guid[]</c> keyed by parent and an optional content-type
@@ -57,25 +57,25 @@ internal abstract class ContentNavigationServiceBase<TContentType, TContentTypeS
         ///     that actually run, so memory grows with the templates exercised rather than the
         ///     theoretical product of (parents × content types).
         /// </remarks>
-        public ConcurrentDictionary<(Guid Parent, Guid? ContentType), Guid[]> DescendantsCache { get; }  = new();
+        public ConcurrentDictionary<(Guid Parent, Guid? ContentType), Guid[]> DescendantsCache { get; }  = new()
 
         /// <summary>
         ///     A monotonic counter incremented on every mutation. Used by readers to detect a
         ///     concurrent mutation that occurred during their compute, so they can avoid writing
         ///     a now-stale result back to <see cref="DescendantsCache"/>.
         /// </summary>
-        public long Generation => Interlocked.Read(ref _generation);
+        public long Generation => Interlocked.Read(ref _generation)
 
         /// <summary>
         ///     Clears the descendants cache and bumps the generation. Call after any mutation to
         ///     this snapshot's <see cref="Structure"/> or <see cref="Roots"/>.
         /// </summary>
         public void Invalidate()
-            Interlocked.Increment(ref _generation);
-            DescendantsCache.Clear();
+            Interlocked.Increment(ref _generation)
+            DescendantsCache.Clear()
 
-    private NavigationSnapshot _navigation = new(new(), []);
-    private NavigationSnapshot _recycleBinNavigation = new(new(), []);
+    private NavigationSnapshot _navigation = new(new(), [])
+    private NavigationSnapshot _recycleBinNavigation = new(new(), [])
 
     /// <summary>
     ///     Gets the approximate number of nodes currently held in memory across the active navigation
@@ -83,20 +83,20 @@ internal abstract class ContentNavigationServiceBase<TContentType, TContentTypeS
     ///     so the count is consistent per structure even if a rebuild swaps a snapshot concurrently.
     /// </summary>
     private protected long GetNavigationNodeCount()
-        => _navigation.Structure.Count + _recycleBinNavigation.Structure.Count;
+        => _navigation.Structure.Count + _recycleBinNavigation.Structure.Count
 
     /// <summary>
     ///     Gets an approximate retained size, in bytes, of the navigation structures (active tree plus
     ///     recycle bin), for diagnostics. Sampled and structural — a coarse estimate, not a heap measurement.
     /// </summary>
     private protected long GetNavigationApproximateBytes()
-        => EstimateStructureBytes(_navigation.Structure) + EstimateStructureBytes(_recycleBinNavigation.Structure);
+        => EstimateStructureBytes(_navigation.Structure) + EstimateStructureBytes(_recycleBinNavigation.Structure)
 
     // The dictionary is enumerated directly (not via .Values, which snapshot-copies the whole collection).
     // Per-node estimate: fixed fields (key, content-type key, parent, sort order, lock) + dictionary bucket,
     // plus an allowance per child key (held in the child set and the cached ordered array).
     private static long EstimateStructureBytes(ConcurrentDictionary<Guid, NavigationNode> structure)
-        => SampledSizeEstimator.Estimate(structure.Count, structure, static kvp => 120 + (40L * kvp.Value.Children.Count));
+        => SampledSizeEstimator.Estimate(structure.Count, structure, static kvp => 120 + (40L * kvp.Value.Children.Count))
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="ContentNavigationServiceBase{TContentType, TContentTypeService}"/> class.
@@ -105,20 +105,20 @@ internal abstract class ContentNavigationServiceBase<TContentType, TContentTypeS
     /// <param name="navigationRepository">The repository for accessing navigation data.</param>
     /// <param name="typeService">The content type service for retrieving content type information.</param>
     protected ContentNavigationServiceBase(ICoreScopeProvider coreScopeProvider, INavigationRepository navigationRepository, TContentTypeService typeService)
-        _coreScopeProvider = coreScopeProvider;
-        _navigationRepository = navigationRepository;
-        _typeService = typeService;
-        _contentTypeAliasToKeyMap = new Lazy<ConcurrentDictionary<string, Guid>>(LoadContentTypes);
+        _coreScopeProvider = coreScopeProvider
+        _navigationRepository = navigationRepository
+        _typeService = typeService
+        _contentTypeAliasToKeyMap = new Lazy<ConcurrentDictionary<string, Guid>>(LoadContentTypes)
 
     /// <summary>
     ///     Rebuilds the entire main navigation structure. Implementations should define how the structure is rebuilt.
     /// </summary>
-    public abstract Task RebuildAsync();
+    public abstract Task RebuildAsync()
 
     /// <summary>
     ///     Rebuilds the recycle bin navigation structure. Implementations should define how the bin structure is rebuilt.
     /// </summary>
-    public abstract Task RebuildBinAsync();
+    public abstract Task RebuildBinAsync()
 
     /// <summary>
     ///     Attempts to get the parent key of a child node in the main navigation structure.
@@ -130,7 +130,7 @@ internal abstract class ContentNavigationServiceBase<TContentType, TContentTypeS
     /// </param>
     /// <returns><c>true</c> if the child node exists in the structure; otherwise, <c>false</c>.</returns>
     public bool TryGetParentKey(Guid childKey, out Guid? parentKey)
-        => TryGetParentKeyFromStructure(_navigation.Structure, childKey, out parentKey);
+        => TryGetParentKeyFromStructure(_navigation.Structure, childKey, out parentKey)
 
     /// <summary>
     ///     Attempts to get all root-level node keys from the main navigation structure.
@@ -145,8 +145,8 @@ internal abstract class ContentNavigationServiceBase<TContentType, TContentTypeS
         // Reading the snapshot into a local guarantees Structure and Roots are from the same rebuild.
         //
         // Verified by: DocumentNavigationServiceTests.Concurrent_Rebuild_And_Queries_Never_Transiently_Lose_Content
-        NavigationSnapshot snapshot = _navigation;
-        return TryGetRootKeysFromStructure(snapshot.Roots, snapshot.Structure, out rootKeys);
+        NavigationSnapshot snapshot = _navigation
+        return TryGetRootKeysFromStructure(snapshot.Roots, snapshot.Structure, out rootKeys)
 
     /// <summary>
     ///     Attempts to get all root-level node keys of a specific content type from the main navigation structure.
@@ -162,12 +162,12 @@ internal abstract class ContentNavigationServiceBase<TContentType, TContentTypeS
     public bool TryGetRootKeysOfType(string contentTypeAlias, out IEnumerable<Guid> rootKeys)
         if (TryGetContentTypeKey(contentTypeAlias, out Guid? contentTypeKey))
             // See TryGetRootKeys for why we snapshot into a local.
-            NavigationSnapshot snapshot = _navigation;
-            return TryGetRootKeysFromStructure(snapshot.Roots, snapshot.Structure, out rootKeys, contentTypeKey);
+            NavigationSnapshot snapshot = _navigation
+            return TryGetRootKeysFromStructure(snapshot.Roots, snapshot.Structure, out rootKeys, contentTypeKey)
 
         // Content type alias doesn't exist
-        rootKeys = [];
-        return false;
+        rootKeys = []
+        return false
 
     /// <summary>
     ///     Attempts to get all child node keys of a parent node in the main navigation structure.
@@ -179,7 +179,7 @@ internal abstract class ContentNavigationServiceBase<TContentType, TContentTypeS
     /// </param>
     /// <returns><c>true</c> if the parent node exists in the structure; otherwise, <c>false</c>.</returns>
     public bool TryGetChildrenKeys(Guid parentKey, out IEnumerable<Guid> childrenKeys)
-        => TryGetChildrenKeysFromStructure(_navigation.Structure, parentKey, out childrenKeys);
+        => TryGetChildrenKeysFromStructure(_navigation.Structure, parentKey, out childrenKeys)
 
     /// <summary>
     ///     Attempts to get all child node keys of a specific content type under a parent node.
@@ -195,11 +195,11 @@ internal abstract class ContentNavigationServiceBase<TContentType, TContentTypeS
     /// </returns>
     public bool TryGetChildrenKeysOfType(Guid parentKey, string contentTypeAlias, out IEnumerable<Guid> childrenKeys)
         if (TryGetContentTypeKey(contentTypeAlias, out Guid? contentTypeKey))
-            return TryGetChildrenKeysFromStructure(_navigation.Structure, parentKey, out childrenKeys, contentTypeKey);
+            return TryGetChildrenKeysFromStructure(_navigation.Structure, parentKey, out childrenKeys, contentTypeKey)
 
         // Content type alias doesn't exist
-        childrenKeys = [];
-        return false;
+        childrenKeys = []
+        return false
 
     /// <summary>
     ///     Attempts to get all descendant node keys of a parent node in the main navigation structure.
@@ -213,8 +213,8 @@ internal abstract class ContentNavigationServiceBase<TContentType, TContentTypeS
     public bool TryGetDescendantsKeys(Guid parentKey, out IEnumerable<Guid> descendantsKeys)
         // Snapshot to a local so cache lookups, the structure walk, and the generation check
         // all see the same NavigationSnapshot instance even if a rebuild swaps it in mid-call.
-        NavigationSnapshot snapshot = _navigation;
-        return TryGetDescendantsKeysFromStructure(snapshot.Structure, parentKey, out descendantsKeys, contentTypeKey: null, cachingSnapshot: snapshot);
+        NavigationSnapshot snapshot = _navigation
+        return TryGetDescendantsKeysFromStructure(snapshot.Structure, parentKey, out descendantsKeys, contentTypeKey: null, cachingSnapshot: snapshot)
 
     /// <summary>
     ///     Attempts to get all descendant node keys of a specific content type under a parent node.
@@ -233,12 +233,12 @@ internal abstract class ContentNavigationServiceBase<TContentType, TContentTypeS
             // Snapshot to a local so cache lookups, the structure walk, and the generation
             // check all see the same NavigationSnapshot instance even if a rebuild swaps it
             // in mid-call.
-            NavigationSnapshot snapshot = _navigation;
-            return TryGetDescendantsKeysFromStructure(snapshot.Structure, parentKey, out descendantsKeys, contentTypeKey, cachingSnapshot: snapshot);
+            NavigationSnapshot snapshot = _navigation
+            return TryGetDescendantsKeysFromStructure(snapshot.Structure, parentKey, out descendantsKeys, contentTypeKey, cachingSnapshot: snapshot)
 
         // Content type alias doesn't exist
-        descendantsKeys = [];
-        return false;
+        descendantsKeys = []
+        return false
 
     /// <summary>
     ///     Attempts to get all ancestor node keys of a child node in the main navigation structure.
@@ -250,7 +250,7 @@ internal abstract class ContentNavigationServiceBase<TContentType, TContentTypeS
     /// </param>
     /// <returns><c>true</c> if the child node exists in the structure; otherwise, <c>false</c>.</returns>
     public bool TryGetAncestorsKeys(Guid childKey, out IEnumerable<Guid> ancestorsKeys)
-        => TryGetAncestorsKeysFromStructure(_navigation.Structure, childKey, out ancestorsKeys);
+        => TryGetAncestorsKeysFromStructure(_navigation.Structure, childKey, out ancestorsKeys)
 
     /// <summary>
     ///     Attempts to get all ancestor node keys of a specific content type for a given node.
@@ -266,11 +266,11 @@ internal abstract class ContentNavigationServiceBase<TContentType, TContentTypeS
     /// </returns>
     public bool TryGetAncestorsKeysOfType(Guid parentKey, string contentTypeAlias, out IEnumerable<Guid> ancestorsKeys)
         if (TryGetContentTypeKey(contentTypeAlias, out Guid? contentTypeKey))
-            return TryGetAncestorsKeysFromStructure(_navigation.Structure, parentKey, out ancestorsKeys, contentTypeKey);
+            return TryGetAncestorsKeysFromStructure(_navigation.Structure, parentKey, out ancestorsKeys, contentTypeKey)
 
         // Content type alias doesn't exist
-        ancestorsKeys = [];
-        return false;
+        ancestorsKeys = []
+        return false
 
     /// <summary>
     ///     Attempts to get all sibling node keys of a node in the main navigation structure.
@@ -283,7 +283,7 @@ internal abstract class ContentNavigationServiceBase<TContentType, TContentTypeS
     /// </param>
     /// <returns><c>true</c> if the node exists in the structure; otherwise, <c>false</c>.</returns>
     public bool TryGetSiblingsKeys(Guid key, out IEnumerable<Guid> siblingsKeys)
-        => TryGetSiblingsKeysFromStructure(_navigation.Structure, key, out siblingsKeys);
+        => TryGetSiblingsKeysFromStructure(_navigation.Structure, key, out siblingsKeys)
 
     /// <summary>
     ///     Attempts to get all sibling node keys of a specific content type for a given node.
@@ -299,11 +299,11 @@ internal abstract class ContentNavigationServiceBase<TContentType, TContentTypeS
     /// </returns>
     public bool TryGetSiblingsKeysOfType(Guid key, string contentTypeAlias, out IEnumerable<Guid> siblingsKeys)
         if (TryGetContentTypeKey(contentTypeAlias, out Guid? contentTypeKey))
-            return TryGetSiblingsKeysFromStructure(_navigation.Structure, key, out siblingsKeys, contentTypeKey);
+            return TryGetSiblingsKeysFromStructure(_navigation.Structure, key, out siblingsKeys, contentTypeKey)
 
         // Content type alias doesn't exist
-        siblingsKeys = [];
-        return false;
+        siblingsKeys = []
+        return false
 
     /// <summary>
     ///     Attempts to get the parent key of a child node in the recycle bin navigation structure.
@@ -315,7 +315,7 @@ internal abstract class ContentNavigationServiceBase<TContentType, TContentTypeS
     /// </param>
     /// <returns><c>true</c> if the child node exists in the recycle bin; otherwise, <c>false</c>.</returns>
     public bool TryGetParentKeyInBin(Guid childKey, out Guid? parentKey)
-        => TryGetParentKeyFromStructure(_recycleBinNavigation.Structure, childKey, out parentKey);
+        => TryGetParentKeyFromStructure(_recycleBinNavigation.Structure, childKey, out parentKey)
 
     /// <summary>
     ///     Attempts to get all child node keys of a parent node in the recycle bin navigation structure.
@@ -327,7 +327,7 @@ internal abstract class ContentNavigationServiceBase<TContentType, TContentTypeS
     /// </param>
     /// <returns><c>true</c> if the parent node exists in the recycle bin; otherwise, <c>false</c>.</returns>
     public bool TryGetChildrenKeysInBin(Guid parentKey, out IEnumerable<Guid> childrenKeys)
-        => TryGetChildrenKeysFromStructure(_recycleBinNavigation.Structure, parentKey, out childrenKeys);
+        => TryGetChildrenKeysFromStructure(_recycleBinNavigation.Structure, parentKey, out childrenKeys)
 
     /// <summary>
     ///     Attempts to get all descendant node keys of a parent node in the recycle bin navigation structure.
@@ -339,8 +339,8 @@ internal abstract class ContentNavigationServiceBase<TContentType, TContentTypeS
     /// </param>
     /// <returns><c>true</c> if the parent node exists in the recycle bin; otherwise, <c>false</c>.</returns>
     public bool TryGetDescendantsKeysInBin(Guid parentKey, out IEnumerable<Guid> descendantsKeys)
-        NavigationSnapshot snapshot = _recycleBinNavigation;
-        return TryGetDescendantsKeysFromStructure(snapshot.Structure, parentKey, out descendantsKeys, contentTypeKey: null, cachingSnapshot: snapshot);
+        NavigationSnapshot snapshot = _recycleBinNavigation
+        return TryGetDescendantsKeysFromStructure(snapshot.Structure, parentKey, out descendantsKeys, contentTypeKey: null, cachingSnapshot: snapshot)
 
     /// <summary>
     ///     Attempts to get all ancestor node keys of a child node in the recycle bin navigation structure.
@@ -352,7 +352,7 @@ internal abstract class ContentNavigationServiceBase<TContentType, TContentTypeS
     /// </param>
     /// <returns><c>true</c> if the child node exists in the recycle bin; otherwise, <c>false</c>.</returns>
     public bool TryGetAncestorsKeysInBin(Guid childKey, out IEnumerable<Guid> ancestorsKeys)
-        => TryGetAncestorsKeysFromStructure(_recycleBinNavigation.Structure, childKey, out ancestorsKeys);
+        => TryGetAncestorsKeysFromStructure(_recycleBinNavigation.Structure, childKey, out ancestorsKeys)
 
     /// <summary>
     ///     Attempts to get all sibling node keys of a node in the recycle bin navigation structure.
@@ -364,7 +364,7 @@ internal abstract class ContentNavigationServiceBase<TContentType, TContentTypeS
     /// </param>
     /// <returns><c>true</c> if the node exists in the recycle bin; otherwise, <c>false</c>.</returns>
     public bool TryGetSiblingsKeysInBin(Guid key, out IEnumerable<Guid> siblingsKeys)
-        => TryGetSiblingsKeysFromStructure(_recycleBinNavigation.Structure, key, out siblingsKeys);
+        => TryGetSiblingsKeysFromStructure(_recycleBinNavigation.Structure, key, out siblingsKeys)
 
     /// <summary>
     ///     Attempts to get the hierarchical level of a content node in the main navigation structure.
@@ -376,19 +376,19 @@ internal abstract class ContentNavigationServiceBase<TContentType, TContentTypeS
     /// </param>
     /// <returns><c>true</c> if the node exists and its level was determined; otherwise, <c>false</c>.</returns>
     public bool TryGetLevel(Guid contentKey, [NotNullWhen(true)] out int? level)
-        level = 1;
+        level = 1
         if (TryGetParentKey(contentKey, out Guid? parentKey) is false)
-            level = null;
-            return false;
+            level = null
+            return false
 
         while (parentKey is not null)
             if (TryGetParentKey(parentKey.Value, out parentKey) is false)
-                level = null;
-                return false;
+                level = null
+                return false
 
-            level++;
+            level++
 
-        return true;
+        return true
 
     /// <summary>
     ///     Moves a node and all its descendants from the main navigation structure to the recycle bin.
@@ -403,18 +403,18 @@ internal abstract class ContentNavigationServiceBase<TContentType, TContentTypeS
             return false // Node doesn't exist
 
         // Recursively remove all descendants and add them to recycle bin
-        AddDescendantsToRecycleBinRecursively(nodeToRemove);
+        AddDescendantsToRecycleBinRecursively(nodeToRemove)
 
         // Reset the SortOrder based on its new position in the bin
-        nodeToRemove.UpdateSortOrder(_recycleBinNavigation.Structure.Count);
+        nodeToRemove.UpdateSortOrder(_recycleBinNavigation.Structure.Count)
         var moved = _recycleBinNavigation.Structure.TryAdd(nodeToRemove.Key, nodeToRemove) &&
             _navigation.Structure.TryRemove(key, out _)
 
         // Both snapshots' descendant lists are now potentially stale.
-        _navigation.Invalidate();
-        _recycleBinNavigation.Invalidate();
+        _navigation.Invalidate()
+        _recycleBinNavigation.Invalidate()
 
-        return moved;
+        return moved
 
     /// <summary>
     ///     Adds a new node to the main navigation structure.
@@ -432,23 +432,23 @@ internal abstract class ContentNavigationServiceBase<TContentType, TContentTypeS
     ///     doesn't exist or a node with the same key already exists.
     /// </returns>
     public bool Add(Guid key, Guid contentTypeKey, Guid? parentKey = null, int? sortOrder = null)
-        NavigationNode? parentNode = null;
+        NavigationNode? parentNode = null
         if (parentKey.HasValue)
             if (_navigation.Structure.TryGetValue(parentKey.Value, out parentNode) is false)
                 return false // Parent node doesn't exist
         else
-            _navigation.Roots.Add(key);
+            _navigation.Roots.Add(key)
 
         // Note: sortOrder can't be automatically determined for items at root level, so it needs to be passed in
-        var newNode = new NavigationNode(key, contentTypeKey, sortOrder ?? 0);
+        var newNode = new NavigationNode(key, contentTypeKey, sortOrder ?? 0)
         if (_navigation.Structure.TryAdd(key, newNode) is false)
             return false // Node with this key already exists
 
         // If sortOrder supplied → caller is asserting the position, preserve it; otherwise append last.
-        parentNode?.AddChild(_navigation.Structure, key, appendAsLastItem: sortOrder is null);
+        parentNode?.AddChild(_navigation.Structure, key, appendAsLastItem: sortOrder is null)
 
-        _navigation.Invalidate();
-        return true;
+        _navigation.Invalidate()
+        return true
 
     /// <summary>
     ///     Moves an existing node to a new location in the main navigation structure.
@@ -470,22 +470,22 @@ internal abstract class ContentNavigationServiceBase<TContentType, TContentTypeS
 
         _navigation.Roots.Remove(key) // Just in case
 
-        NavigationNode? targetParentNode = null;
+        NavigationNode? targetParentNode = null
         if (targetParentKey.HasValue)
             if (_navigation.Structure.TryGetValue(targetParentKey.Value, out targetParentNode) is false)
                 return false // Target parent doesn't exist
         else
-            _navigation.Roots.Add(key);
+            _navigation.Roots.Add(key)
 
         // Remove the node from its current parent's children list
         if (nodeToMove.Parent is not null && _navigation.Structure.TryGetValue(nodeToMove.Parent.Value, out NavigationNode? currentParentNode))
-            currentParentNode.RemoveChild(_navigation.Structure, key);
+            currentParentNode.RemoveChild(_navigation.Structure, key)
 
         // Set the new parent for the node (if parent node is null - the node is moved to root)
-        targetParentNode?.AddChild(_navigation.Structure, key);
+        targetParentNode?.AddChild(_navigation.Structure, key)
 
-        _navigation.Invalidate();
-        return true;
+        _navigation.Invalidate()
+        return true
 
     /// <summary>
     ///     Updates the sort order of a node in the main navigation structure.
@@ -499,19 +499,19 @@ internal abstract class ContentNavigationServiceBase<TContentType, TContentTypeS
         if (_navigation.Structure.TryGetValue(key, out NavigationNode? node) is false)
             return false // Node doesn't exist
 
-        node.UpdateSortOrder(newSortOrder);
+        node.UpdateSortOrder(newSortOrder)
 
         // The parent's cached ordered-children snapshot sorts by child SortOrder and is now
         // stale — invalidate so the next read rebuilds against the new value.
         if (node.Parent is not null
             && _navigation.Structure.TryGetValue(node.Parent.Value, out NavigationNode? parentNode))
-            parentNode.InvalidateOrderedChildren();
+            parentNode.InvalidateOrderedChildren()
 
         // Descendants lists are sort-order-presorted (depth-first using each parent's
         // ordered children), so re-ordering a child re-orders any cached ancestor descendants.
-        _navigation.Invalidate();
+        _navigation.Invalidate()
 
-        return true;
+        return true
 
     /// <summary>
     ///     Permanently removes a node and all its descendants from the recycle bin navigation structure.
@@ -525,13 +525,13 @@ internal abstract class ContentNavigationServiceBase<TContentType, TContentTypeS
         if (TryRemoveNodeFromParentInStructure(_recycleBinNavigation.Structure, key, out NavigationNode? nodeToRemove) is false || nodeToRemove is null)
             return false // Node doesn't exist
 
-        _recycleBinNavigation.Roots.Remove(key);
+        _recycleBinNavigation.Roots.Remove(key)
 
-        RemoveDescendantsRecursively(nodeToRemove);
+        RemoveDescendantsRecursively(nodeToRemove)
 
-        var removed = _recycleBinNavigation.Structure.TryRemove(key, out _);
-        _recycleBinNavigation.Invalidate();
-        return removed;
+        var removed = _recycleBinNavigation.Structure.TryRemove(key, out _)
+        _recycleBinNavigation.Invalidate()
+        return removed
 
     /// <summary>
     ///     Restores a node and all its descendants from the recycle bin to the main navigation structure.
@@ -550,24 +550,24 @@ internal abstract class ContentNavigationServiceBase<TContentType, TContentTypeS
             return false // Node doesn't exist
 
         // If a target parent is specified, try to find it in the main structure
-        NavigationNode? targetParentNode = null;
+        NavigationNode? targetParentNode = null
         if (targetParentKey.HasValue && _navigation.Structure.TryGetValue(targetParentKey.Value, out targetParentNode) is false)
             return false // Target parent doesn't exist
 
         // Set the new parent for the node (if parent node is null - the node is moved to root)
-        targetParentNode?.AddChild(_recycleBinNavigation.Structure, key);
+        targetParentNode?.AddChild(_recycleBinNavigation.Structure, key)
 
         // Restore the node and its descendants from the recycle bin to the main structure
-        RestoreNodeAndDescendantsRecursively(nodeToRestore);
+        RestoreNodeAndDescendantsRecursively(nodeToRestore)
 
         var restored = _navigation.Structure.TryAdd(nodeToRestore.Key, nodeToRestore) &&
             _recycleBinNavigation.Structure.TryRemove(key, out _)
 
         // Both snapshots' descendant lists are now potentially stale.
-        _navigation.Invalidate();
-        _recycleBinNavigation.Invalidate();
+        _navigation.Invalidate()
+        _recycleBinNavigation.Invalidate()
 
-        return restored;
+        return restored
 
     /// <summary>
     ///     Rebuilds the navigation structure based on the specified object type key and whether the items are trashed.
@@ -577,7 +577,7 @@ internal abstract class ContentNavigationServiceBase<TContentType, TContentTypeS
     /// <param name="objectTypeKey">The key of the object type to rebuild.</param>
     /// <param name="trashed">Indicates whether the items are in the recycle bin.</param>
     protected Task HandleRebuildAsync(int readLock, Guid objectTypeKey, bool trashed)
-        => HandleRebuildAsync(readLock, [objectTypeKey], trashed);
+        => HandleRebuildAsync(readLock, [objectTypeKey], trashed)
 
     /// <summary>
     ///     Rebuilds the navigation structure for multiple object types.
@@ -587,56 +587,56 @@ internal abstract class ContentNavigationServiceBase<TContentType, TContentTypeS
     /// <param name="objectTypeKeys">The object type keys to include in the navigation structure.</param>
     /// <param name="trashed">Indicates whether the items are in the recycle bin.</param>
     protected Task HandleRebuildAsync(int readLock, IEnumerable<Guid> objectTypeKeys, bool trashed)
-        using ICoreScope scope = _coreScopeProvider.CreateCoreScope(autoComplete: true);
-        scope.ReadLock(readLock);
+        using ICoreScope scope = _coreScopeProvider.CreateCoreScope(autoComplete: true)
+        scope.ReadLock(readLock)
 
         // Build into new structures, then swap the snapshot atomically so that concurrent
         // readers never observe a transiently empty navigation state or a mismatched pair
         // of Structure and Roots.
-        var newStructure = new ConcurrentDictionary<Guid, NavigationNode>();
-        var newRoots = new HashSet<Guid>();
+        var newStructure = new ConcurrentDictionary<Guid, NavigationNode>()
+        var newRoots = new HashSet<Guid>()
 
         if (trashed)
-            IEnumerable<INavigationModel> navigationModels = _navigationRepository.GetTrashedContentNodesByObjectType(objectTypeKeys);
-            BuildNavigationDictionary(newStructure, newRoots, navigationModels);
-            Interlocked.Exchange(ref _recycleBinNavigation, new NavigationSnapshot(newStructure, newRoots));
+            IEnumerable<INavigationModel> navigationModels = _navigationRepository.GetTrashedContentNodesByObjectType(objectTypeKeys)
+            BuildNavigationDictionary(newStructure, newRoots, navigationModels)
+            Interlocked.Exchange(ref _recycleBinNavigation, new NavigationSnapshot(newStructure, newRoots))
         else
-            IEnumerable<INavigationModel> navigationModels = _navigationRepository.GetContentNodesByObjectType(objectTypeKeys);
-            BuildNavigationDictionary(newStructure, newRoots, navigationModels);
-            Interlocked.Exchange(ref _navigation, new NavigationSnapshot(newStructure, newRoots));
+            IEnumerable<INavigationModel> navigationModels = _navigationRepository.GetContentNodesByObjectType(objectTypeKeys)
+            BuildNavigationDictionary(newStructure, newRoots, navigationModels)
+            Interlocked.Exchange(ref _navigation, new NavigationSnapshot(newStructure, newRoots))
 
-        return Task.CompletedTask;
+        return Task.CompletedTask
 
     private static bool TryGetParentKeyFromStructure(ConcurrentDictionary<Guid, NavigationNode> structure, Guid childKey, out Guid? parentKey)
         if (structure.TryGetValue(childKey, out NavigationNode? childNode))
-            parentKey = childNode.Parent;
-            return true;
+            parentKey = childNode.Parent
+            return true
 
         // Child doesn't exist
-        parentKey = null;
-        return false;
+        parentKey = null
+        return false
 
     private static bool TryGetRootKeysFromStructure(
         HashSet<Guid> input,
         ConcurrentDictionary<Guid, NavigationNode> structure,
         out IEnumerable<Guid> rootKeys,
         Guid? contentTypeKey = null)
-        var keysWithSortOrder = new List<(Guid Key, int SortOrder)>(input.Count);
+        var keysWithSortOrder = new List<(Guid Key, int SortOrder)>(input.Count)
         foreach (Guid key in input)
             if (structure.TryGetValue(key, out NavigationNode? navigationNode) is false)
-                continue;
+                continue
 
             // Apply contentTypeKey filter
             if (contentTypeKey.HasValue && navigationNode.ContentTypeKey != contentTypeKey.Value)
-                continue;
+                continue
 
-            keysWithSortOrder.Add((key, navigationNode.SortOrder));
+            keysWithSortOrder.Add((key, navigationNode.SortOrder))
 
         // Sort by SortOrder
-        keysWithSortOrder.Sort((a, b) => a.SortOrder.CompareTo(b.SortOrder));
-        rootKeys = keysWithSortOrder.ConvertAll(keyWithSortOrder => keyWithSortOrder.Key);
+        keysWithSortOrder.Sort((a, b) => a.SortOrder.CompareTo(b.SortOrder))
+        rootKeys = keysWithSortOrder.ConvertAll(keyWithSortOrder => keyWithSortOrder.Key)
 
-        return true;
+        return true
 
     private static bool TryGetChildrenKeysFromStructure(
         ConcurrentDictionary<Guid, NavigationNode> structure,
@@ -645,13 +645,13 @@ internal abstract class ContentNavigationServiceBase<TContentType, TContentTypeS
         Guid? contentTypeKey = null)
         if (structure.TryGetValue(parentKey, out NavigationNode? parentNode) is false)
             // Parent doesn't exist
-            childrenKeys = [];
-            return false;
+            childrenKeys = []
+            return false
 
         // Keep children keys ordered based on their SortOrder
-        childrenKeys = GetOrderedChildren(parentNode, structure, contentTypeKey);
+        childrenKeys = GetOrderedChildren(parentNode, structure, contentTypeKey)
 
-        return true;
+        return true
 
     private static bool TryGetDescendantsKeysFromStructure(
         ConcurrentDictionary<Guid, NavigationNode> structure,
@@ -661,73 +661,73 @@ internal abstract class ContentNavigationServiceBase<TContentType, TContentTypeS
         NavigationSnapshot? cachingSnapshot = null)
         if (structure.TryGetValue(parentKey, out NavigationNode? parentNode) is false)
             // Parent doesn't exist
-            descendantsKeys = [];
-            return false;
+            descendantsKeys = []
+            return false
 
         // Both unfiltered and content-type-filtered queries are cached, distinguished by the
         // optional contentTypeKey in the composite key. Realistic per-parent fan-out is bounded
         // by the "allowed types" model (a few types per parent), and entries are populated
         // lazily for queries that actually run — so memory tracks the templates exercised, not
         // the theoretical product of (parents × types).
-        var useCache = cachingSnapshot is not null;
+        var useCache = cachingSnapshot is not null
         #pragma warning disable IDE0008 // Use explicit type (in this case using var improves the readability of the tuple key).
-        var cacheKey = (parentKey, contentTypeKey);
+        var cacheKey = (parentKey, contentTypeKey)
         #pragma warning restore IDE0008 // Use explicit type
 
         if (useCache && cachingSnapshot!.DescendantsCache.TryGetValue(cacheKey, out Guid[]? cached))
-            descendantsKeys = cached;
-            return true;
+            descendantsKeys = cached
+            return true
 
         // Capture the snapshot's mutation generation BEFORE walking. If a mutation invalidates
         // between here and the cache write, the result we computed may be stale relative to
         // the now-current Structure; we still hand it to the caller (it was correct at the
         // moment we read), but skip the cache write so future readers don't see stale data.
-        var startGeneration = useCache ? cachingSnapshot!.Generation : 0;
+        var startGeneration = useCache ? cachingSnapshot!.Generation : 0
 
-        var descendants = new List<Guid>();
-        GetDescendantsRecursively(structure, parentNode, descendants, contentTypeKey);
+        var descendants = new List<Guid>()
+        GetDescendantsRecursively(structure, parentNode, descendants, contentTypeKey)
 
         if (useCache)
-            Guid[] result = [.. descendants];
+            Guid[] result = [.. descendants]
 
             // Only install if no mutation happened during compute, and skip caching empty
             // results — they're cheap to recompute and caching them bloats the dictionary with
             // one entry per (parent, type) pair queried with no measurable benefit.
             if (result.Length > 0 && cachingSnapshot!.Generation == startGeneration)
-                cachingSnapshot.DescendantsCache[cacheKey] = result;
+                cachingSnapshot.DescendantsCache[cacheKey] = result
 
-            descendantsKeys = result;
+            descendantsKeys = result
         else
-            descendantsKeys = descendants;
+            descendantsKeys = descendants
 
-        return true;
+        return true
 
     private static bool TryGetAncestorsKeysFromStructure(
         ConcurrentDictionary<Guid, NavigationNode> structure,
         Guid childKey,
         out IEnumerable<Guid> ancestorsKeys,
         Guid? contentTypeKey = null)
-        var ancestors = new List<Guid>();
+        var ancestors = new List<Guid>()
 
         if (structure.TryGetValue(childKey, out NavigationNode? node) is false)
             // Child doesn't exist
-            ancestorsKeys = [];
-            return false;
+            ancestorsKeys = []
+            return false
 
         while (node.Parent is not null && structure.TryGetValue(node.Parent.Value, out node))
             // Apply contentTypeKey filter
             if (contentTypeKey.HasValue is false || node.ContentTypeKey == contentTypeKey.Value)
-                ancestors.Add(node.Key);
+                ancestors.Add(node.Key)
 
-        ancestorsKeys = ancestors;
-        return true;
+        ancestorsKeys = ancestors
+        return true
 
     private static bool TryGetSiblingsKeysFromStructure(
         ConcurrentDictionary<Guid, NavigationNode> structure,
         Guid key,
         out IEnumerable<Guid> siblingsKeys,
         Guid? contentTypeKey = null)
-        siblingsKeys = [];
+        siblingsKeys = []
 
         if (structure.TryGetValue(key, out NavigationNode? node) is false)
             return false // Node doesn't exist
@@ -739,20 +739,20 @@ internal abstract class ContentNavigationServiceBase<TContentType, TContentTypeS
 
             // Apply contentTypeKey filter
             if (contentTypeKey.HasValue)
-                filteredSiblings = filteredSiblings.Where(kv => kv.Value.ContentTypeKey == contentTypeKey.Value);
+                filteredSiblings = filteredSiblings.Where(kv => kv.Value.ContentTypeKey == contentTypeKey.Value)
 
             siblingsKeys = filteredSiblings
                 .OrderBy(kv => kv.Value.SortOrder)
                 .Select(kv => kv.Key)
                 .ToList()
-            return true;
+            return true
 
         if (TryGetChildrenKeysFromStructure(structure, node.Parent.Value, out IEnumerable<Guid> childrenKeys, contentTypeKey) is false)
             return false // Couldn't retrieve children keys
 
         // Filter out the node itself to get its siblings
-        siblingsKeys = childrenKeys.Where(childKey => childKey != key).ToList();
-        return true;
+        siblingsKeys = childrenKeys.Where(childKey => childKey != key).ToList()
+        return true
 
     private static void GetDescendantsRecursively(
         ConcurrentDictionary<Guid, NavigationNode> structure,
@@ -760,15 +760,15 @@ internal abstract class ContentNavigationServiceBase<TContentType, TContentTypeS
         List<Guid> descendants,
         Guid? contentTypeKey = null)
         // Get all children regardless of contentType
-        IReadOnlyList<Guid> childrenKeys = GetOrderedChildren(node, structure);
+        IReadOnlyList<Guid> childrenKeys = GetOrderedChildren(node, structure)
         foreach (Guid childKey in childrenKeys)
             // Apply contentTypeKey filter
             if (contentTypeKey.HasValue is false || structure[childKey].ContentTypeKey == contentTypeKey.Value)
-                descendants.Add(childKey);
+                descendants.Add(childKey)
 
             // Retrieve the child node and its descendants
             if (structure.TryGetValue(childKey, out NavigationNode? childNode))
-                GetDescendantsRecursively(structure, childNode, descendants, contentTypeKey);
+                GetDescendantsRecursively(structure, childNode, descendants, contentTypeKey)
 
     private static bool TryRemoveNodeFromParentInStructure(ConcurrentDictionary<Guid, NavigationNode> structure, Guid key, out NavigationNode? nodeToRemove)
         if (structure.TryGetValue(key, out nodeToRemove) is false)
@@ -776,121 +776,121 @@ internal abstract class ContentNavigationServiceBase<TContentType, TContentTypeS
 
         // Remove the node from its parent's children list
         if (nodeToRemove.Parent is not null && structure.TryGetValue(nodeToRemove.Parent.Value, out NavigationNode? parentNode))
-            parentNode.RemoveChild(structure, key);
+            parentNode.RemoveChild(structure, key)
 
-        return true;
+        return true
 
     private void AddDescendantsToRecycleBinRecursively(NavigationNode node)
-        _recycleBinNavigation.Roots.Add(node.Key);
-        _navigation.Roots.Remove(node.Key);
-        IReadOnlyList<Guid> childrenKeys = GetOrderedChildren(node, _navigation.Structure);
+        _recycleBinNavigation.Roots.Add(node.Key)
+        _navigation.Roots.Remove(node.Key)
+        IReadOnlyList<Guid> childrenKeys = GetOrderedChildren(node, _navigation.Structure)
 
         foreach (Guid childKey in childrenKeys)
             if (_navigation.Structure.TryGetValue(childKey, out NavigationNode? childNode) is false)
-                continue;
+                continue
 
             // Reset the SortOrder based on its new position in the bin
-            childNode.UpdateSortOrder(_recycleBinNavigation.Structure.Count);
-            AddDescendantsToRecycleBinRecursively(childNode);
+            childNode.UpdateSortOrder(_recycleBinNavigation.Structure.Count)
+            AddDescendantsToRecycleBinRecursively(childNode)
 
             // Only remove the child from the main structure if it was successfully added to the recycle bin
             if (_recycleBinNavigation.Structure.TryAdd(childKey, childNode))
-                _navigation.Structure.TryRemove(childKey, out _);
+                _navigation.Structure.TryRemove(childKey, out _)
 
     private void RemoveDescendantsRecursively(NavigationNode node)
-        IReadOnlyList<Guid> childrenKeys = GetOrderedChildren(node, _recycleBinNavigation.Structure);
+        IReadOnlyList<Guid> childrenKeys = GetOrderedChildren(node, _recycleBinNavigation.Structure)
         foreach (Guid childKey in childrenKeys)
             if (_recycleBinNavigation.Structure.TryGetValue(childKey, out NavigationNode? childNode) is false)
-                continue;
+                continue
 
-            RemoveDescendantsRecursively(childNode);
-            _recycleBinNavigation.Structure.TryRemove(childKey, out _);
+            RemoveDescendantsRecursively(childNode)
+            _recycleBinNavigation.Structure.TryRemove(childKey, out _)
 
     private void RestoreNodeAndDescendantsRecursively(NavigationNode node)
         if (node.Parent is null)
-            _navigation.Roots.Add(node.Key);
+            _navigation.Roots.Add(node.Key)
 
-        _recycleBinNavigation.Roots.Remove(node.Key);
-        IReadOnlyList<Guid> childrenKeys = GetOrderedChildren(node, _recycleBinNavigation.Structure);
+        _recycleBinNavigation.Roots.Remove(node.Key)
+        IReadOnlyList<Guid> childrenKeys = GetOrderedChildren(node, _recycleBinNavigation.Structure)
 
         foreach (Guid childKey in childrenKeys)
             if (_recycleBinNavigation.Structure.TryGetValue(childKey, out NavigationNode? childNode) is false)
-                continue;
+                continue
 
-            RestoreNodeAndDescendantsRecursively(childNode);
+            RestoreNodeAndDescendantsRecursively(childNode)
 
             // Only remove the child from the recycle bin structure if it was successfully added to the main one
             if (_navigation.Structure.TryAdd(childKey, childNode))
-                _recycleBinNavigation.Structure.TryRemove(childKey, out _);
+                _recycleBinNavigation.Structure.TryRemove(childKey, out _)
 
     private static IReadOnlyList<Guid> GetOrderedChildren(
         NavigationNode node,
         ConcurrentDictionary<Guid, NavigationNode> structure,
         Guid? contentTypeKey = null)
         if (node.Children.Count < 1)
-            return [];
+            return []
 
         // Unfiltered case uses the cached snapshot maintained on the node — returns the same
         // sorted Guid[] across calls until the children set or a child's SortOrder changes.
         if (contentTypeKey.HasValue is false)
-            return node.GetOrderedChildren(structure);
+            return node.GetOrderedChildren(structure)
 
         // Filtered-by-content-type case stays uncached: it would need a composite (node, type)
         // key to memoise, and the call site is rare enough not to be worth it.
-        var childrenWithSortOrder = new List<(Guid ChildNodeKey, int SortOrder)>(node.Children.Count);
+        var childrenWithSortOrder = new List<(Guid ChildNodeKey, int SortOrder)>(node.Children.Count)
         foreach (Guid childNodeKey in node.Children)
             if (!structure.TryGetValue(childNodeKey, out NavigationNode? childNode))
-                continue;
+                continue
 
             if (childNode.ContentTypeKey != contentTypeKey.Value)
-                continue;
+                continue
 
-            childrenWithSortOrder.Add((childNodeKey, childNode.SortOrder));
+            childrenWithSortOrder.Add((childNodeKey, childNode.SortOrder))
 
         // Shares NavigationNode's canonical sibling ordering (SortOrder, then key tie-break) so the
         // content-type-filtered path stays in sync with the unfiltered, cached path.
         childrenWithSortOrder.Sort((a, b) =>
             NavigationNode.CompareBySortOrderThenKey(a.SortOrder, a.ChildNodeKey, b.SortOrder, b.ChildNodeKey));
-        return childrenWithSortOrder.ConvertAll(childWithSortOrder => childWithSortOrder.ChildNodeKey);
+        return childrenWithSortOrder.ConvertAll(childWithSortOrder => childWithSortOrder.ChildNodeKey)
 
     private bool TryGetContentTypeKey(string contentTypeAlias, out Guid? contentTypeKey)
-        ConcurrentDictionary<string, Guid> aliasToKeyMap = _contentTypeAliasToKeyMap.Value;
+        ConcurrentDictionary<string, Guid> aliasToKeyMap = _contentTypeAliasToKeyMap.Value
 
         if (aliasToKeyMap.TryGetValue(contentTypeAlias, out Guid key))
-            contentTypeKey = key;
-            return true;
+            contentTypeKey = key
+            return true
 
-        TContentType? contentType = _typeService.Get(contentTypeAlias);
+        TContentType? contentType = _typeService.Get(contentTypeAlias)
         if (contentType is null)
             // Content type alias doesn't exist
-            contentTypeKey = null;
-            return false;
+            contentTypeKey = null
+            return false
 
-        aliasToKeyMap.TryAdd(contentTypeAlias, contentType.Key);
-        contentTypeKey = contentType.Key;
-        return true;
+        aliasToKeyMap.TryAdd(contentTypeAlias, contentType.Key)
+        contentTypeKey = contentType.Key
+        return true
 
     private static void BuildNavigationDictionary(ConcurrentDictionary<Guid, NavigationNode> nodesStructure, HashSet<Guid> roots, IEnumerable<INavigationModel> entities)
-        var entityList = entities.ToList();
-        var idToKeyMap = entityList.ToDictionary(x => x.Id, x => x.Key);
+        var entityList = entities.ToList()
+        var idToKeyMap = entityList.ToDictionary(x => x.Id, x => x.Key)
 
         foreach (INavigationModel entity in entityList)
-            var node = new NavigationNode(entity.Key, entity.ContentTypeKey, entity.SortOrder);
-            nodesStructure[entity.Key] = node;
+            var node = new NavigationNode(entity.Key, entity.ContentTypeKey, entity.SortOrder)
+            nodesStructure[entity.Key] = node
 
             // We don't set the parent for items under root, it will stay null
             if (entity.ParentId == -1)
-                roots.Add(entity.Key);
-                continue;
+                roots.Add(entity.Key)
+                continue
 
             if (idToKeyMap.TryGetValue(entity.ParentId, out Guid parentKey) is false)
-                continue;
+                continue
 
             // If the parent node exists in the nodesStructure, add the node to the parent's children (parent is set as well).
             // The node already carries its persisted SortOrder (set on construction above), so the child is linked without
             // reassigning it — the load order here is by path (parent-first), not sort order, and must not redefine it.
             if (nodesStructure.TryGetValue(parentKey, out NavigationNode? parentNode))
-                parentNode.AddChild(nodesStructure, entity.Key, appendAsLastItem: false);
+                parentNode.AddChild(nodesStructure, entity.Key, appendAsLastItem: false)
 
     private ConcurrentDictionary<string, Guid> LoadContentTypes()
-        => new(_typeService.GetAll().Select(ct => new KeyValuePair<string, Guid>(ct.Alias, ct.Key)));
+        => new(_typeService.GetAll().Select(ct => new KeyValuePair<string, Guid>(ct.Alias, ct.Key)))

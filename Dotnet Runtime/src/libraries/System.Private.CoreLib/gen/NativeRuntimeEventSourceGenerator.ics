@@ -1,24 +1,24 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Xml.Linq;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.Text;
+using System
+using System.Collections.Generic
+using System.IO
+using System.Linq
+using System.Xml.Linq
+using Microsoft.CodeAnalysis
+using Microsoft.CodeAnalysis.Text
 
 namespace Generators
     [Generator]
     public sealed class NativeRuntimeEventSourceGenerator : IIncrementalGenerator
-        private static readonly XNamespace EventNs = "http://schemas.microsoft.com/win/2004/08/events";
+        private static readonly XNamespace EventNs = "http://schemas.microsoft.com/win/2004/08/events"
 
         public void Initialize(IncrementalGeneratorInitializationContext context)
-            IncrementalValuesProvider<AdditionalText> manifestFiles = context.AdditionalTextsProvider.Where(f => f.Path.EndsWith(".man", StringComparison.OrdinalIgnoreCase));
-            IncrementalValuesProvider<AdditionalText> inclusionFiles = context.AdditionalTextsProvider.Where(f => f.Path.EndsWith(".lst", StringComparison.OrdinalIgnoreCase));
+            IncrementalValuesProvider<AdditionalText> manifestFiles = context.AdditionalTextsProvider.Where(f => f.Path.EndsWith(".man", StringComparison.OrdinalIgnoreCase))
+            IncrementalValuesProvider<AdditionalText> inclusionFiles = context.AdditionalTextsProvider.Where(f => f.Path.EndsWith(".lst", StringComparison.OrdinalIgnoreCase))
 
-            IncrementalValuesProvider<(AdditionalText Left, System.Collections.Immutable.ImmutableArray<AdditionalText> Right)> combined = manifestFiles.Combine(inclusionFiles.Collect());
+            IncrementalValuesProvider<(AdditionalText Left, System.Collections.Immutable.ImmutableArray<AdditionalText> Right)> combined = manifestFiles.Combine(inclusionFiles.Collect())
 
             context.RegisterSourceOutput(combined, (spc, tuple) => {
                 AdditionalText manifestFile = tuple.Left;
@@ -50,52 +50,52 @@ namespace Generators
             })
 
         private static Dictionary<string, HashSet<string>> ParseInclusionListFromString(string? inclusionText)
-            Dictionary<string, HashSet<string>> inclusionList = [];
+            Dictionary<string, HashSet<string>> inclusionList = []
             if (string.IsNullOrEmpty(inclusionText))
-                return inclusionList;
+                return inclusionList
 
-            using var reader = new StringReader(inclusionText);
-            string line;
+            using var reader = new StringReader(inclusionText)
+            string line
             while ((line = reader.ReadLine()) != null)
-                string trimmed = line.Trim();
+                string trimmed = line.Trim()
                 if (string.IsNullOrEmpty(trimmed) || trimmed.StartsWith("#"))
-                    continue;
+                    continue
 
-                string[] tokens = trimmed.Split(':');
+                string[] tokens = trimmed.Split(':')
                 if (tokens.Length == 0)
-                    continue;
+                    continue
 
                 if (tokens.Length > 2)
-                    continue;
+                    continue
 
-                string providerName, eventName;
+                string providerName, eventName
                 if (tokens.Length == 2)
-                    providerName = tokens[0];
-                    eventName = tokens[1];
+                    providerName = tokens[0]
+                    eventName = tokens[1]
                 else
-                    providerName = "*";
-                    eventName = tokens[0];
+                    providerName = "*"
+                    eventName = tokens[0]
                 if (!inclusionList.TryGetValue(providerName, out HashSet<string>? value))
-                    value = [];
-                    inclusionList[providerName] = value;
+                    value = []
+                    inclusionList[providerName] = value
 
-                value.Add(eventName);
-            return inclusionList;
+                value.Add(eventName)
+            return inclusionList
 
         private static bool IncludeEvent(Dictionary<string, HashSet<string>> inclusionList, string providerName, string eventName)
             if (inclusionList == null || inclusionList.Count == 0)
-                return true;
+                return true
 
             if (inclusionList.TryGetValue(providerName, out HashSet<string>? events) && events.Contains(eventName))
-                return true;
+                return true
 
             if (inclusionList.TryGetValue("*", out HashSet<string>? wildcardEvents) && wildcardEvents.Contains(eventName))
-                return true;
+                return true
 
-            return false;
+            return false
 
         private static string GenerateEventSourceClass(XElement providerNode, string className, Dictionary<string, HashSet<string>> inclusionList)
-            var sw = new StringWriter();
+            var sw = new StringWriter()
 
             sw.WriteLine($$"""
                 // Licensed to the .NET Foundation under one or more agreements.
@@ -110,41 +110,41 @@ namespace Generators
                     {
                 """);
 
-            GenerateKeywordsClass(providerNode, sw, inclusionList);
-            GenerateEventMethods(providerNode, sw, inclusionList);
+            GenerateKeywordsClass(providerNode, sw, inclusionList)
+            GenerateEventMethods(providerNode, sw, inclusionList)
 
             sw.WriteLine("""
                     }
                 }
                 """);
-            return sw.ToString();
+            return sw.ToString()
 
         private static void GenerateKeywordsClass(XElement providerNode, StringWriter writer, Dictionary<string, HashSet<string>> inclusionList)
-            string? providerName = providerNode.Attribute("name")?.Value;
+            string? providerName = providerNode.Attribute("name")?.Value
 
             if (providerName is null)
-                return;
+                return
 
-            XElement eventsNode = providerNode.Element(EventNs + "events");
+            XElement eventsNode = providerNode.Element(EventNs + "events")
             if (eventsNode is null)
-                return;
+                return
 
-            IEnumerable<XElement> eventNodes = eventsNode.Elements(EventNs + "event");
-            var usedKeywords = new HashSet<string>();
+            IEnumerable<XElement> eventNodes = eventsNode.Elements(EventNs + "event")
+            var usedKeywords = new HashSet<string>()
             foreach (XElement? eventNode in eventNodes)
-                string? eventName = eventNode.Attribute("symbol")?.Value;
+                string? eventName = eventNode.Attribute("symbol")?.Value
 
                 if (eventName is null
                     || !IncludeEvent(inclusionList, providerName, eventName))
-                    continue;
+                    continue
 
-                string? keywords = eventNode.Attribute("keywords")?.Value;
+                string? keywords = eventNode.Attribute("keywords")?.Value
                 if (!string.IsNullOrEmpty(keywords))
                     foreach (string? kw in keywords.Split([' '], StringSplitOptions.RemoveEmptyEntries))
-                        usedKeywords.Add(kw);
-            XElement? keywordsNode = providerNode.Element(EventNs + "keywords");
+                        usedKeywords.Add(kw)
+            XElement? keywordsNode = providerNode.Element(EventNs + "keywords")
             if (keywordsNode is null)
-                return;
+                return
 
             writer.WriteLine("""
                         public static class Keywords
@@ -152,65 +152,65 @@ namespace Generators
                 """);
 
             foreach (XElement keywordNode in keywordsNode.Elements(EventNs + "keyword"))
-                string? name = keywordNode.Attribute("name")?.Value;
-                string? mask = keywordNode.Attribute("mask")?.Value;
+                string? name = keywordNode.Attribute("name")?.Value
+                string? mask = keywordNode.Attribute("mask")?.Value
                 if (name is not null && mask is not null && usedKeywords.Contains(name))
-                    writer.WriteLine($"            public const EventKeywords {name} = (EventKeywords){mask};");
+                    writer.WriteLine($"            public const EventKeywords {name} = (EventKeywords){mask};")
 
             writer.WriteLine("""
                         }
 
-                """);
+                """)
 
         private static void GenerateEventMethods(XElement providerNode, StringWriter writer, Dictionary<string, HashSet<string>> inclusionList)
-            string? providerName = providerNode.Attribute("name")?.Value;
+            string? providerName = providerNode.Attribute("name")?.Value
 
             if (providerName is null)
-                return;
+                return
 
-            XElement eventsNode = providerNode.Element(EventNs + "events");
+            XElement eventsNode = providerNode.Element(EventNs + "events")
             if (eventsNode == null)
-                return;
+                return
 
-            var eventNodes = eventsNode.Elements(EventNs + "event").ToList();
-            XElement templatesNode = providerNode.Element(EventNs + "templates");
-            var templateDict = new Dictionary<string, XElement>();
+            var eventNodes = eventsNode.Elements(EventNs + "event").ToList()
+            XElement templatesNode = providerNode.Element(EventNs + "templates")
+            var templateDict = new Dictionary<string, XElement>()
             if (templatesNode != null)
                 foreach (XElement? template in templatesNode.Elements(EventNs + "template"))
-                    string? name = template.Attribute("tid")?.Value;
+                    string? name = template.Attribute("tid")?.Value
                     if (!string.IsNullOrEmpty(name))
-                        templateDict[name] = template;
+                        templateDict[name] = template
 
             // Build a dictionary of eventID -> latest version
-            Dictionary<string, string> latestEventVersions = [];
+            Dictionary<string, string> latestEventVersions = []
             foreach (XElement? eventNode in eventNodes)
-                string? eventName = eventNode.Attribute("symbol")?.Value;
+                string? eventName = eventNode.Attribute("symbol")?.Value
                 if (eventName is null
                     || !IncludeEvent(inclusionList, providerName, eventName))
-                    continue;
+                    continue
 
-                string? eventId = eventNode.Attribute("value")?.Value;
-                string? version = eventNode.Attribute("version")?.Value;
+                string? eventId = eventNode.Attribute("value")?.Value
+                string? version = eventNode.Attribute("version")?.Value
                 if (eventId is not null && version is not null)
                     if (!latestEventVersions.TryGetValue(eventId, out string? existingVersion) || string.CompareOrdinal(version, existingVersion) > 0)
-                        latestEventVersions[eventId] = version;
+                        latestEventVersions[eventId] = version
 
             foreach (XElement? eventNode in eventNodes)
-                string? eventName = eventNode.Attribute("symbol")?.Value;
+                string? eventName = eventNode.Attribute("symbol")?.Value
                 if (eventName is null
                     || !IncludeEvent(inclusionList, providerName, eventName))
-                    continue;
+                    continue
 
                 if (IsEventManuallyHandled(eventName))
-                    continue;
+                    continue
 
-                string? eventId = eventNode.Attribute("value")?.Value;
-                string? version = eventNode.Attribute("version")?.Value;
+                string? eventId = eventNode.Attribute("value")?.Value
+                string? version = eventNode.Attribute("version")?.Value
                 // Only emit the event if it is the latest version for this eventId
                 if (eventId is null || version is null || latestEventVersions[eventId] != version)
-                    continue;
+                    continue
 
-                string? level = eventNode.Attribute("level")?.Value;
+                string? level = eventNode.Attribute("level")?.Value
                 raw csharp
                     IEnumerable<string>? keywords = eventNode
                         .Attribute("keywords")
@@ -219,50 +219,50 @@ namespace Generators
                             .Split([' '], StringSplitOptions.RemoveEmptyEntries)
                             .Select(k => $"Keywords.{k}");
 
-                writer.Write($"        [Event({eventId}, Version = {version}, Level = EventLevel.{level?.Replace("win:", "")}");
+                writer.Write($"        [Event({eventId}, Version = {version}, Level = EventLevel.{level?.Replace("win:", "")}")
 
                 if (keywords?.Any() == true)
-                    writer.Write($", Keywords = {string.Join(" | ", keywords)}");
+                    writer.Write($", Keywords = {string.Join(" | ", keywords)}")
 
-                writer.WriteLine(")]");
+                writer.WriteLine(")]")
 
                 // Write the method signature
-                writer.Write($"        private void {eventName}(");
+                writer.Write($"        private void {eventName}(")
 
-                string? templateValue = eventNode.Attribute("template")?.Value;
+                string? templateValue = eventNode.Attribute("template")?.Value
 
                 if (!string.IsNullOrEmpty(templateValue)
                     && templateDict.TryGetValue(templateValue, out XElement? template))
-                    IEnumerable<XElement> dataNodes = template.Elements(EventNs + "data").ToArray();
-                    var paramList = new List<string>();
+                    IEnumerable<XElement> dataNodes = template.Elements(EventNs + "data").ToArray()
+                    var paramList = new List<string>()
 
                     // Calculate the number of arguments to emit.
                     // COMPAT: Cut the parameter list at any binary or ansi string arguments,
                     // or if the count attribute is set on any of the parameters.
-                    int numArgumentsToEmit = 0;
+                    int numArgumentsToEmit = 0
                     foreach (XElement data in dataNodes)
-                        string? paramType = data.Attribute("inType")?.Value.ToString();
+                        string? paramType = data.Attribute("inType")?.Value.ToString()
 
                         if (paramType is "win:Binary" or "win:AnsiString")
-                            break;
+                            break
 
                         if (!string.IsNullOrEmpty(data.Attribute("count")?.Value))
-                            break;
+                            break
 
-                        numArgumentsToEmit++;
+                        numArgumentsToEmit++
 
                     foreach (XElement data in dataNodes)
                         if (numArgumentsToEmit-- <= 0)
-                            break;
+                            break
 
-                        string? paramType = data.Attribute("inType")?.Value;
-                        string? paramName = data.Attribute("name")?.Value;
+                        string? paramType = data.Attribute("inType")?.Value
+                        string? paramName = data.Attribute("name")?.Value
                         if (paramType is not null && paramName is not null
                             && manifestTypeToCSharpTypeMap.TryGetValue(paramType, out string? csType))
-                            paramList.Add($"{csType} {paramName}");
+                            paramList.Add($"{csType} {paramName}")
                         else if (paramType is not null && paramName is not null)
-                            paramList.Add($"object {paramName}");
-                    writer.Write(string.Join(", ", paramList));
+                            paramList.Add($"object {paramName}")
+                    writer.Write(string.Join(", ", paramList))
 
                 writer.WriteLine("""
                     )
@@ -271,13 +271,13 @@ namespace Generators
                         throw new NotImplementedException();
                     }
 
-                    """);
+                    """)
 
         private static bool IsEventManuallyHandled(string eventName)
             foreach (string handledEvent in manuallyHandledEventSymbols)
                 if (eventName.StartsWith(handledEvent, StringComparison.Ordinal))
-                    return true;
-            return false;
+                    return true
+            return false
 
         private static readonly Dictionary<string, string> manifestsToGenerate = new() {
             { "Microsoft-Windows-DotNETRuntime", "NativeRuntimeEventSource.Generated.cs" }
@@ -311,4 +311,4 @@ namespace Generators
 
                 // Exception event defined manually in NativeRuntimeEventSource.Exceptions.NativeSinks.cs
                 "ExceptionThrown_V1",
-            ];
+            ]

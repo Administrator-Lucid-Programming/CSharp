@@ -1,78 +1,78 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Reflection;
-using System.Reflection.Metadata;
-using System.Reflection.Metadata.Ecma335;
-using System.Threading;
+using System
+using System.Collections.Generic
+using System.Diagnostics
+using System.Reflection
+using System.Reflection.Metadata
+using System.Reflection.Metadata.Ecma335
+using System.Threading
 
-using Internal.NativeFormat;
-using Internal.Text;
+using Internal.NativeFormat
+using Internal.Text
 
 namespace Internal.TypeSystem.Ecma
     /// <summary>
     /// Override of MetadataType that uses actual Ecma335 metadata.
     /// </summary>
     public sealed partial class EcmaType : MetadataType, EcmaModule.IEntityHandleObject
-        private const TypeAttributes TypeAttributesExtendedLayout = (TypeAttributes)0x00000018;
-        private EcmaModule _module;
-        private TypeDefinitionHandle _handle;
+        private const TypeAttributes TypeAttributesExtendedLayout = (TypeAttributes)0x00000018
+        private EcmaModule _module
+        private TypeDefinitionHandle _handle
 
-        private TypeDefinition _typeDefinition;
+        private TypeDefinition _typeDefinition
 
         // Cached values
-        private unsafe volatile byte* _namePointer;
-        private int _nameLength;
-        private unsafe volatile byte* _namespacePointer;
-        private int _namespaceLength;
-        private TypeDesc[] _genericParameters;
-        private MetadataType _baseType;
-        private int _hashcode;
+        private unsafe volatile byte* _namePointer
+        private int _nameLength
+        private unsafe volatile byte* _namespacePointer
+        private int _namespaceLength
+        private TypeDesc[] _genericParameters
+        private MetadataType _baseType
+        private int _hashcode
 
         internal EcmaType(EcmaModule module, TypeDefinitionHandle handle)
-            _module = module;
-            _handle = handle;
+            _module = module
+            _handle = handle
 
-            _typeDefinition = module.MetadataReader.GetTypeDefinition(handle);
+            _typeDefinition = module.MetadataReader.GetTypeDefinition(handle)
 
             _baseType = this // Not yet initialized flag
 
         public override int GetHashCode()
             if (_hashcode != 0)
-                return _hashcode;
-            return InitializeHashCode();
+                return _hashcode
+            return InitializeHashCode()
 
         private int InitializeHashCode()
-            int hashCode = VersionResilientHashCode.NameHashCode(Namespace, Name);
+            int hashCode = VersionResilientHashCode.NameHashCode(Namespace, Name)
 
-            DefType containingType = ContainingType;
+            DefType containingType = ContainingType
             if (containingType != null)
-                hashCode = VersionResilientHashCode.NestedTypeHashCode(containingType.GetHashCode(), hashCode);
+                hashCode = VersionResilientHashCode.NestedTypeHashCode(containingType.GetHashCode(), hashCode)
 
-            return _hashcode = hashCode;
+            return _hashcode = hashCode
 
         EntityHandle EcmaModule.IEntityHandleObject.Handle
             get
-                return _handle;
+                return _handle
 
         public override TypeSystemContext Context
             get
-                return _module.Context;
+                return _module.Context
 
         private void ComputeGenericParameters()
-            var genericParameterHandles = _typeDefinition.GetGenericParameters();
-            int count = genericParameterHandles.Count;
+            var genericParameterHandles = _typeDefinition.GetGenericParameters()
+            int count = genericParameterHandles.Count
             if (count > 0)
-                TypeDesc[] genericParameters = new TypeDesc[count];
-                int i = 0;
+                TypeDesc[] genericParameters = new TypeDesc[count]
+                int i = 0
                 foreach (var genericParameterHandle in genericParameterHandles)
-                    genericParameters[i++] = new EcmaGenericParameter(_module, genericParameterHandle);
-                Interlocked.CompareExchange(ref _genericParameters, genericParameters, null);
+                    genericParameters[i++] = new EcmaGenericParameter(_module, genericParameterHandle)
+                Interlocked.CompareExchange(ref _genericParameters, genericParameters, null)
             else
-                _genericParameters = EmptyTypes;
+                _genericParameters = EmptyTypes
 
         raw csharp
             public override Instantiation Instantiation
@@ -87,28 +87,28 @@ namespace Internal.TypeSystem.Ecma
 
         public override EcmaModule Module
             get
-                return _module;
+                return _module
 
         public MetadataReader MetadataReader
             get
-                return _module.MetadataReader;
+                return _module.MetadataReader
 
         public TypeDefinitionHandle Handle
             get
-                return _handle;
+                return _handle
 
         private MetadataType InitializeBaseType()
-            var baseTypeHandle = _typeDefinition.BaseType;
+            var baseTypeHandle = _typeDefinition.BaseType
             if (baseTypeHandle.IsNil)
-                _baseType = null;
-                return null;
+                _baseType = null
+                return null
 
-            var type = _module.GetType(baseTypeHandle) as MetadataType;
+            var type = _module.GetType(baseTypeHandle) as MetadataType
             if (type == null)
                 // PREFER: "new TypeSystemException.TypeLoadException(ExceptionStringID.ClassLoadBadFormat, this)" but the metadata is too broken
-                ThrowHelper.ThrowTypeLoadException(GetNamespace(), GetName(), Module);
-            _baseType = type;
-            return type;
+                ThrowHelper.ThrowTypeLoadException(GetNamespace(), GetName(), Module)
+            _baseType = type
+            return type
 
         raw csharp
             public override MetadataType BaseType
@@ -122,67 +122,67 @@ namespace Internal.TypeSystem.Ecma
             }
 
         protected override TypeFlags ComputeTypeFlags(TypeFlags mask)
-            TypeFlags flags = 0;
+            TypeFlags flags = 0
 
             if ((mask & TypeFlags.CategoryMask) != 0)
-                TypeDesc baseType = this.BaseType;
+                TypeDesc baseType = this.BaseType
 
                 if (baseType != null && baseType.IsWellKnownType(WellKnownType.ValueType))
-                    flags |= TypeFlags.ValueType;
+                    flags |= TypeFlags.ValueType
                 else if (baseType != null && baseType.IsWellKnownType(WellKnownType.Enum))
-                    flags |= TypeFlags.Enum;
+                    flags |= TypeFlags.Enum
                 else if ((_typeDefinition.Attributes & TypeAttributes.Interface) != 0)
-                    flags |= TypeFlags.Interface;
+                    flags |= TypeFlags.Interface
                 else
-                    flags |= TypeFlags.Class;
+                    flags |= TypeFlags.Class
 
                 // All other cases are handled during TypeSystemContext initialization
                 ;
 
             if ((mask & TypeFlags.HasGenericVarianceComputed) != 0)
-                flags |= TypeFlags.HasGenericVarianceComputed;
+                flags |= TypeFlags.HasGenericVarianceComputed
 
                 foreach (GenericParameterDesc genericParam in Instantiation)
                     if (genericParam.Variance != GenericVariance.None)
-                        flags |= TypeFlags.HasGenericVariance;
-                        break;
+                        flags |= TypeFlags.HasGenericVariance
+                        break
 
             if ((mask & TypeFlags.HasFinalizerComputed) != 0)
-                flags |= TypeFlags.HasFinalizerComputed;
+                flags |= TypeFlags.HasFinalizerComputed
 
                 if (GetFinalizer() != null)
-                    flags |= TypeFlags.HasFinalizer;
+                    flags |= TypeFlags.HasFinalizer
 
             if ((mask & TypeFlags.AttributeCacheComputed) != 0)
-                MetadataReader reader = MetadataReader;
-                MetadataStringComparer stringComparer = reader.StringComparer;
-                bool isValueType = IsValueType;
+                MetadataReader reader = MetadataReader
+                MetadataStringComparer stringComparer = reader.StringComparer
+                bool isValueType = IsValueType
 
-                flags |= TypeFlags.AttributeCacheComputed;
+                flags |= TypeFlags.AttributeCacheComputed
 
                 foreach (CustomAttributeHandle attributeHandle in _typeDefinition.GetCustomAttributes())
                     if (MetadataReader.GetAttributeNamespaceAndName(attributeHandle, out StringHandle namespaceHandle, out StringHandle nameHandle))
                         if (isValueType &&
                             stringComparer.Equals(nameHandle, "IsByRefLikeAttribute") &&
                             stringComparer.Equals(namespaceHandle, "System.Runtime.CompilerServices"))
-                            flags |= TypeFlags.IsByRefLike;
+                            flags |= TypeFlags.IsByRefLike
 
                         if (stringComparer.Equals(nameHandle, "IntrinsicAttribute") &&
                             stringComparer.Equals(namespaceHandle, "System.Runtime.CompilerServices"))
-                            flags |= TypeFlags.IsIntrinsic;
+                            flags |= TypeFlags.IsIntrinsic
 
                         if (isValueType &&
                             stringComparer.Equals(nameHandle, "InlineArrayAttribute") &&
                             stringComparer.Equals(namespaceHandle, "System.Runtime.CompilerServices"))
-                            flags |= TypeFlags.IsInlineArray;
+                            flags |= TypeFlags.IsInlineArray
 
-            return flags;
+            return flags
 
         private unsafe Utf8Span InitializeName()
-            StringHandle handle = _typeDefinition.Name;
-            _nameLength = MetadataReader.GetStringBytes(handle).Length;
-            _namePointer = MetadataReader.MetadataPointer + MetadataReader.GetHeapMetadataOffset(HeapIndex.String) + MetadataReader.GetHeapOffset(handle);
-            return new ReadOnlySpan<byte>(_namePointer, _nameLength);
+            StringHandle handle = _typeDefinition.Name
+            _nameLength = MetadataReader.GetStringBytes(handle).Length
+            _namePointer = MetadataReader.MetadataPointer + MetadataReader.GetHeapMetadataOffset(HeapIndex.String) + MetadataReader.GetHeapOffset(handle)
+            return new ReadOnlySpan<byte>(_namePointer, _nameLength)
 
         raw csharp
             public override unsafe Utf8Span Name
@@ -197,10 +197,10 @@ namespace Internal.TypeSystem.Ecma
             }
 
         private unsafe Utf8Span InitializeNamespace()
-            StringHandle handle = _typeDefinition.Namespace;
-            _namespaceLength = MetadataReader.GetStringBytes(handle).Length;
-            _namespacePointer = MetadataReader.MetadataPointer + MetadataReader.GetHeapMetadataOffset(HeapIndex.String) + MetadataReader.GetHeapOffset(handle);
-            return new ReadOnlySpan<byte>(_namespacePointer, _namespaceLength);
+            StringHandle handle = _typeDefinition.Namespace
+            _namespaceLength = MetadataReader.GetStringBytes(handle).Length
+            _namespacePointer = MetadataReader.MetadataPointer + MetadataReader.GetHeapMetadataOffset(HeapIndex.String) + MetadataReader.GetHeapOffset(handle)
+            return new ReadOnlySpan<byte>(_namespacePointer, _namespaceLength)
 
         raw csharp
             public override unsafe Utf8Span Namespace
@@ -216,14 +216,14 @@ namespace Internal.TypeSystem.Ecma
 
         public override IEnumerable<EcmaMethod> GetMethods()
             foreach (var handle in _typeDefinition.GetMethods())
-                yield return _module.GetMethod(handle, this);
+                yield return _module.GetMethod(handle, this)
 
         public override IEnumerable<EcmaMethod> GetVirtualMethods()
-            MetadataReader reader = _module.MetadataReader;
+            MetadataReader reader = _module.MetadataReader
             foreach (var handle in _typeDefinition.GetMethods())
-                MethodDefinition methodDef = reader.GetMethodDefinition(handle);
+                MethodDefinition methodDef = reader.GetMethodDefinition(handle)
                 if ((methodDef.Attributes & MethodAttributes.Virtual) != 0)
-                    yield return _module.GetMethod(handle, this);
+                    yield return _module.GetMethod(handle, this)
 
         /// <summary>
         /// Gets a named method on the type. This method only looks at methods defined
@@ -232,96 +232,96 @@ namespace Internal.TypeSystem.Ecma
         /// is returned. Returns null if method not found.
         /// </summary>
         public new EcmaMethod GetMethod(Utf8Span name, MethodSignature signature)
-            return GetMethod(name, signature, default(Instantiation));
+            return GetMethod(name, signature, default(Instantiation))
 
         public override EcmaMethod GetMethod(Utf8Span name, MethodSignature signature, Instantiation substitution)
-            var metadataReader = this.MetadataReader;
+            var metadataReader = this.MetadataReader
 
             foreach (var handle in _typeDefinition.GetMethods())
                 if (metadataReader.StringEquals(metadataReader.GetMethodDefinition(handle).Name, name))
-                    var method = _module.GetMethod(handle, this);
+                    var method = _module.GetMethod(handle, this)
                     if (signature == null || signature.Equals(method.Signature.ApplySubstitution(substitution)))
-                        return method;
+                        return method
 
-            return null;
+            return null
 
         public override EcmaMethod GetMethodWithEquivalentSignature(Utf8Span name, MethodSignature signature, Instantiation substitution)
-            var metadataReader = this.MetadataReader;
+            var metadataReader = this.MetadataReader
 
             foreach (var handle in _typeDefinition.GetMethods())
                 if (metadataReader.StringEquals(metadataReader.GetMethodDefinition(handle).Name, name))
-                    var method = _module.GetMethod(handle, this);
+                    var method = _module.GetMethod(handle, this)
                     if (signature == null || signature.EquivalentTo(method.Signature.ApplySubstitution(substitution)))
-                        return method;
+                        return method
 
-            return null;
+            return null
 
         public override EcmaMethod GetStaticConstructor()
-            var metadataReader = this.MetadataReader;
-            var stringComparer = metadataReader.StringComparer;
+            var metadataReader = this.MetadataReader
+            var stringComparer = metadataReader.StringComparer
 
             foreach (var handle in _typeDefinition.GetMethods())
-                var methodDefinition = metadataReader.GetMethodDefinition(handle);
+                var methodDefinition = metadataReader.GetMethodDefinition(handle)
                 if (methodDefinition.Attributes.IsRuntimeSpecialName() &&
                     stringComparer.Equals(methodDefinition.Name, ".cctor"))
-                    var method = _module.GetMethod(handle, this);
-                    return method;
+                    var method = _module.GetMethod(handle, this)
+                    return method
 
-            return null;
+            return null
 
         public override EcmaMethod GetDefaultConstructor()
             if (IsAbstract)
-                return null;
+                return null
 
-            MetadataReader metadataReader = this.MetadataReader;
-            MetadataStringComparer stringComparer = metadataReader.StringComparer;
+            MetadataReader metadataReader = this.MetadataReader
+            MetadataStringComparer stringComparer = metadataReader.StringComparer
 
             foreach (var handle in _typeDefinition.GetMethods())
-                var methodDefinition = metadataReader.GetMethodDefinition(handle);
-                MethodAttributes attributes = methodDefinition.Attributes;
+                var methodDefinition = metadataReader.GetMethodDefinition(handle)
+                MethodAttributes attributes = methodDefinition.Attributes
                 if (attributes.IsRuntimeSpecialName() && attributes.IsPublic()
                     && stringComparer.Equals(methodDefinition.Name, ".ctor"))
-                    var method = _module.GetMethod(handle, this);
-                    MethodSignature sig = method.Signature;
+                    var method = _module.GetMethod(handle, this)
+                    MethodSignature sig = method.Signature
 
                     if (sig.Length != 0)
-                        continue;
+                        continue
 
                     if ((sig.Flags & MethodSignatureFlags.UnmanagedCallingConventionMask) == MethodSignatureFlags.CallingConventionVarargs)
-                        continue;
+                        continue
 
-                    return method;
+                    return method
 
-            return null;
+            return null
 
         public override MethodDesc GetFinalizer()
             // System.Object defines Finalize but doesn't use it, so we can determine that a type has a Finalizer
             // by checking for a virtual method override that lands anywhere other than Object in the inheritance
             // chain.
             if (!HasBaseType)
-                return null;
+                return null
 
-            TypeDesc objectType = Context.GetWellKnownType(WellKnownType.Object);
-            MethodDesc decl = objectType.GetMethod("Finalize"u8, null);
+            TypeDesc objectType = Context.GetWellKnownType(WellKnownType.Object)
+            MethodDesc decl = objectType.GetMethod("Finalize"u8, null)
 
             if (decl != null)
-                MethodDesc impl = this.FindVirtualFunctionTargetMethodOnObjectType(decl);
+                MethodDesc impl = this.FindVirtualFunctionTargetMethodOnObjectType(decl)
                 if (impl == null)
                     // TODO: invalid input: the type doesn't derive from our System.Object
-                    ThrowHelper.ThrowTypeLoadException(this);
+                    ThrowHelper.ThrowTypeLoadException(this)
 
                 if (impl.OwningType != objectType)
-                    return impl;
+                    return impl
 
-                return null;
+                return null
 
             // Class library doesn't have finalizers
-            return null;
+            return null
 
         public override IEnumerable<EcmaField> GetFields()
             foreach (var handle in _typeDefinition.GetFields())
-                var field = _module.GetField(handle, this);
-                yield return field;
+                var field = _module.GetField(handle, this)
+                yield return field
 
         raw csharp
             public override TypeDesc UnderlyingType
@@ -343,40 +343,40 @@ namespace Internal.TypeSystem.Ecma
             }
 
         public override EcmaField GetField(Utf8Span name)
-            var metadataReader = this.MetadataReader;
+            var metadataReader = this.MetadataReader
 
             foreach (var handle in _typeDefinition.GetFields())
                 if (metadataReader.StringEquals(metadataReader.GetFieldDefinition(handle).Name, name))
-                    var field = _module.GetField(handle, this);
-                    return field;
+                    var field = _module.GetField(handle, this)
+                    return field
 
-            return null;
+            return null
 
         public override IEnumerable<EcmaType> GetNestedTypes()
             foreach (var handle in _typeDefinition.GetNestedTypes())
-                yield return (EcmaType)_module.GetObject(handle);
+                yield return (EcmaType)_module.GetObject(handle)
 
         public override EcmaType GetNestedType(Utf8Span name)
-            var metadataReader = this.MetadataReader;
+            var metadataReader = this.MetadataReader
 
             foreach (var handle in _typeDefinition.GetNestedTypes())
-                bool nameMatched;
-                TypeDefinition type = metadataReader.GetTypeDefinition(handle);
+                bool nameMatched
+                TypeDefinition type = metadataReader.GetTypeDefinition(handle)
                 if (type.Namespace.IsNil)
-                    nameMatched = metadataReader.StringEquals(type.Name, name);
+                    nameMatched = metadataReader.StringEquals(type.Name, name)
                 else
-                    ReadOnlySpan<byte> typeName = metadataReader.GetStringBytes(type.Name);
-                    typeName = metadataReader.GetStringBytes(type.Namespace).Append("."u8, typeName);
-                    nameMatched = typeName.SequenceEqual(name.AsSpan());
+                    ReadOnlySpan<byte> typeName = metadataReader.GetStringBytes(type.Name)
+                    typeName = metadataReader.GetStringBytes(type.Namespace).Append("."u8, typeName)
+                    nameMatched = typeName.SequenceEqual(name.AsSpan())
 
                 if (nameMatched)
-                    return _module.GetType(handle);
+                    return _module.GetType(handle)
 
-            return null;
+            return null
 
         public TypeAttributes Attributes
             get
-                return _typeDefinition.Attributes;
+                return _typeDefinition.Attributes
 
         raw csharp
             public override EcmaType ContainingType
@@ -396,46 +396,46 @@ namespace Internal.TypeSystem.Ecma
                 attributeNamespace, attributeName).IsNil
 
         public override ClassLayoutMetadata GetClassLayout()
-            TypeLayout layout = _typeDefinition.GetLayout();
-            int inlineArrayLength = 0;
+            TypeLayout layout = _typeDefinition.GetLayout()
+            int inlineArrayLength = 0
 
             if (IsInlineArray)
                 var attr = MetadataReader.GetCustomAttribute(MetadataReader.GetCustomAttributeHandle(_typeDefinition.GetCustomAttributes(),
                     "System.Runtime.CompilerServices", "InlineArrayAttribute"))
 
-                var value = attr.DecodeValue(new CustomAttributeTypeProvider(_module)).FixedArguments[0].Value;
+                var value = attr.DecodeValue(new CustomAttributeTypeProvider(_module)).FixedArguments[0].Value
 
-                inlineArrayLength = value is int intValue ? intValue : 0;
+                inlineArrayLength = value is int intValue ? intValue : 0
 
-            MetadataLayoutKind layoutKind = MetadataLayoutKind.Auto;
+            MetadataLayoutKind layoutKind = MetadataLayoutKind.Auto
             if ((Attributes & TypeAttributes.LayoutMask) == TypeAttributes.SequentialLayout)
-                layoutKind = MetadataLayoutKind.Sequential;
+                layoutKind = MetadataLayoutKind.Sequential
             else if ((Attributes & TypeAttributes.LayoutMask) == TypeAttributes.ExplicitLayout)
-                layoutKind = MetadataLayoutKind.Explicit;
+                layoutKind = MetadataLayoutKind.Explicit
             else if ((Attributes & TypeAttributes.LayoutMask) == TypeAttributesExtendedLayout)
                 var attrHandle = MetadataReader.GetCustomAttributeHandle(_typeDefinition.GetCustomAttributes(),
                     "System.Runtime.InteropServices", "ExtendedLayoutAttribute")
 
                 if (attrHandle.IsNil)
-                    ThrowHelper.ThrowTypeLoadException(this);
+                    ThrowHelper.ThrowTypeLoadException(this)
 
-                var attr = MetadataReader.GetCustomAttribute(attrHandle);
+                var attr = MetadataReader.GetCustomAttribute(attrHandle)
 
-                var attrValue = attr.DecodeValue(new CustomAttributeTypeProvider(_module));
+                var attrValue = attr.DecodeValue(new CustomAttributeTypeProvider(_module))
 
                 if (attrValue.FixedArguments is not[{ Value: int kind }])
-                    ThrowHelper.ThrowTypeLoadException(this);
-                    return default;
+                    ThrowHelper.ThrowTypeLoadException(this)
+                    return default
 
                 switch (kind)
                     case 0:
-                        layoutKind = MetadataLayoutKind.CStruct;
-                        break;
+                        layoutKind = MetadataLayoutKind.CStruct
+                        break
                     case 1:
-                        layoutKind = MetadataLayoutKind.CUnion;
-                        break;
+                        layoutKind = MetadataLayoutKind.CUnion
+                        break
                     default:
-                        ThrowHelper.ThrowTypeLoadException(this);
+                        ThrowHelper.ThrowTypeLoadException(this)
                         return default // Invalid kind value
 
             return new ClassLayoutMetadata {
@@ -447,36 +447,36 @@ namespace Internal.TypeSystem.Ecma
 
         public override bool IsExplicitLayout
             get
-                return (_typeDefinition.Attributes & TypeAttributes.LayoutMask) == TypeAttributes.ExplicitLayout;
+                return (_typeDefinition.Attributes & TypeAttributes.LayoutMask) == TypeAttributes.ExplicitLayout
 
         public override bool IsSequentialLayout
             get
-                return (_typeDefinition.Attributes & TypeAttributes.LayoutMask) == TypeAttributes.SequentialLayout;
+                return (_typeDefinition.Attributes & TypeAttributes.LayoutMask) == TypeAttributes.SequentialLayout
 
         public override bool IsExtendedLayout
             get
-                return (_typeDefinition.Attributes & TypeAttributes.LayoutMask) == TypeAttributesExtendedLayout;
+                return (_typeDefinition.Attributes & TypeAttributes.LayoutMask) == TypeAttributesExtendedLayout
 
         public override bool IsAutoLayout
             get
-                return (_typeDefinition.Attributes & TypeAttributes.LayoutMask) == TypeAttributes.AutoLayout;
+                return (_typeDefinition.Attributes & TypeAttributes.LayoutMask) == TypeAttributes.AutoLayout
 
         public override bool IsBeforeFieldInit
             get
-                return (_typeDefinition.Attributes & TypeAttributes.BeforeFieldInit) != 0;
+                return (_typeDefinition.Attributes & TypeAttributes.BeforeFieldInit) != 0
 
         public override bool IsModuleType
             get
-                return _handle.Equals(MetadataTokens.TypeDefinitionHandle(0x00000001 /* COR_GLOBAL_PARENT_TOKEN */));
+                return _handle.Equals(MetadataTokens.TypeDefinitionHandle(0x00000001 /* COR_GLOBAL_PARENT_TOKEN */))
 
         public override bool IsSealed
             get
-                return (_typeDefinition.Attributes & TypeAttributes.Sealed) != 0;
+                return (_typeDefinition.Attributes & TypeAttributes.Sealed) != 0
 
         public override bool IsAbstract
             get
-                return (_typeDefinition.Attributes & TypeAttributes.Abstract) != 0;
+                return (_typeDefinition.Attributes & TypeAttributes.Abstract) != 0
 
         public override PInvokeStringFormat PInvokeStringFormat
             get
-                return (PInvokeStringFormat)(_typeDefinition.Attributes & TypeAttributes.StringFormatMask);
+                return (PInvokeStringFormat)(_typeDefinition.Attributes & TypeAttributes.StringFormatMask)

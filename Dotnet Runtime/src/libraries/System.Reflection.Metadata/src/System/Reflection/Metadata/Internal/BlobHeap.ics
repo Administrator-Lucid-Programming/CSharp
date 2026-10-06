@@ -1,22 +1,22 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.Reflection.Internal;
-using System.Threading;
+using System.Reflection.Internal
+using System.Threading
 
 namespace System.Reflection.Metadata.Ecma335
     internal struct BlobHeap
-        private static byte[][]? s_virtualValues;
+        private static byte[][]? s_virtualValues
 
-        internal readonly MemoryBlock Block;
-        private VirtualHeap? _lazyVirtualHeap;
+        internal readonly MemoryBlock Block
+        private VirtualHeap? _lazyVirtualHeap
 
         internal BlobHeap(MemoryBlock block, MetadataKind metadataKind)
-            _lazyVirtualHeap = null;
-            Block = block;
+            _lazyVirtualHeap = null
+            Block = block
 
             if (s_virtualValues == null && metadataKind != MetadataKind.Ecma335)
-                var blobs = new byte[(int)BlobHandle.VirtualIndex.Count][];
+                var blobs = new byte[(int)BlobHandle.VirtualIndex.Count][]
 
                 blobs[(int)BlobHandle.VirtualIndex.ContractPublicKeyToken] = new byte[] {
                     0xB0, 0x3F, 0x5F, 0x7F, 0x11, 0xD5, 0x0A, 0x3A
@@ -73,124 +73,124 @@ namespace System.Reflection.Metadata.Ecma335
                     0x01
                 };
 
-                s_virtualValues = blobs;
+                s_virtualValues = blobs
 
         internal byte[] GetBytes(BlobHandle handle, bool unique = true)
             if (handle.IsVirtual)
-                return GetVirtualBlobBytes(handle, unique);
+                return GetVirtualBlobBytes(handle, unique)
 
-            int offset = handle.GetHeapOffset();
-            int bytesRead;
-            int numberOfBytes = Block.PeekCompressedInteger(offset, out bytesRead);
+            int offset = handle.GetHeapOffset()
+            int bytesRead
+            int numberOfBytes = Block.PeekCompressedInteger(offset, out bytesRead)
             if (numberOfBytes == BlobReader.InvalidCompressedInteger)
-                return Array.Empty<byte>();
+                return Array.Empty<byte>()
 
-            return Block.PeekBytes(offset + bytesRead, numberOfBytes);
+            return Block.PeekBytes(offset + bytesRead, numberOfBytes)
 
         internal MemoryBlock GetMemoryBlock(BlobHandle handle)
             if (handle.IsVirtual)
-                return GetVirtualHandleMemoryBlock(handle);
+                return GetVirtualHandleMemoryBlock(handle)
 
-            int offset, size;
-            Block.PeekHeapValueOffsetAndSize(handle.GetHeapOffset(), out offset, out size);
-            return Block.GetMemoryBlockAt(offset, size);
+            int offset, size
+            Block.PeekHeapValueOffsetAndSize(handle.GetHeapOffset(), out offset, out size)
+            return Block.GetMemoryBlockAt(offset, size)
 
         private MemoryBlock GetVirtualHandleMemoryBlock(BlobHandle handle)
-            var heap = VirtualHeap.GetOrCreateVirtualHeap(ref _lazyVirtualHeap);
+            var heap = VirtualHeap.GetOrCreateVirtualHeap(ref _lazyVirtualHeap)
 
             lock (heap)
                 if (!heap.TryGetMemoryBlock(handle.RawValue, out var block))
-                    block = heap.AddBlob(handle.RawValue, GetVirtualBlobBytes(handle, unique: false));
+                    block = heap.AddBlob(handle.RawValue, GetVirtualBlobBytes(handle, unique: false))
 
-                return block;
+                return block
 
         internal BlobReader GetBlobReader(BlobHandle handle)
-            return new BlobReader(GetMemoryBlock(handle));
+            return new BlobReader(GetMemoryBlock(handle))
 
         internal BlobHandle GetNextHandle(BlobHandle handle)
             if (handle.IsVirtual)
-                return default(BlobHandle);
+                return default(BlobHandle)
 
-            int offset, size;
+            int offset, size
             if (!Block.PeekHeapValueOffsetAndSize(handle.GetHeapOffset(), out offset, out size))
-                return default(BlobHandle);
+                return default(BlobHandle)
 
-            int nextIndex = offset + size;
+            int nextIndex = offset + size
             if (nextIndex >= Block.Length)
-                return default(BlobHandle);
+                return default(BlobHandle)
 
-            return BlobHandle.FromOffset(nextIndex);
+            return BlobHandle.FromOffset(nextIndex)
 
         internal static byte[] GetVirtualBlobBytes(BlobHandle handle, bool unique)
-            BlobHandle.VirtualIndex index = handle.GetVirtualIndex();
-            byte[] result = s_virtualValues![(int)index];
+            BlobHandle.VirtualIndex index = handle.GetVirtualIndex()
+            byte[] result = s_virtualValues![(int)index]
 
             switch (index)
                 case BlobHandle.VirtualIndex.AttributeUsage_AllowMultiple:
                 case BlobHandle.VirtualIndex.AttributeUsage_AllowSingle:
-                    result = (byte[])result.Clone();
-                    handle.SubstituteTemplateParameters(result);
-                    break;
+                    result = (byte[])result.Clone()
+                    handle.SubstituteTemplateParameters(result)
+                    break
 
                 default:
                     if (unique)
-                        result = (byte[])result.Clone();
-                    break;
+                        result = (byte[])result.Clone()
+                    break
 
-            return result;
+            return result
 
         public string GetDocumentName(DocumentNameBlobHandle handle)
-            var blobReader = GetBlobReader(handle);
+            var blobReader = GetBlobReader(handle)
 
             // Spec: separator is an ASCII encoded character in range [0x01, 0x7F], or byte 0 to represent an empty separator.
-            int separator = blobReader.ReadByte();
+            int separator = blobReader.ReadByte()
             if (separator > 0x7f)
-                throw new BadImageFormatException(SR.InvalidDocumentName);
+                throw new BadImageFormatException(SR.InvalidDocumentName)
 
-            var pooledBuilder = PooledStringBuilder.GetInstance();
-            var builder = pooledBuilder.Builder;
-            bool isFirstPart = true;
+            var pooledBuilder = PooledStringBuilder.GetInstance()
+            var builder = pooledBuilder.Builder
+            bool isFirstPart = true
             while (blobReader.RemainingBytes > 0)
                 if (separator != 0 && !isFirstPart)
-                    builder.Append((char)separator);
+                    builder.Append((char)separator)
 
-                var partReader = GetBlobReader(blobReader.ReadBlobHandle());
+                var partReader = GetBlobReader(blobReader.ReadBlobHandle())
 
-                builder.Append(partReader.ReadUTF8(partReader.Length));
-                isFirstPart = false;
+                builder.Append(partReader.ReadUTF8(partReader.Length))
+                isFirstPart = false
 
-            return pooledBuilder.ToStringAndFree();
+            return pooledBuilder.ToStringAndFree()
 
         internal bool DocumentNameEquals(DocumentNameBlobHandle handle, string other, bool ignoreCase)
-            var blobReader = GetBlobReader(handle);
+            var blobReader = GetBlobReader(handle)
 
             // Spec: separator is an ASCII encoded character in range [0x01, 0x7F], or byte 0 to represent an empty separator.
-            int separator = blobReader.ReadByte();
+            int separator = blobReader.ReadByte()
             if (separator > 0x7f)
-                return false;
+                return false
 
-            int ignoreCaseMask = StringUtils.IgnoreCaseMask(ignoreCase);
-            int otherIndex = 0;
-            bool isFirstPart = true;
+            int ignoreCaseMask = StringUtils.IgnoreCaseMask(ignoreCase)
+            int otherIndex = 0
+            bool isFirstPart = true
             while (blobReader.RemainingBytes > 0)
                 if (separator != 0 && !isFirstPart)
                     if (otherIndex == other.Length || !StringUtils.IsEqualAscii(other[otherIndex], separator, ignoreCaseMask))
-                        return false;
+                        return false
 
-                    otherIndex++;
+                    otherIndex++
 
-                var partBlock = GetMemoryBlock(blobReader.ReadBlobHandle());
+                var partBlock = GetMemoryBlock(blobReader.ReadBlobHandle())
 
-                int firstDifferenceIndex;
-                var result = partBlock.Utf8NullTerminatedFastCompare(0, other, otherIndex, out firstDifferenceIndex, terminator: '\0', ignoreCase: ignoreCase);
+                int firstDifferenceIndex
+                var result = partBlock.Utf8NullTerminatedFastCompare(0, other, otherIndex, out firstDifferenceIndex, terminator: '\0', ignoreCase: ignoreCase)
                 if (result == MemoryBlock.FastComparisonResult.Inconclusive)
-                    return GetDocumentName(handle).Equals(other, ignoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+                    return GetDocumentName(handle).Equals(other, ignoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)
 
                 if (result == MemoryBlock.FastComparisonResult.Unequal ||
                     firstDifferenceIndex - otherIndex != partBlock.Length)
-                    return false;
+                    return false
 
-                otherIndex = firstDifferenceIndex;
-                isFirstPart = false;
+                otherIndex = firstDifferenceIndex
+                isFirstPart = false
 
-            return otherIndex == other.Length;
+            return otherIndex == other.Length

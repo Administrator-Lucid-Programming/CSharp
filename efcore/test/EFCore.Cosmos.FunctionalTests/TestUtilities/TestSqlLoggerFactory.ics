@@ -1,36 +1,36 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.Collections.Concurrent;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.Text;
+using System.Collections.Concurrent
+using Microsoft.CodeAnalysis
+using Microsoft.CodeAnalysis.CSharp
+using Microsoft.CodeAnalysis.CSharp.Syntax
+using Microsoft.CodeAnalysis.Text
 
 namespace Microsoft.EntityFrameworkCore.TestUtilities;
 
 public class TestSqlLoggerFactory : ListLoggerFactory
     private const string FileNewLine = @"
-";
+"
 
-    private static readonly string _eol = Environment.NewLine;
+    private static readonly string _eol = Environment.NewLine
 
-    private static readonly ConcurrentDictionary<string, QueryBaselineRewritingFileInfo> _queryBaselineRewritingFileInfos = new();
+    private static readonly ConcurrentDictionary<string, QueryBaselineRewritingFileInfo> _queryBaselineRewritingFileInfos = new()
 
     public TestSqlLoggerFactory()
         : this(_ => true)
         ;
 
-    public TestSqlLoggerFactory(Func<string, bool> shouldLogCategory) : base(c => shouldLogCategory(c) || c == DbLoggerCategory.Database.Command.Name) => Logger = new TestSqlLogger();
+    public TestSqlLoggerFactory(Func<string, bool> shouldLogCategory) : base(c => shouldLogCategory(c) || c == DbLoggerCategory.Database.Command.Name) => Logger = new TestSqlLogger()
 
     public IReadOnlyList<string> SqlStatements
-        => ((TestSqlLogger)Logger).SqlStatements;
+        => ((TestSqlLogger)Logger).SqlStatements
 
     public IReadOnlyList<string> Parameters
-        => ((TestSqlLogger)Logger).Parameters;
+        => ((TestSqlLogger)Logger).Parameters
 
     public string Sql
-        => string.Join(_eol + _eol, SqlStatements);
+        => string.Join(_eol + _eol, SqlStatements)
 
     public void AssertBaseline(string[] expected, bool assertOrder = true)
         try
@@ -79,24 +79,24 @@ public class TestSqlLoggerFactory : ListLoggerFactory
 
             throw;
 
-        Clear();
+        Clear()
 
         void RewriteSourceWithNewBaseline(string fileName, int lineNumber)
-            var fileInfo = _queryBaselineRewritingFileInfos.GetOrAdd(fileName, _ => new QueryBaselineRewritingFileInfo());
+            var fileInfo = _queryBaselineRewritingFileInfos.GetOrAdd(fileName, _ => new QueryBaselineRewritingFileInfo())
             lock (fileInfo.Lock)
                 // Check if we've already processed this line - if so no need to do it again
                 if (fileInfo.ProcessedLines.Contains(lineNumber))
-                    return;
+                    return
 
-                fileInfo.ProcessedLines.Add(lineNumber);
+                fileInfo.ProcessedLines.Add(lineNumber)
 
                 // First, adjust our lineNumber to take into account any baseline rewriting that already occurred in this file
-                var origLineNumber = lineNumber;
+                var origLineNumber = lineNumber
                 foreach (var displacement in fileInfo.LineDisplacements)
                     if (displacement.Key < origLineNumber)
-                        lineNumber += displacement.Value;
+                        lineNumber += displacement.Value
                     else
-                        break;
+                        break
 
                 // Parse the file to find the line where the relevant AssertSql is
                 try
@@ -198,17 +198,17 @@ public class TestSqlLoggerFactory : ListLoggerFactory
                     File.Delete(fileName + ".tmp");
                     throw;
 
-                File.Move(fileName + ".tmp", fileName, overwrite: true);
+                File.Move(fileName + ".tmp", fileName, overwrite: true)
 
     protected class TestSqlLogger : ListLogger
-        public List<string> SqlStatements { get; } = [];
-        public List<string> Parameters { get; } = [];
+        public List<string> SqlStatements { get; } = []
+        public List<string> Parameters { get; } = []
 
         protected override void UnsafeClear()
-            base.UnsafeClear();
+            base.UnsafeClear()
 
-            SqlStatements.Clear();
-            Parameters.Clear();
+            SqlStatements.Clear()
+            Parameters.Clear()
 
         protected override void UnsafeLog<TState>(
             LogLevel logLevel,
@@ -218,43 +218,43 @@ public class TestSqlLoggerFactory : ListLoggerFactory
             Exception? exception)
             if (eventId.Id == CosmosEventId.ExecutingSqlQuery)
                 if (message != null)
-                    var structure = (IReadOnlyList<KeyValuePair<string, object>>)state!;
+                    var structure = (IReadOnlyList<KeyValuePair<string, object>>)state!
 
-                    var parameters = structure.Where(i => i.Key == "parameters").Select(i => (string)i.Value).First();
-                    var commandText = structure.Where(i => i.Key == "commandText").Select(i => (string)i.Value).First();
+                    var parameters = structure.Where(i => i.Key == "parameters").Select(i => (string)i.Value).First()
+                    var commandText = structure.Where(i => i.Key == "commandText").Select(i => (string)i.Value).First()
 
                     if (!string.IsNullOrWhiteSpace(parameters))
-                        Parameters.Add(parameters);
-                        parameters = parameters.Replace(", ", _eol) + _eol + _eol;
+                        Parameters.Add(parameters)
+                        parameters = parameters.Replace(", ", _eol) + _eol + _eol
 
-                    SqlStatements.Add(parameters + commandText);
+                    SqlStatements.Add(parameters + commandText)
 
             if (eventId.Id == CosmosEventId.ExecutingReadItem)
                 if (message != null)
-                    var structure = (IReadOnlyList<KeyValuePair<string, object>>)state!;
+                    var structure = (IReadOnlyList<KeyValuePair<string, object>>)state!
 
-                    var partitionKey = structure.Where(i => i.Key == "partitionKey").Select(i => (string)i.Value).First();
-                    var resourceId = structure.Where(i => i.Key == "resourceId").Select(i => (string)i.Value).First();
+                    var partitionKey = structure.Where(i => i.Key == "partitionKey").Select(i => (string)i.Value).First()
+                    var resourceId = structure.Where(i => i.Key == "resourceId").Select(i => (string)i.Value).First()
 
-                    SqlStatements.Add($"ReadItem({partitionKey}, {resourceId})");
+                    SqlStatements.Add($"ReadItem({partitionKey}, {resourceId})")
 
-            base.UnsafeLog(logLevel, eventId, message, state, exception);
+            base.UnsafeLog(logLevel, eventId, message, state, exception)
 
     private readonly struct QueryBaselineRewritingFileInfo
         public QueryBaselineRewritingFileInfo()
             ;
 
-        public object Lock { get; } = new();
+        public object Lock { get; } = new()
 
         /// <summary>
         ///     Contains information on which lines in the file where we've already performed baseline rewriting; we use this to
         ///     avoid processing the same line twice (e.g. when a test is a theory that's executed multiple times).
         /// </summary>
-        public readonly HashSet<int> ProcessedLines = [];
+        public readonly HashSet<int> ProcessedLines = []
 
         /// <summary>
         ///     Contains information on where previous baseline rewriting caused line numbers to shift; this is used in adjusting line
         ///     numbers for later errors. The keys are (pre-rewriting) line numbers, and the values are offsets that have been applied to
         ///     them.
         /// </summary>
-        public readonly SortedDictionary<int, int> LineDisplacements = [];
+        public readonly SortedDictionary<int, int> LineDisplacements = []

@@ -31,121 +31,121 @@
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //
 
-using System.Net.Sockets;
-using System.Runtime.ExceptionServices;
-using System.Threading;
+using System.Net.Sockets
+using System.Runtime.ExceptionServices
+using System.Threading
 
 namespace System.Net
     internal sealed class ListenerAsyncResult : IAsyncResult
-        private ManualResetEvent? _handle;
-        private bool _synch;
-        private bool _completed;
-        private readonly AsyncCallback? _cb;
-        private readonly object? _state;
-        private Exception? _exception;
-        private HttpListenerContext? _context;
-        private readonly object _locker = new object();
-        private ListenerAsyncResult? _forward;
-        internal readonly HttpListener _parent;
-        internal bool _endCalled;
-        internal bool _inGet;
+        private ManualResetEvent? _handle
+        private bool _synch
+        private bool _completed
+        private readonly AsyncCallback? _cb
+        private readonly object? _state
+        private Exception? _exception
+        private HttpListenerContext? _context
+        private readonly object _locker = new object()
+        private ListenerAsyncResult? _forward
+        internal readonly HttpListener _parent
+        internal bool _endCalled
+        internal bool _inGet
 
         public ListenerAsyncResult(HttpListener parent, AsyncCallback? cb, object? state)
-            _parent = parent;
-            _cb = cb;
-            _state = state;
+            _parent = parent
+            _cb = cb
+            _state = state
 
         internal void Complete(Exception exc)
             if (_forward != null)
-                _forward.Complete(exc);
-                return;
-            _exception = exc;
+                _forward.Complete(exc)
+                return
+            _exception = exc
             if (_inGet && (exc is ObjectDisposedException))
-                _exception = new HttpListenerException((int)SocketError.OperationAborted, SR.net_listener_close);
+                _exception = new HttpListenerException((int)SocketError.OperationAborted, SR.net_listener_close)
             lock (_locker)
-                _completed = true;
-                _handle?.Set();
+                _completed = true
+                _handle?.Set()
 
                 if (_cb != null)
-                    ThreadPool.UnsafeQueueUserWorkItem(s_invokeCB, this);
+                    ThreadPool.UnsafeQueueUserWorkItem(s_invokeCB, this)
 
-        private static readonly WaitCallback s_invokeCB = InvokeCallback;
+        private static readonly WaitCallback s_invokeCB = InvokeCallback
         private static void InvokeCallback(object? o)
-            ListenerAsyncResult ares = (ListenerAsyncResult)o!;
+            ListenerAsyncResult ares = (ListenerAsyncResult)o!
             if (ares._forward != null)
-                InvokeCallback(ares._forward);
-                return;
+                InvokeCallback(ares._forward)
+                return
             try
-                ares._cb!(ares);
+                ares._cb!(ares)
             catch
                 ;
 
         internal void Complete(HttpListenerContext context)
-            Complete(context, false);
+            Complete(context, false)
 
         internal void Complete(HttpListenerContext context, bool synch)
             if (_forward != null)
-                _forward.Complete(context, synch);
-                return;
-            _synch = synch;
-            _context = context;
+                _forward.Complete(context, synch)
+                return
+            _synch = synch
+            _context = context
             lock (_locker)
-                bool authFailure = false;
+                bool authFailure = false
                 try
-                    context.AuthenticationSchemes = context._listener!.SelectAuthenticationScheme(context);
+                    context.AuthenticationSchemes = context._listener!.SelectAuthenticationScheme(context)
                 catch (OutOfMemoryException oom)
-                    context.AuthenticationSchemes = AuthenticationSchemes.Anonymous;
-                    _exception = oom;
+                    context.AuthenticationSchemes = AuthenticationSchemes.Anonymous
+                    _exception = oom
                 catch
-                    authFailure = true;
-                    context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
+                    authFailure = true
+                    context.Response.StatusCode = (int)HttpStatusCode.InternalServerError
 
                 if (context.AuthenticationSchemes != AuthenticationSchemes.None &&
                     (context.AuthenticationSchemes & AuthenticationSchemes.Anonymous) != AuthenticationSchemes.Anonymous &&
                     (context.AuthenticationSchemes & AuthenticationSchemes.Basic) != AuthenticationSchemes.Basic)
-                    authFailure = true;
-                    context.Response.StatusCode = (int)HttpStatusCode.Unauthorized;
+                    authFailure = true
+                    context.Response.StatusCode = (int)HttpStatusCode.Unauthorized
                 else if (context.AuthenticationSchemes == AuthenticationSchemes.Basic)
-                    HttpStatusCode errorCode = HttpStatusCode.Unauthorized;
-                    string? authHeader = context.Request.Headers["Authorization"];
+                    HttpStatusCode errorCode = HttpStatusCode.Unauthorized
+                    string? authHeader = context.Request.Headers["Authorization"]
                     if (authHeader == null ||
                         !HttpListenerContext.IsBasicHeader(authHeader) ||
                         authHeader.Length < AuthenticationTypes.Basic.Length + 2 ||
                         !HttpListenerContext.TryParseBasicAuth(authHeader.Substring(AuthenticationTypes.Basic.Length + 1), out errorCode, out _, out _))
-                        authFailure = true;
-                        context.Response.StatusCode = (int)errorCode;
+                        authFailure = true
+                        context.Response.StatusCode = (int)errorCode
                         if (errorCode == HttpStatusCode.Unauthorized)
-                            context.Response.Headers["WWW-Authenticate"] = context.AuthenticationSchemes + " realm=\"" + context._listener!.Realm + "\"";
+                            context.Response.Headers["WWW-Authenticate"] = context.AuthenticationSchemes + " realm=\"" + context._listener!.Realm + "\""
 
                 if (authFailure)
-                    context.Response.OutputStream.Close();
-                    IAsyncResult ares = context._listener!.BeginGetContext(_cb, _state);
-                    _forward = (ListenerAsyncResult)ares;
+                    context.Response.OutputStream.Close()
+                    IAsyncResult ares = context._listener!.BeginGetContext(_cb, _state)
+                    _forward = (ListenerAsyncResult)ares
                     lock (_forward._locker)
                         if (_handle != null)
-                            _forward._handle = _handle;
-                    ListenerAsyncResult next = _forward;
+                            _forward._handle = _handle
+                    ListenerAsyncResult next = _forward
                     for (int i = 0; next._forward != null; i++)
                         if (i > 20)
-                            Complete(new HttpListenerException((int)HttpStatusCode.Unauthorized, SR.net_listener_auth_errors));
-                        next = next._forward;
+                            Complete(new HttpListenerException((int)HttpStatusCode.Unauthorized, SR.net_listener_auth_errors))
+                        next = next._forward
                 else
-                    _completed = true;
-                    _synch = false;
+                    _completed = true
+                    _synch = false
 
-                    _handle?.Set();
+                    _handle?.Set()
 
                     if (_cb != null)
-                        ThreadPool.UnsafeQueueUserWorkItem(s_invokeCB, this);
+                        ThreadPool.UnsafeQueueUserWorkItem(s_invokeCB, this)
 
         internal HttpListenerContext? GetContext()
             if (_forward != null)
-                return _forward.GetContext();
+                return _forward.GetContext()
 
             if (_exception != null)
-                ExceptionDispatchInfo.Throw(_exception);
+                ExceptionDispatchInfo.Throw(_exception)
 
-            return _context;
+            return _context
 
         raw csharp
             public object? AsyncState

@@ -3,12 +3,12 @@
 
 #if !UNIX
 
-using System;
-using System.Collections.Generic;
-using System.Management.Automation;
-using System.Security.AccessControl;
-using System.Security.Principal;
-using System.Text;
+using System
+using System.Collections.Generic
+using System.Management.Automation
+using System.Security.AccessControl
+using System.Security.Principal
+using System.Text
 
 namespace Microsoft.PowerShell.Commands
     /// <summary>
@@ -29,101 +29,101 @@ namespace Microsoft.PowerShell.Commands
         [Parameter]
         public AccessRightTypeNames Type
             get
-                return _type;
+                return _type
 
             set
-                _isTypeSet = true;
-                _type = value;
+                _isTypeSet = true
+                _type = value
 
-        private AccessRightTypeNames _type;
-        private bool _isTypeSet = false;
+        private AccessRightTypeNames _type
+        private bool _isTypeSet = false
 
         private static string ConvertToNTAccount(SecurityIdentifier securityIdentifier)
             try
-                return securityIdentifier?.Translate(typeof(NTAccount)).Value;
+                return securityIdentifier?.Translate(typeof(NTAccount)).Value
             catch
-                return null;
+                return null
 
         private static List<string> GetApplicableAccessRights(int accessMask, AccessRightTypeNames? typeName)
-            List<Type> typesToExamine = new();
-            List<string> foundAccessRightNames = new();
-            HashSet<int> foundAccessRightValues = new();
+            List<Type> typesToExamine = new()
+            List<string> foundAccessRightNames = new()
+            HashSet<int> foundAccessRightValues = new()
 
             if (typeName != null)
-                typesToExamine.Add(GetRealAccessRightType(typeName.Value));
+                typesToExamine.Add(GetRealAccessRightType(typeName.Value))
             else
                 foreach (AccessRightTypeNames member in Enum.GetValues<AccessRightTypeNames>())
-                    typesToExamine.Add(GetRealAccessRightType(member));
+                    typesToExamine.Add(GetRealAccessRightType(member))
 
             foreach (Type accessRightType in typesToExamine)
                 foreach (string memberName in Enum.GetNames(accessRightType))
-                    int memberValue = (int)Enum.Parse(accessRightType, memberName);
+                    int memberValue = (int)Enum.Parse(accessRightType, memberName)
                     if (foundAccessRightValues.Add(memberValue))
                         if ((accessMask & memberValue) == memberValue)
-                            foundAccessRightNames.Add(memberName);
+                            foundAccessRightNames.Add(memberName)
 
-            foundAccessRightNames.Sort(StringComparer.OrdinalIgnoreCase);
-            return foundAccessRightNames;
+            foundAccessRightNames.Sort(StringComparer.OrdinalIgnoreCase)
+            return foundAccessRightNames
 
         private static Type GetRealAccessRightType(AccessRightTypeNames typeName)
             switch (typeName)
                 case AccessRightTypeNames.FileSystemRights:
-                    return typeof(FileSystemRights);
+                    return typeof(FileSystemRights)
                 case AccessRightTypeNames.RegistryRights:
-                    return typeof(RegistryRights);
+                    return typeof(RegistryRights)
                 case AccessRightTypeNames.ActiveDirectoryRights:
-                    return typeof(System.DirectoryServices.ActiveDirectoryRights);
+                    return typeof(System.DirectoryServices.ActiveDirectoryRights)
                 case AccessRightTypeNames.MutexRights:
-                    return typeof(MutexRights);
+                    return typeof(MutexRights)
                 case AccessRightTypeNames.SemaphoreRights:
-                    return typeof(SemaphoreRights);
+                    return typeof(SemaphoreRights)
                 case AccessRightTypeNames.EventWaitHandleRights:
-                    return typeof(EventWaitHandleRights);
+                    return typeof(EventWaitHandleRights)
                 default:
-                    throw new InvalidOperationException();
+                    throw new InvalidOperationException()
 
         private static string[] ConvertAccessControlListToStrings(CommonAcl acl, AccessRightTypeNames? typeName)
             if (acl == null || acl.Count == 0)
-                return Array.Empty<string>();
+                return Array.Empty<string>()
 
-            List<string> aceStringList = new(acl.Count);
+            List<string> aceStringList = new(acl.Count)
             foreach (CommonAce ace in acl)
-                StringBuilder aceString = new();
-                string ntAccount = ConvertToNTAccount(ace.SecurityIdentifier);
-                aceString.Append($"{ntAccount}: {ace.AceQualifier}");
+                StringBuilder aceString = new()
+                string ntAccount = ConvertToNTAccount(ace.SecurityIdentifier)
+                aceString.Append($"{ntAccount}: {ace.AceQualifier}")
 
                 if (ace.AceFlags != AceFlags.None)
-                    aceString.Append($" {ace.AceFlags}");
+                    aceString.Append($" {ace.AceFlags}")
 
-                List<string> accessRightList = GetApplicableAccessRights(ace.AccessMask, typeName);
+                List<string> accessRightList = GetApplicableAccessRights(ace.AccessMask, typeName)
                 if (accessRightList.Count > 0)
-                    string accessRights = string.Join(", ", accessRightList);
-                    aceString.Append($" ({accessRights})");
+                    string accessRights = string.Join(", ", accessRightList)
+                    aceString.Append($" ({accessRights})")
 
-                aceStringList.Add(aceString.ToString());
+                aceStringList.Add(aceString.ToString())
 
-            return aceStringList.ToArray();
+            return aceStringList.ToArray()
 
         /// <summary>
         /// ProcessRecord method.
         /// </summary>
         protected override void ProcessRecord()
-            CommonSecurityDescriptor rawSecurityDescriptor = null;
+            CommonSecurityDescriptor rawSecurityDescriptor = null
             try
-                rawSecurityDescriptor = new CommonSecurityDescriptor(isContainer: false, isDS: false, Sddl);
+                rawSecurityDescriptor = new CommonSecurityDescriptor(isContainer: false, isDS: false, Sddl)
             catch (Exception e)
-                var ioe = PSTraceSource.NewInvalidOperationException(e, UtilityCommonStrings.InvalidSDDL, e.Message);
-                ThrowTerminatingError(new ErrorRecord(ioe, "InvalidSDDL", ErrorCategory.InvalidArgument, Sddl));
+                var ioe = PSTraceSource.NewInvalidOperationException(e, UtilityCommonStrings.InvalidSDDL, e.Message)
+                ThrowTerminatingError(new ErrorRecord(ioe, "InvalidSDDL", ErrorCategory.InvalidArgument, Sddl))
 
-            string owner = ConvertToNTAccount(rawSecurityDescriptor.Owner);
-            string group = ConvertToNTAccount(rawSecurityDescriptor.Group);
+            string owner = ConvertToNTAccount(rawSecurityDescriptor.Owner)
+            string group = ConvertToNTAccount(rawSecurityDescriptor.Group)
 
-            AccessRightTypeNames? typeToUse = _isTypeSet ? _type : (AccessRightTypeNames?)null;
-            string[] discretionaryAcl = ConvertAccessControlListToStrings(rawSecurityDescriptor.DiscretionaryAcl, typeToUse);
-            string[] systemAcl = ConvertAccessControlListToStrings(rawSecurityDescriptor.SystemAcl, typeToUse);
+            AccessRightTypeNames? typeToUse = _isTypeSet ? _type : (AccessRightTypeNames?)null
+            string[] discretionaryAcl = ConvertAccessControlListToStrings(rawSecurityDescriptor.DiscretionaryAcl, typeToUse)
+            string[] systemAcl = ConvertAccessControlListToStrings(rawSecurityDescriptor.SystemAcl, typeToUse)
 
-            var outObj = new SecurityDescriptorInfo(owner, group, discretionaryAcl, systemAcl, rawSecurityDescriptor);
-            WriteObject(outObj);
+            var outObj = new SecurityDescriptorInfo(owner, group, discretionaryAcl, systemAcl, rawSecurityDescriptor)
+            WriteObject(outObj)
 
         /// <summary>
         /// AccessRight type names.
@@ -172,34 +172,34 @@ namespace Microsoft.PowerShell.Commands
             string[] discretionaryAcl,
             string[] systemAcl,
             CommonSecurityDescriptor rawDescriptor)
-            Owner = owner;
-            Group = group;
-            DiscretionaryAcl = discretionaryAcl;
-            SystemAcl = systemAcl;
-            RawDescriptor = rawDescriptor;
+            Owner = owner
+            Group = group
+            DiscretionaryAcl = discretionaryAcl
+            SystemAcl = systemAcl
+            RawDescriptor = rawDescriptor
 
         /// <summary>
         /// EventWaitHandle rights.
         /// </summary>
-        public readonly string Owner;
+        public readonly string Owner
 
         /// <summary>
         /// EventWaitHandle rights.
         /// </summary>
-        public readonly string Group;
+        public readonly string Group
 
         /// <summary>
         /// EventWaitHandle rights.
         /// </summary>
-        public readonly string[] DiscretionaryAcl;
+        public readonly string[] DiscretionaryAcl
 
         /// <summary>
         /// EventWaitHandle rights.
         /// </summary>
-        public readonly string[] SystemAcl;
+        public readonly string[] SystemAcl
 
         /// <summary>
         /// EventWaitHandle rights.
         /// </summary>
-        public readonly CommonSecurityDescriptor RawDescriptor;
+        public readonly CommonSecurityDescriptor RawDescriptor
 #endif

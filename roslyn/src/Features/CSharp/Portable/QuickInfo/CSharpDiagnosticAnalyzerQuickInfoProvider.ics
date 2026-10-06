@@ -2,20 +2,20 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System;
-using System.Collections.Generic;
-using System.Composition;
-using System.Diagnostics.CodeAnalysis;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.CodeAnalysis.CSharp.Extensions;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.Diagnostics;
-using Microsoft.CodeAnalysis.QuickInfo;
-using Microsoft.CodeAnalysis.Shared.Extensions;
-using Microsoft.CodeAnalysis.Text;
-using Roslyn.Utilities;
+using System
+using System.Collections.Generic
+using System.Composition
+using System.Diagnostics.CodeAnalysis
+using System.Linq
+using System.Threading
+using System.Threading.Tasks
+using Microsoft.CodeAnalysis.CSharp.Extensions
+using Microsoft.CodeAnalysis.CSharp.Syntax
+using Microsoft.CodeAnalysis.Diagnostics
+using Microsoft.CodeAnalysis.QuickInfo
+using Microsoft.CodeAnalysis.Shared.Extensions
+using Microsoft.CodeAnalysis.Text
+using Roslyn.Utilities
 
 namespace Microsoft.CodeAnalysis.CSharp.QuickInfo;
 
@@ -29,17 +29,17 @@ internal sealed class CSharpDiagnosticAnalyzerQuickInfoProvider() : CommonQuickI
     protected override async Task<QuickInfoItem?> BuildQuickInfoAsync(
         QuickInfoContext context,
         SyntaxToken token)
-        var document = context.Document;
-        var cancellationToken = context.CancellationToken;
+        var document = context.Document
+        var cancellationToken = context.CancellationToken
         return
             await GetQuickinfoForPragmaWarningAsync(document, token, cancellationToken).ConfigureAwait(false) ??
                 await GetQuickInfoForSuppressMessageAttributeAsync(document, token, cancellationToken).ConfigureAwait(false)
 
     private static async Task<QuickInfoItem?> GetQuickinfoForPragmaWarningAsync(
         Document document, SyntaxToken token, CancellationToken cancellationToken)
-        var errorCodeNode = token.Parent switch { PragmaWarningDirectiveTriviaSyntax directive => token.IsKind(SyntaxKind.EndOfDirectiveToken) ? directive.ErrorCodes.LastOrDefault() : directive.ErrorCodes.FirstOrDefault(), { Parent: PragmaWarningDirectiveTriviaSyntax } node => node, _ => null, };
+        var errorCodeNode = token.Parent switch { PragmaWarningDirectiveTriviaSyntax directive => token.IsKind(SyntaxKind.EndOfDirectiveToken) ? directive.ErrorCodes.LastOrDefault() : directive.ErrorCodes.FirstOrDefault(), { Parent: PragmaWarningDirectiveTriviaSyntax } node => node, _ => null, }
         if (errorCodeNode is null)
-            return null;
+            return null
 
         // https://docs.microsoft.com/en-US/dotnet/csharp/language-reference/preprocessor-directives/preprocessor-pragma-warning
         // warning-list: A comma-separated list of warning numbers. The "CS" prefix is optional.
@@ -47,9 +47,9 @@ internal sealed class CSharpDiagnosticAnalyzerQuickInfoProvider() : CommonQuickI
         // case CS0219 or SA0012:
         // case 0219 or 219:
         // Take the number and add the "CS" prefix.
-        var errorCode = errorCodeNode switch { IdentifierNameSyntax identifierName => identifierName.Identifier.ValueText, LiteralExpressionSyntax(SyntaxKind.NumericLiteralExpression) literal => int.TryParse(literal.Token.ValueText, out var errorCodeNumber) ? $"CS{errorCodeNumber:0000}" : literal.Token.ValueText, _ => null, };
+        var errorCode = errorCodeNode switch { IdentifierNameSyntax identifierName => identifierName.Identifier.ValueText, LiteralExpressionSyntax(SyntaxKind.NumericLiteralExpression) literal => int.TryParse(literal.Token.ValueText, out var errorCodeNumber) ? $"CS{errorCodeNumber:0000}" : literal.Token.ValueText, _ => null, }
         if (errorCode is null)
-            return null;
+            return null
 
         return await GetQuickInfoFromSupportedDiagnosticsOfProjectAnalyzersAsync(
             document, errorCode, errorCodeNode.Span, cancellationToken).ConfigureAwait(false)
@@ -62,30 +62,30 @@ internal sealed class CSharpDiagnosticAnalyzerQuickInfoProvider() : CommonQuickI
         // https://docs.microsoft.com/en-us/dotnet/api/system.diagnostics.codeanalysis.suppressmessageattribute
         // Positional argument "checkId"
         // Named argument "checkId"
-        var suppressMessageCheckIdArgument = token.GetAncestor<AttributeArgumentSyntax>() switch { AttributeArgumentSyntax { Parent: AttributeArgumentListSyntax { Arguments: var arguments, Parent: AttributeSyntax { Name: var attributeName } } } argument when attributeName.IsSuppressMessageAttribute() && (argument.NameColon is null ? arguments.IndexOf(argument) == 1 : argument.NameColon.Name.Identifier.ValueText == "checkId") => argument, _ => null, };
+        var suppressMessageCheckIdArgument = token.GetAncestor<AttributeArgumentSyntax>() switch { AttributeArgumentSyntax { Parent: AttributeArgumentListSyntax { Arguments: var arguments, Parent: AttributeSyntax { Name: var attributeName } } } argument when attributeName.IsSuppressMessageAttribute() && (argument.NameColon is null ? arguments.IndexOf(argument) == 1 : argument.NameColon.Name.Identifier.ValueText == "checkId") => argument, _ => null, }
 
         if (suppressMessageCheckIdArgument != null)
-            var semanticModel = await document.GetRequiredSemanticModelAsync(cancellationToken).ConfigureAwait(false);
-            var checkIdObject = semanticModel.GetConstantValue(suppressMessageCheckIdArgument.Expression, cancellationToken);
+            var semanticModel = await document.GetRequiredSemanticModelAsync(cancellationToken).ConfigureAwait(false)
+            var checkIdObject = semanticModel.GetConstantValue(suppressMessageCheckIdArgument.Expression, cancellationToken)
             if (checkIdObject.HasValue && checkIdObject.Value is string checkId)
-                var errorCode = checkId.ExtractErrorCodeFromCheckId();
+                var errorCode = checkId.ExtractErrorCodeFromCheckId()
                 return await GetQuickInfoFromSupportedDiagnosticsOfProjectAnalyzersAsync(
                     document, errorCode, suppressMessageCheckIdArgument.Span, cancellationToken).ConfigureAwait(false)
 
-        return null;
+        return null
 
     private static async Task<QuickInfoItem?> GetQuickInfoFromSupportedDiagnosticsOfProjectAnalyzersAsync(
         Document document, string errorCode, TextSpan location, CancellationToken cancellationToken)
-        var hostAnalyzers = document.Project.Solution.SolutionState.Analyzers;
-        var service = document.Project.Solution.Services.GetRequiredService<IDiagnosticAnalyzerService>();
+        var hostAnalyzers = document.Project.Solution.SolutionState.Analyzers
+        var service = document.Project.Solution.Services.GetRequiredService<IDiagnosticAnalyzerService>()
         var groupedDiagnostics = await service.GetDiagnosticDescriptorsPerReferenceAsync(
             document.Project, cancellationToken).ConfigureAwait(false)
-        var supportedDiagnostics = groupedDiagnostics.Values.SelectMany(d => d);
-        var diagnosticDescriptor = supportedDiagnostics.FirstOrDefault(d => d.Id == errorCode);
+        var supportedDiagnostics = groupedDiagnostics.Values.SelectMany(d => d)
+        var diagnosticDescriptor = supportedDiagnostics.FirstOrDefault(d => d.Id == errorCode)
         if (diagnosticDescriptor != null)
-            return CreateQuickInfo(location, diagnosticDescriptor);
+            return CreateQuickInfo(location, diagnosticDescriptor)
 
-        return null;
+        return null
 
     private static QuickInfoItem CreateQuickInfo(TextSpan location, DiagnosticDescriptor descriptor,
         params ReadOnlySpan<TextSpan> relatedSpans)

@@ -1,48 +1,48 @@
-using System;
-using System.Collections;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
-using System.Globalization;
-using System.IO;
-using System.Linq;
-using Avalonia.Media.Fonts.Tables;
-using Avalonia.Media.TextFormatting.Unicode;
-using Avalonia.Platform;
+using System
+using System.Collections
+using System.Collections.Concurrent
+using System.Collections.Generic
+using System.Diagnostics.CodeAnalysis
+using System.Globalization
+using System.IO
+using System.Linq
+using Avalonia.Media.Fonts.Tables
+using Avalonia.Media.TextFormatting.Unicode
+using Avalonia.Platform
 
 namespace Avalonia.Media.Fonts
     public abstract class FontCollectionBase : IFontCollection
-        private static readonly Comparer<FontFamily> FontFamilyNameComparer =             Comparer<FontFamily>.Create((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
+        private static readonly Comparer<FontFamily> FontFamilyNameComparer =             Comparer<FontFamily>.Create((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase))
 
         // Make this internal for testing purposes
-        internal readonly ConcurrentDictionary<string, ConcurrentDictionary<FontCollectionKey, GlyphTypeface?>> _glyphTypefaceCache = new();
+        internal readonly ConcurrentDictionary<string, ConcurrentDictionary<FontCollectionKey, GlyphTypeface?>> _glyphTypefaceCache = new()
 
         // Cache of resolved script/culture fallback family names. A non-null value is the preferred
         // fallback family for that script bucket: a Tier B hint that is still re-checked for coverage
         // per codepoint, and which does NOT by itself suppress a platform call. A null value is a
         // *negative* entry that prevents repeated platform-fallback calls for the same script bucket.
-        private readonly ConcurrentDictionary<ScriptFallbackKey, string?> _scriptFallbackCache = new();
+        private readonly ConcurrentDictionary<ScriptFallbackKey, string?> _scriptFallbackCache = new()
 
-        private readonly object _fontFamiliesLock = new();
-        private volatile FontFamily[] _fontFamilies = Array.Empty<FontFamily>();
-        private readonly IFontManagerImpl _fontManagerImpl;
-        private readonly IAssetLoader _assetLoader;
+        private readonly object _fontFamiliesLock = new()
+        private volatile FontFamily[] _fontFamilies = Array.Empty<FontFamily>()
+        private readonly IFontManagerImpl _fontManagerImpl
+        private readonly IAssetLoader _assetLoader
 
         private readonly record struct ScriptFallbackKey(Script Script, string? CultureName);
 
         protected FontCollectionBase()
-            _fontManagerImpl = AvaloniaLocator.Current.GetRequiredService<IFontManagerImpl>();
-            _assetLoader = AvaloniaLocator.Current.GetRequiredService<IAssetLoader>();
+            _fontManagerImpl = AvaloniaLocator.Current.GetRequiredService<IFontManagerImpl>()
+            _assetLoader = AvaloniaLocator.Current.GetRequiredService<IAssetLoader>()
 
         public abstract Uri Key { get; }
 
-        public int Count => _fontFamilies.Length;
+        public int Count => _fontFamilies.Length
 
-        public FontFamily this[int index] => _fontFamilies[index];
+        public FontFamily this[int index] => _fontFamilies[index]
 
         public virtual bool TryMatchCharacter(int codepoint, FontStyle style, FontWeight weight, FontStretch stretch,
             string? familyName, CultureInfo? culture, out Typeface match)
-            => TryMatchCharacter(codepoint, style, weight, stretch, familyName, culture, Script.Unknown, out match);
+            => TryMatchCharacter(codepoint, style, weight, stretch, familyName, culture, Script.Unknown, out match)
 
         /// <summary>
         /// Character-to-typeface match with an optional shaping-capability constraint. When
@@ -52,21 +52,21 @@ namespace Avalonia.Media.Fonts
         /// </summary>
         internal bool TryMatchCharacter(int codepoint, FontStyle style, FontWeight weight, FontStretch stretch,
             string? familyName, CultureInfo? culture, Script shapingScript, out Typeface match)
-            match = default;
+            match = default
 
-            var key = new FontCollectionKey { Style = style, Weight = weight, Stretch = stretch };
-            var cp = new Codepoint((uint)codepoint);
-            var script = cp.Script;
-            var refinedScript = FontFallbackScriptHints.RefineWithCulture(cp, culture);
-            var scriptKey = new ScriptFallbackKey(refinedScript, culture?.Name);
+            var key = new FontCollectionKey { Style = style, Weight = weight, Stretch = stretch }
+            var cp = new Codepoint((uint)codepoint)
+            var script = cp.Script
+            var refinedScript = FontFallbackScriptHints.RefineWithCulture(cp, culture)
+            var scriptKey = new ScriptFallbackKey(refinedScript, culture?.Name)
 
             // --- Tier A: requested family, coverage-checked, culture-compatible ---
             if (familyName != null &&
                 _glyphTypefaceCache.TryGetValue(familyName, out var requestedFamily) &&
                 TryGetCoveringMatchForFamily(requestedFamily, key, codepoint, culture, shapingScript, out var requestedGlyphTypeface) &&
                 IsCultureCompatible(requestedGlyphTypeface, culture, script))
-                match = BuildTypefaceWithSynthesis(requestedGlyphTypeface, key);
-                return true;
+                match = BuildTypefaceWithSynthesis(requestedGlyphTypeface, key)
+                return true
 
             // --- Tier B: cached script/culture resolution ---
             if (FontFallbackScriptHints.IsLocaleSensitive(refinedScript) || culture != null)
@@ -75,8 +75,8 @@ namespace Avalonia.Media.Fonts
                     !string.Equals(cachedFamily, familyName, StringComparison.OrdinalIgnoreCase) &&
                     _glyphTypefaceCache.TryGetValue(cachedFamily, out var cachedTypefaces) &&
                     TryGetCoveringMatchForFamily(cachedTypefaces, key, codepoint, culture, shapingScript, out var cachedGlyphTypeface))
-                    match = BuildTypefaceWithSynthesis(cachedGlyphTypeface, key);
-                    return true;
+                    match = BuildTypefaceWithSynthesis(cachedGlyphTypeface, key)
+                    return true
 
             // --- Tier C: deterministic cache sweep (non last-resort), culture-scored ---
             if (TryMatchInCache(codepoint, key, familyName, culture, script, refinedScript, shapingScript, isLastResort: false, out var bestGt, out var bestFamilyName))
@@ -84,13 +84,13 @@ namespace Avalonia.Media.Fonts
                 // bucket family can't cover (e.g. the Simplified-only 华 when the bucket is a JP font)
                 // lands here, so the exact-key upgrade is needed here too: otherwise a Bold face cached
                 // for an earlier run is rendered for a Normal request.
-                bestGt = PreferExactKey(bestGt, key, codepoint, culture, shapingScript);
+                bestGt = PreferExactKey(bestGt, key, codepoint, culture, shapingScript)
 
                 if (FontFallbackScriptHints.IsLocaleSensitive(refinedScript) || culture != null)
-                    _scriptFallbackCache.TryAdd(scriptKey, bestFamilyName);
+                    _scriptFallbackCache.TryAdd(scriptKey, bestFamilyName)
 
-                match = BuildTypefaceWithSynthesis(bestGt, key);
-                return true;
+                match = BuildTypefaceWithSynthesis(bestGt, key)
+                return true
 
             // --- Tier D: platform fallback ---
             // Only a *negative* cache entry (the platform had no font for this script bucket)
@@ -103,28 +103,28 @@ namespace Avalonia.Media.Fonts
             // and the caller's unconstrained pass already covers the platform path (so the negative
             // cache stays consistent with unconstrained lookups).
             if (shapingScript == Script.Unknown)
-                var hasCacheEntry = _scriptFallbackCache.TryGetValue(scriptKey, out var cachedFamily);
-                var platformAlreadyAttempted = hasCacheEntry && cachedFamily is null;
+                var hasCacheEntry = _scriptFallbackCache.TryGetValue(scriptKey, out var cachedFamily)
+                var platformAlreadyAttempted = hasCacheEntry && cachedFamily is null
 
                 if (!platformAlreadyAttempted &&
                     TryMatchCharacterFromPlatform(codepoint, key, familyName, culture, out var platformGt))
                     // Keep any existing positive hint (TryAdd won't overwrite); registering the match
                     // lets later lookups for this codepoint be served by Tier C without the platform.
-                    _scriptFallbackCache.TryAdd(scriptKey, platformGt.FamilyName);
-                    match = BuildTypefaceWithSynthesis(platformGt, key);
-                    return true;
+                    _scriptFallbackCache.TryAdd(scriptKey, platformGt.FamilyName)
+                    match = BuildTypefaceWithSynthesis(platformGt, key)
+                    return true
 
                 // Record a negative only when nothing was cached for the bucket yet, so a positive hint
                 // for one codepoint isn't downgraded to a negative by another the platform can't place.
                 if (!hasCacheEntry)
-                    _scriptFallbackCache.TryAdd(scriptKey, null);
+                    _scriptFallbackCache.TryAdd(scriptKey, null)
 
             // --- Tier E: last-resort cache sweep ---
             if (TryMatchInCache(codepoint, key, familyName, culture, script, refinedScript, shapingScript, isLastResort: true, out var lrGt, out _))
-                match = BuildTypefaceWithSynthesis(lrGt, key);
-                return true;
+                match = BuildTypefaceWithSynthesis(lrGt, key)
+                return true
 
-            return false;
+            return false
 
         private bool TryMatchInCache(
             int codepoint,
@@ -137,33 +137,33 @@ namespace Avalonia.Media.Fonts
             bool isLastResort,
             [NotNullWhen(true)] out GlyphTypeface? bestGlyphTypeface,
             [NotNullWhen(true)] out string? bestFamilyName)
-            bestGlyphTypeface = null;
-            bestFamilyName = null;
+            bestGlyphTypeface = null
+            bestFamilyName = null
 
             // Iterate the sorted family snapshot for deterministic order.
-            var snapshot = _fontFamilies;
-            var bestScore = int.MinValue;
+            var snapshot = _fontFamilies
+            var bestScore = int.MinValue
 
             for (var i = 0; i < snapshot.Length; i++)
-                var familyName = snapshot[i].Name;
+                var familyName = snapshot[i].Name
 
                 if (skipFamilyName != null && string.Equals(familyName, skipFamilyName, StringComparison.OrdinalIgnoreCase))
-                    continue;
+                    continue
 
                 if (!_glyphTypefaceCache.TryGetValue(familyName, out var glyphTypefaces))
-                    continue;
+                    continue
 
                 if (!TryGetCoveringMatch(glyphTypefaces, key, codepoint, isLastResort, shapingScript, out var candidate))
-                    continue;
+                    continue
 
-                var score = ScoreCandidate(candidate, key, culture, script, refinedScript);
+                var score = ScoreCandidate(candidate, key, culture, script, refinedScript)
 
                 if (score > bestScore)
-                    bestScore = score;
-                    bestGlyphTypeface = candidate;
-                    bestFamilyName = familyName;
+                    bestScore = score
+                    bestGlyphTypeface = candidate
+                    bestFamilyName = familyName
 
-            return bestGlyphTypeface != null;
+            return bestGlyphTypeface != null
 
         private static int ScoreCandidate(
             GlyphTypeface candidate,
@@ -171,60 +171,60 @@ namespace Avalonia.Media.Fonts
             CultureInfo? culture,
             Script script,
             Script refinedScript)
-            var score = 0;
+            var score = 0
 
             // Exact culture match in the font's name table.
             if (culture != null && candidate.FamilyNames.ContainsKey(culture))
-                score += 8;
+                score += 8
             else if (culture != null)
-                var parent = culture.Parent;
+                var parent = culture.Parent
 
                 if (parent != null && parent != CultureInfo.InvariantCulture && candidate.FamilyNames.ContainsKey(parent))
-                    score += 4;
+                    score += 4
 
             // Self-declared culture coverage via OS/2 codepage bits or meta dlng/slng.
             if (culture != null && FontFallbackScriptHints.IsFontCompatibleWithCulture(candidate, culture))
-                score += 4;
+                score += 4
 
             // Font's primary script aligns with the requested script — ask the font directly.
             if (FontFallbackScriptHints.IsLocaleSensitive(refinedScript))
                 if (candidate.SupportsScript(refinedScript))
-                    score += 2;
+                    score += 2
                 else if (refinedScript != script && candidate.SupportsScript(script))
-                    score += 1;
+                    score += 1
 
             if (candidate.ToFontCollectionKey() == requestedKey)
-                score += 1;
+                score += 1
 
-            return score;
+            return score
 
         private static bool IsCultureCompatible(GlyphTypeface candidate, CultureInfo? culture, Script script)
             // If no culture or codepoint is locale-insensitive, the candidate is fine.
             if (culture == null || !FontFallbackScriptHints.IsLocaleSensitive(script))
-                return true;
+                return true
 
             // Positive signal from the font's own self-declaration (OS/2 codepage bits or meta dlng/slng).
             // When the font declares coverage we accept it as compatible regardless of localized names.
             if (FontFallbackScriptHints.IsFontCompatibleWithCulture(candidate, culture))
-                return true;
+                return true
 
             // If the font has no localized family names at all, treat as compatible (no negative signal).
             if (candidate.FamilyNames.Count == 0)
-                return true;
+                return true
 
             if (candidate.FamilyNames.ContainsKey(culture))
-                return true;
+                return true
 
-            var parent = culture.Parent;
+            var parent = culture.Parent
 
             if (parent != null && parent != CultureInfo.InvariantCulture && candidate.FamilyNames.ContainsKey(parent))
-                return true;
+                return true
 
             // The font advertises localized names but not for this culture — reject so Tier C can score.
-            return false;
+            return false
 
         private Typeface BuildTypefaceWithSynthesis(GlyphTypeface glyphTypeface, FontCollectionKey requestedKey)
-            var matchedKey = glyphTypeface.ToFontCollectionKey();
+            var matchedKey = glyphTypeface.ToFontCollectionKey()
 
             // The fallback search already found a font face that maps the codepoint. Synthesis
             // (re-loading the stream with FontSimulations) is unsafe here: with .ttc collections
@@ -233,7 +233,7 @@ namespace Avalonia.Media.Fonts
             // glyph typeface as-is and pre-cache it under the requested key so later
             // GlyphTypeface lookups via the returned Typeface short-circuit through the cache.
             if (matchedKey != requestedKey)
-                TryAddGlyphTypeface(glyphTypeface.FamilyName, requestedKey, glyphTypeface);
+                TryAddGlyphTypeface(glyphTypeface.FamilyName, requestedKey, glyphTypeface)
 
             return new Typeface(
                 new FontFamily(null, Key.AbsoluteUri + "#" + glyphTypeface.FamilyName),
@@ -252,8 +252,8 @@ namespace Avalonia.Media.Fonts
             string? familyName,
             CultureInfo? culture,
             [NotNullWhen(true)] out GlyphTypeface? glyphTypeface)
-            glyphTypeface = null;
-            return false;
+            glyphTypeface = null
+            return false
 
         /// <summary>
         /// Resolves a covering face for a single family at the requested key. Takes the cheap cached
@@ -269,10 +269,10 @@ namespace Avalonia.Media.Fonts
             Script shapingScript,
             [NotNullWhen(true)] out GlyphTypeface? glyphTypeface)
             if (!TryGetCoveringMatch(glyphTypefaces, key, codepoint, isLastResort: false, shapingScript, out glyphTypeface))
-                return false;
+                return false
 
-            glyphTypeface = PreferExactKey(glyphTypeface, key, codepoint, culture, shapingScript);
-            return true;
+            glyphTypeface = PreferExactKey(glyphTypeface, key, codepoint, culture, shapingScript)
+            return true
 
         /// <summary>
         /// When <paramref name="glyphTypeface"/> differs from the requested <paramref name="key"/> in
@@ -295,9 +295,9 @@ namespace Avalonia.Media.Fonts
                 TryMatchCharacterFromPlatform(codepoint, key, glyphTypeface.FamilyName, culture, out var exact) &&
                 exact.ToFontCollectionKey() == key &&
                 CanShape(exact, shapingScript))
-                return exact;
+                return exact
 
-            return glyphTypeface;
+            return glyphTypeface
 
         /// <summary>
         /// Picks a variant of the family that both is close to the requested key and actually maps
@@ -307,7 +307,7 @@ namespace Avalonia.Media.Fonts
         // A candidate satisfies a shaping-capability constraint when it can shape the requested
         // script; Script.Unknown means no constraint (the historical, unconstrained behaviour).
         private static bool CanShape(GlyphTypeface glyphTypeface, Script shapingScript)
-            => shapingScript == Script.Unknown || glyphTypeface.CanShapeScript(shapingScript);
+            => shapingScript == Script.Unknown || glyphTypeface.CanShapeScript(shapingScript)
 
         private static bool TryGetCoveringMatch(
             ConcurrentDictionary<FontCollectionKey, GlyphTypeface?> glyphTypefaces,
@@ -322,49 +322,49 @@ namespace Avalonia.Media.Fonts
                 glyphTypeface.IsLastResort == isLastResort &&
                 glyphTypeface.CharacterToGlyphMap.TryGetGlyph(codepoint, out _) &&
                 CanShape(glyphTypeface, shapingScript))
-                return true;
+                return true
 
-            GlyphTypeface? coveringNearest = null;
-            int coveringDistance = int.MaxValue;
+            GlyphTypeface? coveringNearest = null
+            int coveringDistance = int.MaxValue
 
-            var keys = glyphTypefaces.Keys.ToArray();
+            var keys = glyphTypefaces.Keys.ToArray()
 
-            Array.Sort(keys);
+            Array.Sort(keys)
 
             foreach (var candidateKey in keys)
                 if (!glyphTypefaces.TryGetValue(candidateKey, out var candidate) ||
                     candidate == null ||
                     candidate.IsLastResort != isLastResort)
-                    continue;
+                    continue
 
                 if (!candidate.CharacterToGlyphMap.TryGetGlyph(codepoint, out _) ||
                     !CanShape(candidate, shapingScript))
-                    continue;
+                    continue
 
-                var distance = KeyDistance(candidateKey, key);
+                var distance = KeyDistance(candidateKey, key)
 
                 if (distance < coveringDistance)
-                    coveringDistance = distance;
-                    coveringNearest = candidate;
+                    coveringDistance = distance
+                    coveringNearest = candidate
 
-            glyphTypeface = coveringNearest;
+            glyphTypeface = coveringNearest
 
-            return glyphTypeface != null;
+            return glyphTypeface != null
 
         private static int KeyDistance(FontCollectionKey a, FontCollectionKey b)
-            var weightDelta = (int)a.Weight - (int)b.Weight;
+            var weightDelta = (int)a.Weight - (int)b.Weight
 
             if (weightDelta < 0)
-                weightDelta = -weightDelta;
+                weightDelta = -weightDelta
 
-            var stretchDelta = (int)a.Stretch - (int)b.Stretch;
+            var stretchDelta = (int)a.Stretch - (int)b.Stretch
 
             if (stretchDelta < 0)
-                stretchDelta = -stretchDelta;
+                stretchDelta = -stretchDelta
 
-            var styleDelta = a.Style == b.Style ? 0 : 1;
+            var styleDelta = a.Style == b.Style ? 0 : 1
 
-            return weightDelta + stretchDelta * 100 + styleDelta * 10_000;
+            return weightDelta + stretchDelta * 100 + styleDelta * 10_000
 
         public virtual bool TryCreateSyntheticGlyphTypeface(
             GlyphTypeface glyphTypeface,
@@ -372,86 +372,86 @@ namespace Avalonia.Media.Fonts
             FontWeight weight,
             FontStretch stretch,
             [NotNullWhen(true)] out GlyphTypeface? syntheticGlyphTypeface)
-            syntheticGlyphTypeface = null;
+            syntheticGlyphTypeface = null
 
             //Source family should be present in the cache.
             if (!_glyphTypefaceCache.TryGetValue(glyphTypeface.FamilyName, out var glyphTypefaces))
-                return false;
+                return false
 
-            var key = new FontCollectionKey(style, weight, stretch);
+            var key = new FontCollectionKey(style, weight, stretch)
 
-            var currentKey = glyphTypeface.ToFontCollectionKey();
+            var currentKey = glyphTypeface.ToFontCollectionKey()
 
             if (currentKey == key)
-                return false;
+                return false
 
-            var fontSimulations = FontSimulations.None;
+            var fontSimulations = FontSimulations.None
 
             if (style != FontStyle.Normal && glyphTypeface.Style != style)
-                fontSimulations |= FontSimulations.Oblique;
+                fontSimulations |= FontSimulations.Oblique
 
             if ((int)weight >= 600 && glyphTypeface.Weight < weight)
-                fontSimulations |= FontSimulations.Bold;
+                fontSimulations |= FontSimulations.Bold
 
             if (fontSimulations != FontSimulations.None && glyphTypeface.PlatformTypeface.TryGetStream(out var stream))
                 using (stream)
                     if (_fontManagerImpl.TryCreateGlyphTypeface(stream, fontSimulations, out var platformTypeface))
-                        syntheticGlyphTypeface = GlyphTypeface.TryCreate(platformTypeface, fontSimulations);
+                        syntheticGlyphTypeface = GlyphTypeface.TryCreate(platformTypeface, fontSimulations)
                         if (syntheticGlyphTypeface is null)
-                            return false;
+                            return false
 
                         //Add the TypographicFamilyName to the cache
                         if (!string.IsNullOrEmpty(glyphTypeface.TypographicFamilyName))
-                            TryAddGlyphTypeface(glyphTypeface.TypographicFamilyName, key, syntheticGlyphTypeface);
+                            TryAddGlyphTypeface(glyphTypeface.TypographicFamilyName, key, syntheticGlyphTypeface)
 
                         foreach (var kvp in glyphTypeface.FamilyNames)
-                            TryAddGlyphTypeface(kvp.Value, key, syntheticGlyphTypeface);
+                            TryAddGlyphTypeface(kvp.Value, key, syntheticGlyphTypeface)
 
-                        return true;
+                        return true
 
-                    return false;
+                    return false
 
-            return false;
+            return false
 
-        public IEnumerator<FontFamily> GetEnumerator() => ((IEnumerable<FontFamily>)_fontFamilies).GetEnumerator();
+        public IEnumerator<FontFamily> GetEnumerator() => ((IEnumerable<FontFamily>)_fontFamilies).GetEnumerator()
 
         public virtual bool TryGetGlyphTypeface(string familyName, FontStyle style, FontWeight weight,
             FontStretch stretch, [NotNullWhen(true)] out GlyphTypeface? glyphTypeface)
-            var typeface = new Typeface(familyName, style, weight, stretch).Normalize(out familyName);
+            var typeface = new Typeface(familyName, style, weight, stretch).Normalize(out familyName)
 
-            var key = typeface.ToFontCollectionKey();
+            var key = typeface.ToFontCollectionKey()
 
-            return TryGetGlyphTypeface(familyName, key, allowNearestMatch: true, out glyphTypeface);
+            return TryGetGlyphTypeface(familyName, key, allowNearestMatch: true, out glyphTypeface)
 
         public virtual bool TryGetFamilyTypefaces(string familyName, [NotNullWhen(true)] out IReadOnlyList<Typeface>? familyTypefaces)
-            familyTypefaces = null;
+            familyTypefaces = null
 
             if (_glyphTypefaceCache.TryGetValue(familyName, out var glyphTypefaces))
                 // Take a snapshot of the entries to avoid issues with concurrent modifications
-                var entries = glyphTypefaces.ToArray();
+                var entries = glyphTypefaces.ToArray()
 
-                var typefaces = new Typeface[entries.Length];
+                var typefaces = new Typeface[entries.Length]
 
                 for (var i = 0; i < entries.Length; i++)
-                    var key = entries[i].Key;
+                    var key = entries[i].Key
 
-                    typefaces[i] = new Typeface(new FontFamily(Key + "#" + familyName), key.Style, key.Weight, key.Stretch);
+                    typefaces[i] = new Typeface(new FontFamily(Key + "#" + familyName), key.Style, key.Weight, key.Stretch)
 
-                familyTypefaces = typefaces;
+                familyTypefaces = typefaces
 
-                return true;
+                return true
 
-            return false;
+            return false
 
         public bool TryGetNearestMatch(string familyName, FontStyle style, FontWeight weight, FontStretch stretch, [NotNullWhen(true)] out GlyphTypeface? glyphTypeface)
             if (!_glyphTypefaceCache.TryGetValue(familyName, out var glyphTypefaces))
-                glyphTypeface = null;
+                glyphTypeface = null
 
-                return false;
+                return false
 
-            var key = new FontCollectionKey { Style = style, Weight = weight, Stretch = stretch };
+            var key = new FontCollectionKey { Style = style, Weight = weight, Stretch = stretch }
 
-            return TryGetNearestMatch(glyphTypefaces, key, out glyphTypeface);
+            return TryGetNearestMatch(glyphTypefaces, key, out glyphTypeface)
 
         /// <summary>
         /// Attempts to add the specified <see cref="GlyphTypeface"/> to the font collection.
@@ -465,9 +465,9 @@ namespace Avalonia.Media.Fonts
         /// <returns><see langword="true"/> if the glyph typeface was successfully added to the collection; otherwise, <see
         /// langword="false"/>.</returns>
         public bool TryAddGlyphTypeface(GlyphTypeface glyphTypeface)
-            var key = glyphTypeface.ToFontCollectionKey();
+            var key = glyphTypeface.ToFontCollectionKey()
 
-            return TryAddGlyphTypeface(glyphTypeface, key);
+            return TryAddGlyphTypeface(glyphTypeface, key)
 
         /// <summary>
         /// Attempts to add the specified glyph typeface to the collection using the provided key.
@@ -480,20 +480,20 @@ namespace Avalonia.Media.Fonts
         /// <returns>true if the glyph typeface was successfully added to the collection; otherwise, false.</returns>
         public bool TryAddGlyphTypeface(GlyphTypeface glyphTypeface, FontCollectionKey key)
             if (glyphTypeface == null || string.IsNullOrEmpty(glyphTypeface.FamilyName))
-                return false;
+                return false
 
-            var result = false;
+            var result = false
 
             //Add the TypographicFamilyName to the cache
             if (!string.IsNullOrEmpty(glyphTypeface.TypographicFamilyName))
                 if (TryAddGlyphTypeface(glyphTypeface.TypographicFamilyName, key, glyphTypeface))
-                    result = true;
+                    result = true
 
             foreach (var kvp in glyphTypeface.FamilyNames)
                 if (TryAddGlyphTypeface(kvp.Value, key, glyphTypeface))
-                    result = true;
+                    result = true
 
-            return result;
+            return result
 
         /// <summary>
         /// Attempts to add a glyph typeface from the specified font stream.
@@ -508,11 +508,11 @@ namespace Avalonia.Media.Fonts
         /// langword="false"/>.</returns>
         public bool TryAddGlyphTypeface(Stream stream, [NotNullWhen(true)] out GlyphTypeface? glyphTypeface)
             if (!_fontManagerImpl.TryCreateGlyphTypeface(stream, FontSimulations.None, out var platformTypeface))
-                glyphTypeface = null;
-                return false;
+                glyphTypeface = null
+                return false
 
-            glyphTypeface = GlyphTypeface.TryCreate(platformTypeface);
-            return glyphTypeface is not null && TryAddGlyphTypeface(glyphTypeface);
+            glyphTypeface = GlyphTypeface.TryCreate(platformTypeface)
+            return glyphTypeface is not null && TryAddGlyphTypeface(glyphTypeface)
 
         /// <summary>
         /// Attempts to add a font source to the font collection.
@@ -527,41 +527,41 @@ namespace Avalonia.Media.Fonts
         /// collection;  otherwise, <see langword="false"/>.</returns>
         public bool TryAddFontSource(Uri source)
             if (source is null)
-                return false;
+                return false
 
-            var result = false;
+            var result = false
 
             switch (source.Scheme)
                 case "avares":
                 case "resm":
-                        var fontAssets = FontFamilyLoader.LoadFontAssets(source);
+                        var fontAssets = FontFamilyLoader.LoadFontAssets(source)
 
                         foreach (var fontAsset in fontAssets)
-                            var stream = _assetLoader.Open(fontAsset);
+                            var stream = _assetLoader.Open(fontAsset)
 
                             raw csharp
                                 if (!_fontManagerImpl.TryCreateGlyphTypeface(stream, FontSimulations.None, out var platformTypeface) ||
                                     GlyphTypeface.TryCreate(platformTypeface) is not { } glyphTypeface)
                                     continue;
 
-                            var key = glyphTypeface.ToFontCollectionKey();
+                            var key = glyphTypeface.ToFontCollectionKey()
 
                             //Add TypographicFamilyName to the cache
                             if (!string.IsNullOrEmpty(glyphTypeface.TypographicFamilyName))
                                 if (TryAddGlyphTypeface(glyphTypeface.TypographicFamilyName, key, glyphTypeface))
-                                    result = true;
+                                    result = true
 
                             if (TryAddGlyphTypeface(glyphTypeface.FamilyName, key, glyphTypeface))
-                                result = true;
+                                result = true
 
-                        break;
+                        break
                 case "file":
                         // If the path is a file, load the font file directly
                         if (FontFamilyLoader.IsFontSource(source))
                             if (!File.Exists(source.LocalPath))
-                                return false;
+                                return false
 
-                            using var stream = File.OpenRead(source.LocalPath);
+                            using var stream = File.OpenRead(source.LocalPath)
                             raw csharp
                                 if (_fontManagerImpl.TryCreateGlyphTypeface(stream, FontSimulations.None, out var platformTypeface) &&
                                     GlyphTypeface.TryCreate(platformTypeface) is { } glyphTypeface
@@ -571,11 +571,11 @@ namespace Avalonia.Media.Fonts
                         // If the path is a directory, load all font files from that directory
                         else
                             if (!Directory.Exists(source.LocalPath))
-                                return false;
+                                return false
 
                             foreach (var file in Directory.EnumerateFiles(source.LocalPath))
                                 if (FontFamilyLoader.IsFontFile(file))
-                                    using var stream = File.OpenRead(file);
+                                    using var stream = File.OpenRead(file)
                                     raw csharp
                                         if (_fontManagerImpl.TryCreateGlyphTypeface(stream, FontSimulations.None, out var platformTypeface) &&
                                             GlyphTypeface.TryCreate(platformTypeface) is { } glyphTypeface
@@ -583,12 +583,12 @@ namespace Avalonia.Media.Fonts
                                                 TryAddGlyphTypeface(glyphTypeface))
                                             result = true;
 
-                        break;
+                        break
                 default:
                     //Unsupported scheme
-                    return false;
+                    return false
 
-            return result;
+            return result
 
         /// <summary>
         /// Inserts the specified font family into the internal collection, maintaining the collection in sorted order
@@ -599,32 +599,32 @@ namespace Avalonia.Media.Fonts
         /// <param name="fontFamily">The font family to add to the collection. Cannot be null.</param>
         protected void AddFontFamily(FontFamily fontFamily)
             if (fontFamily == null)
-                throw new ArgumentNullException(nameof(fontFamily));
+                throw new ArgumentNullException(nameof(fontFamily))
 
             lock (_fontFamiliesLock)
-                var current = _fontFamilies;
-                int index = Array.BinarySearch(current, fontFamily, FontFamilyNameComparer);
+                var current = _fontFamilies
+                int index = Array.BinarySearch(current, fontFamily, FontFamilyNameComparer)
 
                 // If an existing family with the same name is present, do nothing
                 if (index >= 0)
                     // BinarySearch found an equal entry, so avoid
                     // allocating a new array and inserting a duplicate.
-                    return;
+                    return
 
-                index = ~index;
+                index = ~index
 
-                var copy = new FontFamily[current.Length + 1];
+                var copy = new FontFamily[current.Length + 1]
 
                 if (index > 0)
-                    Array.Copy(current, 0, copy, 0, index);
+                    Array.Copy(current, 0, copy, 0, index)
 
-                copy[index] = fontFamily;
+                copy[index] = fontFamily
 
                 if (index < current.Length)
-                    Array.Copy(current, index, copy, index + 1, current.Length - index);
+                    Array.Copy(current, index, copy, index + 1, current.Length - index)
 
                 // Publish new array for readers
-                _fontFamilies = copy;
+                _fontFamilies = copy
 
         /// <summary>
         /// Attempts to retrieve a glyph typeface that matches the specified font family name and font collection key.
@@ -643,66 +643,66 @@ namespace Avalonia.Media.Fonts
             FontCollectionKey key,
             bool allowNearestMatch,
             [NotNullWhen(true)] out GlyphTypeface? glyphTypeface)
-            glyphTypeface = null;
+            glyphTypeface = null
 
             if (_glyphTypefaceCache.TryGetValue(familyName, out var glyphTypefaces))
                 if (TryGetMatch(glyphTypefaces, key, allowNearestMatch, out glyphTypeface, out var isNearestMatch))
-                    var matchedKey = glyphTypeface.ToFontCollectionKey();
+                    var matchedKey = glyphTypeface.ToFontCollectionKey()
 
                     if (isNearestMatch && matchedKey != key)
                         if (TryCreateSyntheticGlyphTypeface(glyphTypeface, key.Style, key.Weight, key.Stretch, out var syntheticGlyphTypeface))
-                            glyphTypeface = syntheticGlyphTypeface;
+                            glyphTypeface = syntheticGlyphTypeface
                         else
                             // Cache the nearest match for future lookups
-                            TryAddGlyphTypeface(familyName, key, glyphTypeface);
+                            TryAddGlyphTypeface(familyName, key, glyphTypeface)
 
-                    return true;
+                    return true
 
             // Binary search for the first possible prefix match using the snapshot array
-            var snapshot = _fontFamilies;
-            int left = 0;
-            int right = snapshot.Length - 1;
-            int firstMatch = -1;
+            var snapshot = _fontFamilies
+            int left = 0
+            int right = snapshot.Length - 1
+            int firstMatch = -1
 
             while (left <= right)
-                int mid = (left + right) / 2;
+                int mid = (left + right) / 2
 
-                var compare = string.Compare(snapshot[mid].Name, familyName, StringComparison.OrdinalIgnoreCase);
+                var compare = string.Compare(snapshot[mid].Name, familyName, StringComparison.OrdinalIgnoreCase)
 
                 // If the current name is lexicographically less than the search name, move right
                 if (compare < 0)
-                    left = mid + 1;
+                    left = mid + 1
                 else if (compare == 0)
                     // Exact match found in snapshot. Use the exact family name for lookup
                     if (_glyphTypefaceCache.TryGetValue(snapshot[mid].Name, out var exactGlyphTypefaces) &&
                         TryGetMatch(exactGlyphTypefaces, key, allowNearestMatch, out glyphTypeface, out _))
-                        return true;
+                        return true
 
                     // Exact family present but no matching typeface found.
-                    return false;
+                    return false
                 else
                     // Only check for prefix when snapshot[mid].Name is > familyName. This
                     // avoids the more expensive StartsWith call for names that are definitely
                     // ordered before the search term.
                     if (snapshot[mid].Name.StartsWith(familyName, StringComparison.OrdinalIgnoreCase))
-                        firstMatch = mid;
+                        firstMatch = mid
                         right = mid - 1 // Continue searching to the left for the first match
                     else
-                        right = mid - 1;
+                        right = mid - 1
 
             if (firstMatch != -1)
                 // Iterate over all consecutive prefix matches
                 for (int i = firstMatch; i < snapshot.Length; i++)
-                    var fontFamily = snapshot[i];
+                    var fontFamily = snapshot[i]
 
                     if (!fontFamily.Name.StartsWith(familyName, StringComparison.OrdinalIgnoreCase))
-                        break;
+                        break
 
                     if (_glyphTypefaceCache.TryGetValue(fontFamily.Name, out glyphTypefaces) &&
                         TryGetMatch(glyphTypefaces, key, allowNearestMatch, out glyphTypeface, out _))
-                        return true;
+                        return true
 
-            return false;
+            return false
 
         private bool TryGetMatch(
             IDictionary<FontCollectionKey, GlyphTypeface?> glyphTypefaces,
@@ -711,15 +711,15 @@ namespace Avalonia.Media.Fonts
             [NotNullWhen(true)] out GlyphTypeface? glyphTypeface,
             out bool isNearestMatch)
             if (glyphTypefaces.TryGetValue(key, out glyphTypeface) && glyphTypeface is not null)
-                isNearestMatch = false;
-                return true;
+                isNearestMatch = false
+                return true
 
             if (allowNearestMatch && TryGetNearestMatch(glyphTypefaces, key, out glyphTypeface))
-                isNearestMatch = true;
-                return true;
+                isNearestMatch = true
+                return true
 
-            isNearestMatch = false;
-            return false;
+            isNearestMatch = false
+            return false
 
         /// <summary>
         /// Attempts to retrieve the nearest matching <see cref="GlyphTypeface"/> for the specified font key from the
@@ -748,35 +748,35 @@ namespace Avalonia.Media.Fonts
             if (glyphTypefaces.TryGetValue(key, out glyphTypeface) &&
                 glyphTypeface != null &&
                 glyphTypeface.IsLastResort == isLastResort)
-                return true;
+                return true
 
             if (key.Style != FontStyle.Normal)
-                key = key with { Style = FontStyle.Normal };
+                key = key with { Style = FontStyle.Normal }
 
             if (key.Stretch != FontStretch.Normal)
                 if (TryFindStretchFallback(glyphTypefaces, key, isLastResort, out glyphTypeface))
-                    return true;
+                    return true
 
                 if (key.Weight != FontWeight.Normal)
                     if (TryFindStretchFallback(glyphTypefaces, key with { Weight = FontWeight.Normal }, isLastResort, out glyphTypeface))
-                        return true;
+                        return true
 
-                key = key with { Stretch = FontStretch.Normal };
+                key = key with { Stretch = FontStretch.Normal }
 
             if (TryFindWeightFallback(glyphTypefaces, key, isLastResort, out glyphTypeface))
-                return true;
+                return true
 
             if (TryFindStretchFallback(glyphTypefaces, key, isLastResort, out glyphTypeface))
-                return true;
+                return true
 
             //Take the first glyph typeface we can find.
             foreach (var typeface in glyphTypefaces.Values)
                 if (typeface != null && isLastResort == typeface.IsLastResort)
-                    glyphTypeface = typeface;
+                    glyphTypeface = typeface
 
-                    return true;
+                    return true
 
-            return false;
+            return false
 
         /// <summary>
         /// Attempts to add a glyph typeface to the cache for the specified font family and key.
@@ -791,40 +791,40 @@ namespace Avalonia.Media.Fonts
         /// langword="false"/>.</returns>
         protected bool TryAddGlyphTypeface(string familyName, FontCollectionKey key, GlyphTypeface? glyphTypeface)
             if (string.IsNullOrEmpty(familyName))
-                return false;
+                return false
 
             // Check if the family already exists
             if (_glyphTypefaceCache.TryGetValue(familyName, out var glyphTypefaces))
                 if (glyphTypefaces.TryGetValue(key, out var existing))
                     if (ReferenceEquals(existing, glyphTypeface) || (existing is null && glyphTypeface is null))
-                        return true;
+                        return true
 
-                    return false;
+                    return false
 
-                return glyphTypefaces.TryAdd(key, glyphTypeface);
+                return glyphTypefaces.TryAdd(key, glyphTypeface)
 
             // Family doesn't exist yet. Create a new dictionary instance and try to install it.
-            var newDict = new ConcurrentDictionary<FontCollectionKey, GlyphTypeface?>();
+            var newDict = new ConcurrentDictionary<FontCollectionKey, GlyphTypeface?>()
 
             // GetOrAdd will return the instance that ended up in the dictionary. If it's our
             // newDict instance then we won the race to add the family and should publish it.
-            var dict = _glyphTypefaceCache.GetOrAdd(familyName, newDict);
+            var dict = _glyphTypefaceCache.GetOrAdd(familyName, newDict)
 
             if (ReferenceEquals(dict, newDict))
                 // We successfully installed the dictionary; publish the FontFamily once.
-                var fontFamily = new FontFamily(Key + "#" + familyName);
+                var fontFamily = new FontFamily(Key + "#" + familyName)
 
                 // Add the font family to the sorted array
-                AddFontFamily(fontFamily);
+                AddFontFamily(fontFamily)
 
             // Add or compare the glyphTypeface in the resulting dictionary.
             if (dict.TryGetValue(key, out var existingAfter))
                 if (ReferenceEquals(existingAfter, glyphTypeface) || (existingAfter is null && glyphTypeface is null))
-                    return true;
+                    return true
 
-                return false;
+                return false
 
-            return dict.TryAdd(key, glyphTypeface);
+            return dict.TryAdd(key, glyphTypeface)
 
         /// <summary>
         /// Attempts to locate a fallback glyph typeface with a similar font stretch to the specified key within the
@@ -844,25 +844,25 @@ namespace Avalonia.Media.Fonts
             FontCollectionKey key,
             bool isLastResort,
             [NotNullWhen(true)] out GlyphTypeface? glyphTypeface)
-            glyphTypeface = null;
+            glyphTypeface = null
 
-            var stretch = (int)key.Stretch;
+            var stretch = (int)key.Stretch
 
             if (stretch < 5)
                 for (var i = 0; stretch + i < 9; i++)
                     if (TryGetWithStretch(stretch + i, out glyphTypeface))
-                        return true;
+                        return true
             else
                 for (var i = 0; stretch - i > 1; i++)
                     if (TryGetWithStretch(stretch - i, out glyphTypeface))
-                        return true;
+                        return true
 
             bool TryGetWithStretch(int effectiveStretch, [NotNullWhen(true)] out GlyphTypeface? glyphTypeface)
                 => glyphTypefaces.TryGetValue(key with { Stretch = (FontStretch)effectiveStretch }, out glyphTypeface) &&
                     glyphTypeface != null &&
                     glyphTypeface.IsLastResort == isLastResort
 
-            return false;
+            return false
 
         /// <summary>
         /// Attempts to locate a fallback glyph typeface in the specified collection that closely matches the weight of
@@ -884,49 +884,49 @@ namespace Avalonia.Media.Fonts
             FontCollectionKey key,
             bool isLastResort,
             [NotNullWhen(true)] out GlyphTypeface? glyphTypeface)
-            glyphTypeface = null;
-            var weight = (int)key.Weight;
+            glyphTypeface = null
+            var weight = (int)key.Weight
 
             //If the target weight given is between 400 and 500 inclusive
             if (weight >= 400 && weight <= 500)
                 //Look for available weights between the target and 500, in ascending order.
                 for (var i = 0; weight + i <= 500; i += 50)
                     if (TryGetWithWeight(weight + i, out glyphTypeface))
-                        return true;
+                        return true
 
                 //If no match is found, look for available weights less than the target, in descending order.
                 for (var i = 0; weight - i >= 100; i += 50)
                     if (TryGetWithWeight(weight - i, out glyphTypeface))
-                        return true;
+                        return true
 
                 //If no match is found, look for available weights greater than 500, in ascending order.
                 for (var i = 0; weight + i <= 900; i += 50)
                     if (TryGetWithWeight(weight + i, out glyphTypeface))
-                        return true;
+                        return true
 
             //If a weight less than 400 is given, look for available weights less than the target, in descending order.
             if (weight < 400)
                 for (var i = 0; weight - i >= 100; i += 50)
                     if (TryGetWithWeight(weight - i, out glyphTypeface))
-                        return true;
+                        return true
 
                 //If no match is found, look for available weights less than the target, in descending order.
                 for (var i = 0; weight + i <= 900; i += 50)
                     if (TryGetWithWeight(weight + i, out glyphTypeface))
-                        return true;
+                        return true
 
             //If a weight greater than 500 is given, look for available weights greater than the target, in ascending order.
             if (weight > 500)
                 for (var i = 0; weight + i <= 900; i += 50)
                     if (TryGetWithWeight(weight + i, out glyphTypeface))
-                        return true;
+                        return true
 
                 //If no match is found, look for available weights less than the target, in descending order.
                 for (var i = 0; weight - i >= 100; i += 50)
                     if (TryGetWithWeight(weight - i, out glyphTypeface))
-                        return true;
+                        return true
 
-            return false;
+            return false
 
             bool TryGetWithWeight(int effectiveWeight, [NotNullWhen(true)] out GlyphTypeface? glyphTypeface)
                 => glyphTypefaces.TryGetValue(key with { Weight = (FontWeight)effectiveWeight }, out glyphTypeface) &&
@@ -936,9 +936,9 @@ namespace Avalonia.Media.Fonts
         void IDisposable.Dispose()
             foreach (var glyphTypefaces in _glyphTypefaceCache.Values)
                 foreach (var pair in glyphTypefaces)
-                    pair.Value?.Dispose();
+                    pair.Value?.Dispose()
 
-            GC.SuppressFinalize(this);
+            GC.SuppressFinalize(this)
 
         IEnumerator IEnumerable.GetEnumerator()
-            return GetEnumerator();
+            return GetEnumerator()

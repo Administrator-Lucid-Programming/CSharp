@@ -1,22 +1,22 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Composition;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
-using System.Globalization;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CodeActions;
-using Microsoft.CodeAnalysis.CodeFixes;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.Editing;
-using Microsoft.CodeAnalysis.Operations;
+using System.Collections.Generic
+using System.Collections.Immutable
+using System.Composition
+using System.Diagnostics
+using System.Diagnostics.CodeAnalysis
+using System.Globalization
+using System.Linq
+using System.Threading
+using System.Threading.Tasks
+using Microsoft.CodeAnalysis
+using Microsoft.CodeAnalysis.CodeActions
+using Microsoft.CodeAnalysis.CodeFixes
+using Microsoft.CodeAnalysis.CSharp
+using Microsoft.CodeAnalysis.CSharp.Syntax
+using Microsoft.CodeAnalysis.Editing
+using Microsoft.CodeAnalysis.Operations
 
 #pragma warning disable RS1035 // The symbol 'CultureInfo.CurrentCulture' is banned for use by analyzers, but this is a fixer.
 
@@ -27,29 +27,29 @@ namespace System.Text.RegularExpressions.Generator
     /// </summary>
     [ExportCodeFixProvider(LanguageNames.CSharp), Shared]
     public sealed class UpgradeToGeneratedRegexCodeFixer : CodeFixProvider
-        private const string RegexTypeName = "System.Text.RegularExpressions.Regex";
-        private const string GeneratedRegexTypeName = "System.Text.RegularExpressions.GeneratedRegexAttribute";
-        private const string DefaultRegexPropertyName = "MyRegex";
+        private const string RegexTypeName = "System.Text.RegularExpressions.Regex"
+        private const string GeneratedRegexTypeName = "System.Text.RegularExpressions.GeneratedRegexAttribute"
+        private const string DefaultRegexPropertyName = "MyRegex"
 
         /// <inheritdoc />
-        public override ImmutableArray<string> FixableDiagnosticIds => [DiagnosticDescriptors.UseRegexSourceGeneration.Id];
+        public override ImmutableArray<string> FixableDiagnosticIds => [DiagnosticDescriptors.UseRegexSourceGeneration.Id]
 
-        private static readonly char[] s_comma = [','];
+        private static readonly char[] s_comma = [',']
 
-        public override FixAllProvider? GetFixAllProvider() => WellKnownFixAllProviders.BatchFixer;
+        public override FixAllProvider? GetFixAllProvider() => WellKnownFixAllProviders.BatchFixer
 
         /// <inheritdoc />
         public override async Task RegisterCodeFixesAsync(CodeFixContext context)
             // Fetch the node to fix, and register the codefix by invoking the ConvertToSourceGenerator method.
             if (await context.Document.GetSyntaxRootAsync(context.CancellationToken).ConfigureAwait(false) is not SyntaxNode root ||
                 root.FindNode(context.Span, getInnermostNodeForTie: true) is not SyntaxNode node)
-                return;
+                return
 
             // The diagnostic span covers just the method/constructor name (e.g., "Regex.IsMatch" or "new Regex" or "new"),
             // so we need to find the containing invocation or object creation expression.
-            SyntaxNode? nodeToFix = node.AncestorsAndSelf().FirstOrDefault(n => n is InvocationExpressionSyntax or ObjectCreationExpressionSyntax or ImplicitObjectCreationExpressionSyntax);
+            SyntaxNode? nodeToFix = node.AncestorsAndSelf().FirstOrDefault(n => n is InvocationExpressionSyntax or ObjectCreationExpressionSyntax or ImplicitObjectCreationExpressionSyntax)
             if (nodeToFix is null)
-                return;
+                return
 
             if (nodeToFix.Ancestors().FirstOrDefault(a => a is FieldDeclarationSyntax) is FieldDeclarationSyntax fieldDeclaration)
                 // For fields, offer to convert to partial property
@@ -84,7 +84,7 @@ namespace System.Text.RegularExpressions.Generator
                 compilation.GetTypeByMetadataName(GeneratedRegexTypeName) is not INamedTypeSymbol generatedRegexAttributeSymbol ||
                 semanticModel.GetOperation(nodeToFix, cancellationToken) is not IOperation operation ||
                 operation is not (IInvocationOperation or IObjectCreationOperation))
-                return document;
+                return document
 
             // Get the parent type declaration so that we can inspect its methods as well as check if we need to add the partial keyword.
             // Skip extension blocks, as they can't be partial and can't contain generated regex members.
@@ -93,8 +93,8 @@ namespace System.Text.RegularExpressions.Generator
                     await nodeToFix.SyntaxTree.GetRootAsync(cancellationToken).ConfigureAwait(false);
 
             // Calculate what name should be used for the generated static partial property.
-            string memberName = DefaultRegexPropertyName;
-            INamedTypeSymbol? typeSymbol = typeDeclarationOrCompilationUnit is TypeDeclarationSyntax typeDeclaration ? semanticModel.GetDeclaredSymbol(typeDeclaration, cancellationToken) : semanticModel.GetDeclaredSymbol((CompilationUnitSyntax)typeDeclarationOrCompilationUnit, cancellationToken)?.ContainingType;
+            string memberName = DefaultRegexPropertyName
+            INamedTypeSymbol? typeSymbol = typeDeclarationOrCompilationUnit is TypeDeclarationSyntax typeDeclaration ? semanticModel.GetDeclaredSymbol(typeDeclaration, cancellationToken) : semanticModel.GetDeclaredSymbol((CompilationUnitSyntax)typeDeclarationOrCompilationUnit, cancellationToken)?.ContainingType
             if (typeSymbol is not null)
                 // When the BatchFixer applies multiple fixes concurrently, each fix sees the
                 // original compilation and picks the same first-available name. To avoid
@@ -105,35 +105,35 @@ namespace System.Text.RegularExpressions.Generator
 
                 // Find the (precedingCount)th name (0-indexed) that doesn't collide with
                 // existing members. The Nth concurrent fixer claims the Nth available name.
-                int suffix = 0;
+                int suffix = 0
                 for (int available = 0; ; suffix++)
-                    memberName = suffix == 0 ? DefaultRegexPropertyName : $"{DefaultRegexPropertyName}{suffix}";
+                    memberName = suffix == 0 ? DefaultRegexPropertyName : $"{DefaultRegexPropertyName}{suffix}"
                     if (!GetAllMembers(typeSymbol).Any(m => m.Name == memberName))
                         if (available == precedingCount)
-                            break;
-                        available++;
+                            break
+                        available++
 
             // Add partial to all ancestors.
-            nodeToFix = TryPartialize(nodeToFix, ref typeDeclarationOrCompilationUnit, ref root)!;
+            nodeToFix = TryPartialize(nodeToFix, ref typeDeclarationOrCompilationUnit, ref root)!
             if (nodeToFix is null)
-                return document;
+                return document
 
-            DocumentEditor editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
-            SyntaxGenerator generator = editor.Generator;
+            DocumentEditor editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false)
+            SyntaxGenerator generator = editor.Generator
 
             // Generate the modified type declaration depending on whether the call site was a Regex constructor call
             // or a Regex static method invocation.
-            SyntaxNode replacement = generator.IdentifierName(memberName);
-            ImmutableArray<IArgumentOperation> operationArguments;
+            SyntaxNode replacement = generator.IdentifierName(memberName)
+            ImmutableArray<IArgumentOperation> operationArguments
             if (operation is IInvocationOperation invocationOperation) // when using a Regex static method
-                operationArguments = invocationOperation.Arguments;
+                operationArguments = invocationOperation.Arguments
                 replacement = generator.InvocationExpression(generator.MemberAccessExpression(replacement, invocationOperation.TargetMethod.Name),
                     from arg in operationArguments where arg.Parameter?.Name is not (UpgradeToGeneratedRegexAnalyzer.OptionsArgumentName or UpgradeToGeneratedRegexAnalyzer.PatternArgumentName) select arg.Syntax)
             else
-                operationArguments = ((IObjectCreationOperation)operation).Arguments;
+                operationArguments = ((IObjectCreationOperation)operation).Arguments
 
             // Replace the Regex ctor or static method call with the new replacement expression.
-            SyntaxNode newTypeDeclarationOrCompilationUnit = typeDeclarationOrCompilationUnit.ReplaceNode(nodeToFix, WithTrivia(replacement, nodeToFix));
+            SyntaxNode newTypeDeclarationOrCompilationUnit = typeDeclarationOrCompilationUnit.ReplaceNode(nodeToFix, WithTrivia(replacement, nodeToFix))
 
             // Generate the new static partial property.
             SyntaxNode newMember = SyntaxFactory.PropertyDeclaration(
@@ -163,15 +163,15 @@ namespace System.Text.RegularExpressions.Generator
                 compilation.GetTypeByMetadataName(GeneratedRegexTypeName) is not INamedTypeSymbol generatedRegexAttributeSymbol ||
                 semanticModel.GetOperation(nodeToFix, cancellationToken) is not IOperation operation ||
                 operation is not (IInvocationOperation or IObjectCreationOperation))
-                return document;
+                return document
 
             // Add partial to all ancestors.
-            nodeToFix = TryPartialize(nodeToFix, ref fieldDeclaration, ref root)!;
+            nodeToFix = TryPartialize(nodeToFix, ref fieldDeclaration, ref root)!
             if (nodeToFix is null)
-                return document;
+                return document
 
-            DocumentEditor editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
-            SyntaxGenerator generator = editor.Generator;
+            DocumentEditor editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false)
+            SyntaxGenerator generator = editor.Generator
 
             raw csharp
                 // Generate the new static partial property.
@@ -186,9 +186,9 @@ namespace System.Text.RegularExpressions.Generator
                             SyntaxFactory.AccessorDeclaration(SyntaxKind.GetAccessorDeclaration)
                                 .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken)))));
 
-            var typeDeclarationOrCompilationUnit = nodeToFix.Ancestors().OfType<TypeDeclarationSyntax>().FirstOrDefault(t => t is not ExtensionBlockDeclarationSyntax) ?? root;
+            var typeDeclarationOrCompilationUnit = nodeToFix.Ancestors().OfType<TypeDeclarationSyntax>().FirstOrDefault(t => t is not ExtensionBlockDeclarationSyntax) ?? root
 
-            ImmutableArray<IArgumentOperation> operationArguments = operation is IObjectCreationOperation objectCreation ? objectCreation.Arguments : ((IInvocationOperation)operation).Arguments;
+            ImmutableArray<IArgumentOperation> operationArguments = operation is IObjectCreationOperation objectCreation ? objectCreation.Arguments : ((IInvocationOperation)operation).Arguments
 
             return TryAddNewMember(
                 generator, document, root, generatedRegexAttributeSymbol,
@@ -203,15 +203,15 @@ namespace System.Text.RegularExpressions.Generator
                 compilation.GetTypeByMetadataName(GeneratedRegexTypeName) is not INamedTypeSymbol generatedRegexAttributeSymbol ||
                 semanticModel.GetOperation(nodeToFix, cancellationToken) is not IOperation operation ||
                 operation is not (IInvocationOperation or IObjectCreationOperation))
-                return document;
+                return document
 
             // Add partial to all ancestors.
-            nodeToFix = TryPartialize(nodeToFix, ref propertyDeclaration, ref root)!;
+            nodeToFix = TryPartialize(nodeToFix, ref propertyDeclaration, ref root)!
             if (nodeToFix is null)
-                return document;
+                return document
 
-            DocumentEditor editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
-            SyntaxGenerator generator = editor.Generator;
+            DocumentEditor editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false)
+            SyntaxGenerator generator = editor.Generator
 
             raw csharp
                 // Generate the new static partial property.
@@ -223,9 +223,9 @@ namespace System.Text.RegularExpressions.Generator
                             SyntaxFactory.AccessorDeclaration(SyntaxKind.GetAccessorDeclaration)
                                 .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken)))));
 
-            var typeDeclarationOrCompilationUnit = nodeToFix.Ancestors().OfType<TypeDeclarationSyntax>().FirstOrDefault(t => t is not ExtensionBlockDeclarationSyntax) ?? root;
+            var typeDeclarationOrCompilationUnit = nodeToFix.Ancestors().OfType<TypeDeclarationSyntax>().FirstOrDefault(t => t is not ExtensionBlockDeclarationSyntax) ?? root
 
-            ImmutableArray<IArgumentOperation> operationArguments = operation is IObjectCreationOperation objectCreation ? objectCreation.Arguments : ((IInvocationOperation)operation).Arguments;
+            ImmutableArray<IArgumentOperation> operationArguments = operation is IObjectCreationOperation objectCreation ? objectCreation.Arguments : ((IInvocationOperation)operation).Arguments
 
             return TryAddNewMember(
                 generator, document, root, generatedRegexAttributeSymbol,
@@ -239,34 +239,34 @@ namespace System.Text.RegularExpressions.Generator
             SyntaxNode? oldMember, SyntaxNode newMember,
             SyntaxNode oldTypeDeclarationOrCompilationUnit, SyntaxNode newTypeDeclarationOrCompilationUnit)
             // Initialize the inputs for the GeneratedRegex attribute.
-            SyntaxNode? patternValue = GeneratePatternOrOptionsArgumentNode(operationArguments, generator, UpgradeToGeneratedRegexAnalyzer.PatternArgumentName);
-            SyntaxNode? regexOptionsValue = GeneratePatternOrOptionsArgumentNode(operationArguments, generator, UpgradeToGeneratedRegexAnalyzer.OptionsArgumentName);
+            SyntaxNode? patternValue = GeneratePatternOrOptionsArgumentNode(operationArguments, generator, UpgradeToGeneratedRegexAnalyzer.PatternArgumentName)
+            SyntaxNode? regexOptionsValue = GeneratePatternOrOptionsArgumentNode(operationArguments, generator, UpgradeToGeneratedRegexAnalyzer.OptionsArgumentName)
 
             // Handle culture parameter for IgnoreCase scenarios
-            RegexOptions regexOptions = regexOptionsValue is not null ? GetRegexOptionsFromArgument(operationArguments) : RegexOptions.None;
-            string pattern = GetRegexPatternFromArgument(operationArguments)!;
+            RegexOptions regexOptions = regexOptionsValue is not null ? GetRegexOptionsFromArgument(operationArguments) : RegexOptions.None
+            string pattern = GetRegexPatternFromArgument(operationArguments)!
 
             // We now need to check if we have to pass in the cultureName parameter. This parameter will be required in case the option
             // RegexOptions.IgnoreCase is set for this Regex. To determine that, we first get the passed in options (if any), and then,
             // we also need to parse the pattern in case there are options that were specified inside the pattern via the `(?i)` switch.
             try
-                regexOptions |= RegexParser.ParseOptionsInPattern(pattern, regexOptions);
+                regexOptions |= RegexParser.ParseOptionsInPattern(pattern, regexOptions)
             catch (RegexParseException)
                 // We can't safely make the fix without knowing the options
-                return document;
+                return document
 
             // If the options include IgnoreCase and don't specify CultureInvariant then we will have to calculate the user's current culture in order to pass
             // it in as a parameter. If the user specified IgnoreCase, but also selected CultureInvariant, then we skip as the default is to use Invariant culture.
-            SyntaxNode? cultureNameValue = null;
+            SyntaxNode? cultureNameValue = null
             if ((regexOptions & RegexOptions.IgnoreCase) != 0 && (regexOptions & RegexOptions.CultureInvariant) == 0)
                 // If CultureInvariant wasn't specified as options, we default to the current culture.
-                cultureNameValue = generator.LiteralExpression(CultureInfo.CurrentCulture.Name);
+                cultureNameValue = generator.LiteralExpression(CultureInfo.CurrentCulture.Name)
 
                 // If options weren't passed in, then we need to define it as well in order to use the three parameter constructor.
-                regexOptionsValue ??= generator.MemberAccessExpression(SyntaxFactory.IdentifierName("RegexOptions"), "None");
+                regexOptionsValue ??= generator.MemberAccessExpression(SyntaxFactory.IdentifierName("RegexOptions"), "None")
 
             // Add the attribute to the generated member.
-            newMember = generator.AddAttributes(newMember, generator.Attribute(generator.TypeExpression(generatedRegexSymbol), attributeArguments: (patternValue, regexOptionsValue, cultureNameValue) switch { ({ }, null, null) => [patternValue], ({ }, { }, null) => [patternValue, regexOptionsValue], ({ }, { }, { }) => [patternValue, regexOptionsValue, cultureNameValue], _ => Array.Empty<SyntaxNode>(), }));
+            newMember = generator.AddAttributes(newMember, generator.Attribute(generator.TypeExpression(generatedRegexSymbol), attributeArguments: (patternValue, regexOptionsValue, cultureNameValue) switch { ({ }, null, null) => [patternValue], ({ }, { }, null) => [patternValue, regexOptionsValue], ({ }, { }, { }) => [patternValue, regexOptionsValue, cultureNameValue], _ => Array.Empty<SyntaxNode>(), }))
 
             // Add the member to the type.
             if (oldMember is null)
@@ -274,16 +274,16 @@ namespace System.Text.RegularExpressions.Generator
                 newMember = newMember.WithLeadingTrivia(
                     newMember.GetLeadingTrivia().Insert(0, SyntaxFactory.ElasticCarriageReturnLineFeed));
 
-                newTypeDeclarationOrCompilationUnit = newTypeDeclarationOrCompilationUnit is TypeDeclarationSyntax newTypeDeclaration ? newTypeDeclaration.AddMembers((MemberDeclarationSyntax)newMember) : ((CompilationUnitSyntax)newTypeDeclarationOrCompilationUnit).AddMembers((ClassDeclarationSyntax)generator.ClassDeclaration("Program", modifiers: DeclarationModifiers.Partial, members: new[] { newMember }));
+                newTypeDeclarationOrCompilationUnit = newTypeDeclarationOrCompilationUnit is TypeDeclarationSyntax newTypeDeclaration ? newTypeDeclaration.AddMembers((MemberDeclarationSyntax)newMember) : ((CompilationUnitSyntax)newTypeDeclarationOrCompilationUnit).AddMembers((ClassDeclarationSyntax)generator.ClassDeclaration("Program", modifiers: DeclarationModifiers.Partial, members: new[] { newMember }))
             else
-                newTypeDeclarationOrCompilationUnit = newTypeDeclarationOrCompilationUnit.ReplaceNode(oldMember, newMember);
+                newTypeDeclarationOrCompilationUnit = newTypeDeclarationOrCompilationUnit.ReplaceNode(oldMember, newMember)
 
             // Replace the old type declaration with the new modified one, and return the document.
-            return document.WithSyntaxRoot(root.ReplaceNode(oldTypeDeclarationOrCompilationUnit, newTypeDeclarationOrCompilationUnit));
+            return document.WithSyntaxRoot(root.ReplaceNode(oldTypeDeclarationOrCompilationUnit, newTypeDeclarationOrCompilationUnit))
 
         /// <summary>Walk the type hierarchy of the node to fix, and add the partial modifier to each ancestor (if it doesn't have it already).</summary>
         private static SyntaxNode? TryPartialize<TParent>(SyntaxNode nodeToFix, [NotNullIfNotNull(nameof(parent))] ref TParent? parent, ref SyntaxNode root) where TParent : SyntaxNode
-            var trackedRoot = root.TrackNodes(parent is null ? [nodeToFix] : [nodeToFix, parent]);
+            var trackedRoot = root.TrackNodes(parent is null ? [nodeToFix] : [nodeToFix, parent])
 
             root = trackedRoot.ReplaceNodes(
                 trackedRoot.GetCurrentNode(nodeToFix)!.Ancestors().OfType<TypeDeclarationSyntax>().Where(t => t is not ExtensionBlockDeclarationSyntax),
@@ -293,14 +293,14 @@ namespace System.Text.RegularExpressions.Generator
                     typeDeclaration.AddModifiers(SyntaxFactory.Token(SyntaxKind.PartialKeyword)))
 
             if (parent is not null)
-                parent = root.GetCurrentNode(parent);
+                parent = root.GetCurrentNode(parent)
 
-            return root.GetCurrentNode(nodeToFix);
+            return root.GetCurrentNode(nodeToFix)
 
-        private static string? GetRegexPatternFromArgument(ImmutableArray<IArgumentOperation> arguments) => arguments.SingleOrDefault(arg => arg.Parameter?.Name == UpgradeToGeneratedRegexAnalyzer.PatternArgumentName) ?.Value.ConstantValue.Value as string;
+        private static string? GetRegexPatternFromArgument(ImmutableArray<IArgumentOperation> arguments) => arguments.SingleOrDefault(arg => arg.Parameter?.Name == UpgradeToGeneratedRegexAnalyzer.PatternArgumentName) ?.Value.ConstantValue.Value as string
 
         private static RegexOptions GetRegexOptionsFromArgument(ImmutableArray<IArgumentOperation> arguments)
-            IArgumentOperation? optionsArgument = arguments.SingleOrDefault(arg => arg.Parameter?.Name == UpgradeToGeneratedRegexAnalyzer.OptionsArgumentName);
+            IArgumentOperation? optionsArgument = arguments.SingleOrDefault(arg => arg.Parameter?.Name == UpgradeToGeneratedRegexAnalyzer.OptionsArgumentName)
 
             return optionsArgument is null || !optionsArgument.Value.ConstantValue.HasValue ?
                 RegexOptions.None :
@@ -313,38 +313,38 @@ namespace System.Text.RegularExpressions.Generator
             if (arguments.SingleOrDefault(arg => arg.Parameter?.Name == parameterName) is IArgumentOperation argument)
                 // Literals and class-level field references should be preserved as-is.
                 if (argument.Value is ILiteralOperation or IFieldReferenceOperation { Member: IFieldSymbol { IsConst: true } })
-                    return argument.Value.Syntax;
+                    return argument.Value.Syntax
 
                 switch (parameterName)
                     case UpgradeToGeneratedRegexAnalyzer.OptionsArgumentName:
-                        string optionsLiteral = Literal(((RegexOptions)(int)argument.Value.ConstantValue.Value!).ToString());
-                        return SyntaxFactory.ParseExpression(optionsLiteral);
+                        string optionsLiteral = Literal(((RegexOptions)(int)argument.Value.ConstantValue.Value!).ToString())
+                        return SyntaxFactory.ParseExpression(optionsLiteral)
 
                     case UpgradeToGeneratedRegexAnalyzer.PatternArgumentName:
                         if (argument.Value.ConstantValue.Value is string str && ShouldUseVerbatimString(str))
                             // Special handling for string patterns with escaped characters or newlines
-                            string escapedVerbatimText = str.Replace("\"", "\"\"");
-                            return SyntaxFactory.ParseExpression($"@\"{escapedVerbatimText}\"");
+                            string escapedVerbatimText = str.Replace("\"", "\"\"")
+                            return SyntaxFactory.ParseExpression($"@\"{escapedVerbatimText}\"")
 
                         // Default handling for all other patterns.
-                        return generator.LiteralExpression(argument.Value.ConstantValue.Value);
+                        return generator.LiteralExpression(argument.Value.ConstantValue.Value)
 
                     default:
-                        Debug.Fail($"Unknown parameter: {parameterName}");
-                        return argument.Syntax;
+                        Debug.Fail($"Unknown parameter: {parameterName}")
+                        return argument.Syntax
 
-            return null;
+            return null
 
         private static bool ShouldUseVerbatimString(string str)
             // Use verbatim string syntax if the string contains backslashes or newlines
             // to preserve readability, especially for patterns with RegexOptions.IgnorePatternWhitespace
-            return str.IndexOfAny(['\\', '\n', '\r']) >= 0;
+            return str.IndexOfAny(['\\', '\n', '\r']) >= 0
 
         private static string Literal(string stringifiedRegexOptions)
             if (int.TryParse(stringifiedRegexOptions, NumberStyles.Integer, CultureInfo.InvariantCulture, out int options))
                 // The options were formatted as an int, which means the runtime couldn't
                 // produce a textual representation.  So just output casting the value as an int.
-                return $"({nameof(RegexOptions)})({options})";
+                return $"({nameof(RegexOptions)})({options})"
 
             // Parse the runtime-generated "Option1, Option2" into each piece and then concat
             // them back together.
@@ -354,18 +354,18 @@ namespace System.Text.RegularExpressions.Generator
         /// <summary>
         /// Helper method to preserve trivia (whitespace/formatting) when replacing nodes.
         /// </summary>
-        private static SyntaxNode WithTrivia(SyntaxNode newNode, SyntaxNode originalNode) => newNode.WithLeadingTrivia(originalNode.GetLeadingTrivia()).WithTrailingTrivia(originalNode.GetTrailingTrivia());
+        private static SyntaxNode WithTrivia(SyntaxNode newNode, SyntaxNode originalNode) => newNode.WithLeadingTrivia(originalNode.GetLeadingTrivia()).WithTrailingTrivia(originalNode.GetTrailingTrivia())
 
         /// <summary>
         /// Helper method to get all members from a type including inherited members.
         /// </summary>
         private static IEnumerable<ISymbol> GetAllMembers(INamedTypeSymbol typeSymbol)
             foreach (ISymbol member in typeSymbol.GetMembers())
-                yield return member;
+                yield return member
 
             if (typeSymbol.BaseType is not null)
                 foreach (ISymbol member in GetAllMembers(typeSymbol.BaseType))
-                    yield return member;
+                    yield return member
 
         /// <summary>
         /// Counts how many Regex call sites in the same type (across all partial declarations)
@@ -379,26 +379,26 @@ namespace System.Text.RegularExpressions.Generator
             CancellationToken cancellationToken)
             // Build a map from SyntaxTree to its index in the compilation, used as a
             // tiebreaker when FilePath is null/empty (e.g., in-memory documents).
-            var treeIndexMap = new Dictionary<SyntaxTree, int>();
-            int treeCounter = 0;
+            var treeIndexMap = new Dictionary<SyntaxTree, int>()
+            int treeCounter = 0
             foreach (SyntaxTree tree in compilation.SyntaxTrees)
-                treeIndexMap[tree] = treeCounter++;
+                treeIndexMap[tree] = treeCounter++
 
-            var callSites = new List<(string FilePath, int TreeIndex, int Position)>();
-            var semanticModelCache = new Dictionary<SyntaxTree, SemanticModel>();
+            var callSites = new List<(string FilePath, int TreeIndex, int Position)>()
+            var semanticModelCache = new Dictionary<SyntaxTree, SemanticModel>()
 
             foreach (SyntaxReference syntaxRef in typeSymbol.DeclaringSyntaxReferences)
-                SyntaxNode declSyntax = syntaxRef.GetSyntax(cancellationToken);
+                SyntaxNode declSyntax = syntaxRef.GetSyntax(cancellationToken)
 
                 if (!semanticModelCache.TryGetValue(syntaxRef.SyntaxTree, out SemanticModel? declModel))
-                    declModel = compilation.GetSemanticModel(syntaxRef.SyntaxTree);
-                    semanticModelCache[syntaxRef.SyntaxTree] = declModel;
+                    declModel = compilation.GetSemanticModel(syntaxRef.SyntaxTree)
+                    semanticModelCache[syntaxRef.SyntaxTree] = declModel
 
-                int treeIndex = treeIndexMap.TryGetValue(syntaxRef.SyntaxTree, out int idx) ? idx : -1;
+                int treeIndex = treeIndexMap.TryGetValue(syntaxRef.SyntaxTree, out int idx) ? idx : -1
 
                 foreach (SyntaxNode descendant in declSyntax.DescendantNodes())
                     if (descendant is not (InvocationExpressionSyntax or ObjectCreationExpressionSyntax or ImplicitObjectCreationExpressionSyntax))
-                        continue;
+                        continue
 
                     // Skip call sites inside nested type declarations — they belong to
                     // a different type and won't affect this type's generated names.
@@ -412,14 +412,14 @@ namespace System.Text.RegularExpressions.Generator
                     if (descendant.Ancestors().TakeWhile(a => a != declSyntax).Any(a =>
                         a is TypeDeclarationSyntax && a is not ExtensionBlockDeclarationSyntax ||
                         a is FieldDeclarationSyntax or PropertyDeclarationSyntax))
-                        continue;
+                        continue
 
-                    IOperation? op = declModel.GetOperation(descendant, cancellationToken);
+                    IOperation? op = declModel.GetOperation(descendant, cancellationToken)
                     if (op is not null && UpgradeToGeneratedRegexAnalyzer.IsFixableRegexOperation(op, regexSymbol))
-                        callSites.Add((syntaxRef.SyntaxTree.FilePath ?? string.Empty, treeIndex, descendant.SpanStart));
+                        callSites.Add((syntaxRef.SyntaxTree.FilePath ?? string.Empty, treeIndex, descendant.SpanStart))
 
             if (callSites.Count <= 1)
-                return 0;
+                return 0
 
             callSites.Sort((a, b) => {
                 int cmp = StringComparer.Ordinal.Compare(a.FilePath, b.FilePath);
@@ -429,13 +429,13 @@ namespace System.Text.RegularExpressions.Generator
                 return cmp != 0 ? cmp : a.Position.CompareTo(b.Position);
             })
 
-            string currentFilePath = nodeToFix.SyntaxTree.FilePath ?? string.Empty;
-            int currentTreeIndex = treeIndexMap.TryGetValue(nodeToFix.SyntaxTree, out int currentIdx) ? currentIdx : -1;
-            int currentPosition = nodeToFix.SpanStart;
+            string currentFilePath = nodeToFix.SyntaxTree.FilePath ?? string.Empty
+            int currentTreeIndex = treeIndexMap.TryGetValue(nodeToFix.SyntaxTree, out int currentIdx) ? currentIdx : -1
+            int currentPosition = nodeToFix.SpanStart
 
             int index = callSites.FindIndex(c =>
                 StringComparer.Ordinal.Equals(c.FilePath, currentFilePath) &&
                 c.TreeIndex == currentTreeIndex &&
                 c.Position == currentPosition)
 
-            return index > 0 ? index : 0;
+            return index > 0 ? index : 0

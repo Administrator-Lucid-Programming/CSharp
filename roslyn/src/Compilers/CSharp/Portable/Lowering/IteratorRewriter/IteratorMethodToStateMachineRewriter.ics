@@ -2,42 +2,42 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System.Collections.Immutable;
-using Microsoft.CodeAnalysis.CSharp.Symbols;
-using Microsoft.CodeAnalysis.PooledObjects;
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq;
-using Roslyn.Utilities;
-using Microsoft.CodeAnalysis.CodeGen;
-using Microsoft.CodeAnalysis.Emit;
+using System.Collections.Immutable
+using Microsoft.CodeAnalysis.CSharp.Symbols
+using Microsoft.CodeAnalysis.PooledObjects
+using System
+using System.Collections.Generic
+using System.Diagnostics
+using System.Linq
+using Roslyn.Utilities
+using Microsoft.CodeAnalysis.CodeGen
+using Microsoft.CodeAnalysis.Emit
 
 namespace Microsoft.CodeAnalysis.CSharp
     internal sealed partial class IteratorMethodToStateMachineRewriter : MethodToStateMachineRewriter
         /// <summary>
         /// The field of the generated iterator class that underlies the Current property.
         /// </summary>
-        private readonly FieldSymbol _current;
+        private readonly FieldSymbol _current
 
         /// <summary>
         /// Tells us if a particular try contains yield returns
         /// </summary>
-        private YieldsInTryAnalysis? _yieldsInTryAnalysis;
+        private YieldsInTryAnalysis? _yieldsInTryAnalysis
 
         /// <summary>
         /// When this is more that 0, returns are emitted as "methodValue = value; goto exitLabel;"
         /// </summary>
-        private int _tryNestingLevel;
-        private LabelSymbol? _exitLabel;
-        private LocalSymbol? _methodValue;
+        private int _tryNestingLevel
+        private LabelSymbol? _exitLabel
+        private LocalSymbol? _methodValue
 
         /// <summary>
         /// The current iterator finally frame in the tree of finally frames.
         /// By default there is a root finally frame.
         /// Root frame does not have a handler, but may contain nested frames.
         /// </summary>
-        private IteratorFinallyFrame _currentFinallyFrame = new IteratorFinallyFrame();
+        private IteratorFinallyFrame _currentFinallyFrame = new IteratorFinallyFrame()
 
         /// <summary>
         /// Finally state of the next Finally frame if such created.
@@ -49,7 +49,7 @@ namespace Microsoft.CodeAnalysis.CSharp
         /// The purpose of distinct finally states is to have enough information about
         /// which finally handlers must run when we need to finalize iterator after a fault.
         /// </summary>
-        private StateMachineState _nextFinalizeState;
+        private StateMachineState _nextFinalizeState
 
         internal IteratorMethodToStateMachineRewriter(
             SyntheticBoundNodeFactory F,
@@ -66,36 +66,36 @@ namespace Microsoft.CodeAnalysis.CSharp
             int nextFreeHoistedLocalSlot,
             BindingDiagnosticBag diagnostics)
             : base(F, originalMethod, state, instanceIdField, hoistedVariables, nonReusableLocalProxies, nonReusableFieldsForCleanup, synthesizedLocalOrdinals, stateMachineStateDebugInfoBuilder, slotAllocatorOpt, nextFreeHoistedLocalSlot, diagnostics)
-            _current = current;
+            _current = current
 
-            _nextFinalizeState = slotAllocatorOpt?.GetFirstUnusedStateMachineState(increasing: false) ?? StateMachineState.FirstIteratorFinalizeState;
+            _nextFinalizeState = slotAllocatorOpt?.GetFirstUnusedStateMachineState(increasing: false) ?? StateMachineState.FirstIteratorFinalizeState
 
         /// <summary>
         /// Containing Symbols are not checked after this step - for performance reasons we can allow inaccurate locals
         /// </summary>
-        protected override bool EnforceAccurateContainerForLocals => false;
+        protected override bool EnforceAccurateContainerForLocals => false
 
         #nullable disable
         protected sealed override HotReloadExceptionCode EncMissingStateErrorCode
-            => HotReloadExceptionCode.CannotResumeSuspendedIteratorMethod;
+            => HotReloadExceptionCode.CannotResumeSuspendedIteratorMethod
 
         protected override StateMachineState FirstIncreasingResumableState
-            => StateMachineState.FirstResumableIteratorState;
+            => StateMachineState.FirstResumableIteratorState
 
         internal void GenerateMoveNextAndDispose(BoundStatement body, SynthesizedImplementationMethod moveNextMethod, SynthesizedImplementationMethod disposeMethod)
             // scan body for yielding try blocks
-            _yieldsInTryAnalysis = new YieldsInTryAnalysis(body);
+            _yieldsInTryAnalysis = new YieldsInTryAnalysis(body)
             if (_yieldsInTryAnalysis.ContainsYieldsInTrys())
                 // adjust for the method Try/Fault block that we will put around the body.
-                _tryNestingLevel++;
+                _tryNestingLevel++
 
             ///////////////////////////////////
             // Generate the body for MoveNext()
             ///////////////////////////////////
 
-            F.CurrentFunction = moveNextMethod;
-            AddState(StateMachineState.InitialIteratorState, out GeneratedLabelSymbol initialLabel);
-            var newBody = (BoundStatement)Visit(body);
+            F.CurrentFunction = moveNextMethod
+            AddState(StateMachineState.InitialIteratorState, out GeneratedLabelSymbol initialLabel)
+            var newBody = (BoundStatement)Visit(body)
 
             // switch(cachedState) {
             //    case 0: goto state_0;
@@ -141,18 +141,18 @@ namespace Microsoft.CodeAnalysis.CSharp
                 //    this.Dispose();
                 // }
 
-                var faultBlock = F.Block(F.ExpressionStatement(F.Call(F.This(), disposeMethod)));
-                newBody = F.Fault((BoundBlock)newBody, faultBlock);
+                var faultBlock = F.Block(F.ExpressionStatement(F.Call(F.This(), disposeMethod)))
+                newBody = F.Fault((BoundBlock)newBody, faultBlock)
 
-            newBody = F.Instrument(F.SequencePoint(body.Syntax, HandleReturn(newBody)), instrumentation);
+            newBody = F.Instrument(F.SequencePoint(body.Syntax, HandleReturn(newBody)), instrumentation)
 
-            F.CloseMethod(newBody);
+            F.CloseMethod(newBody)
 
             ///////////////////////////////////
             // Generate the body for Dispose().
             ///////////////////////////////////
-            F.CurrentFunction = disposeMethod;
-            var rootFrame = _currentFinallyFrame;
+            F.CurrentFunction = disposeMethod
+            var rootFrame = _currentFinallyFrame
 
             if (rootFrame.knownStates == null)
                 // nothing to finalize
@@ -161,10 +161,10 @@ namespace Microsoft.CodeAnalysis.CSharp
                     F.Assignment(F.Field(F.This(), stateField), F.Literal(StateMachineState.FinishedState)),
                     F.Return());
 
-                F.CloseMethod(disposeBody);
+                F.CloseMethod(disposeBody)
             else
-                var stateLocal = F.SynthesizedLocal(stateField.Type);
-                var state = F.Local(stateLocal);
+                var stateLocal = F.SynthesizedLocal(stateField.Type)
+                var state = F.Local(stateLocal)
 
                 var disposeBody = F.Block(
                     ImmutableArray.Create<LocalSymbol>(stateLocal),
@@ -174,7 +174,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                     F.Assignment(F.Field(F.This(), stateField), F.Literal(StateMachineState.FinishedState)),
                     F.Return())
 
-                F.CloseMethod(disposeBody);
+                F.CloseMethod(disposeBody)
 
         private BoundBlock HandleReturn(BoundStatement newBody)
             if (_exitLabel is null)
@@ -242,40 +242,40 @@ namespace Microsoft.CodeAnalysis.CSharp
         ///
         /// </summary>
         private BoundStatement EmitFinallyFrame(IteratorFinallyFrame frame, BoundLocal state)
-            BoundStatement body = null;
+            BoundStatement body = null
             if (frame.knownStates != null)
-                var breakLabel = F.GenerateLabel("break");
-                var sections = from ft in frame.knownStates group ft.Key by ft.Value into g select F.SwitchSection(g.SelectAsArray(state => (int)state), EmitFinallyFrame(g.Key, state), F.Goto(breakLabel));
+                var breakLabel = F.GenerateLabel("break")
+                var sections = from ft in frame.knownStates group ft.Key by ft.Value into g select F.SwitchSection(g.SelectAsArray(state => (int)state), EmitFinallyFrame(g.Key, state), F.Goto(breakLabel))
 
                 body = F.Block(
                     F.Switch(state, sections.ToImmutableArray()),
                     F.Label(breakLabel))
 
             if (!frame.IsRoot())
-                var tryBlock = body != null ? F.Block(body) : F.Block();
+                var tryBlock = body != null ? F.Block(body) : F.Block()
                 body = F.Try(
                     tryBlock,
                     ImmutableArray<BoundCatchBlock>.Empty,
                     F.Block(F.ExpressionStatement(F.Call(F.This(), frame.handler))))
 
-            Debug.Assert(body != null, "we should have either sub-dispatch or a handler");
-            return body;
+            Debug.Assert(body != null, "we should have either sub-dispatch or a handler")
+            return body
 
         protected override BoundStatement GenerateReturn(bool finished)
-            BoundLiteral result = this.F.Literal(!finished);
+            BoundLiteral result = this.F.Literal(!finished)
 
             if (_tryNestingLevel == 0)
-                return F.Return(result);
+                return F.Return(result)
             else
                 if ((object)_exitLabel == null)
-                    _exitLabel = this.F.GenerateLabel("exitLabel");
-                    _methodValue = F.SynthesizedLocal(result.Type);
+                    _exitLabel = this.F.GenerateLabel("exitLabel")
+                    _methodValue = F.SynthesizedLocal(result.Type)
 
-                var gotoExit = F.Goto(_exitLabel);
+                var gotoExit = F.Goto(_exitLabel)
 
                 if (finished)
                     // since we are finished, we need to treat this as a potential Leave
-                    gotoExit = (BoundGotoStatement)VisitGotoStatement(gotoExit);
+                    gotoExit = (BoundGotoStatement)VisitGotoStatement(gotoExit)
 
                 return this.F.Block(
                     F.Assignment(this.F.Local(_methodValue), result),
@@ -284,7 +284,7 @@ namespace Microsoft.CodeAnalysis.CSharp
         #region Visitors
 
         public override BoundNode VisitYieldBreakStatement(BoundYieldBreakStatement node)
-            return GenerateReturn(finished: true);
+            return GenerateReturn(finished: true)
 
         public override BoundNode VisitYieldReturnStatement(BoundYieldReturnStatement node)
             //     yield return expression;
@@ -295,10 +295,10 @@ namespace Microsoft.CodeAnalysis.CSharp
             //     <next_state_label>: ;
             //     <hidden sequence point>
             //     this.state = finalizeState;
-            AddResumableState(node.Syntax, awaitId: default, out StateMachineState stateNumber, out GeneratedLabelSymbol resumeLabel);
-            _currentFinallyFrame.AddState(stateNumber);
+            AddResumableState(node.Syntax, awaitId: default, out StateMachineState stateNumber, out GeneratedLabelSymbol resumeLabel)
+            _currentFinallyFrame.AddState(stateNumber)
 
-            var rewrittenExpression = (BoundExpression)Visit(node.Expression);
+            var rewrittenExpression = (BoundExpression)Visit(node.Expression)
 
             return F.Block(
                 F.Assignment(F.Field(F.This(), _current), rewrittenExpression),
@@ -309,20 +309,20 @@ namespace Microsoft.CodeAnalysis.CSharp
                 F.Assignment(F.Field(F.This(), stateField), F.Literal(_currentFinallyFrame.finalizeState)))
 
         public override BoundNode VisitGotoStatement(BoundGotoStatement node)
-            BoundExpression caseExpressionOpt = (BoundExpression)this.Visit(node.CaseExpressionOpt);
-            BoundLabel labelExpressionOpt = (BoundLabel)this.Visit(node.LabelExpressionOpt);
-            var proxyLabel = _currentFinallyFrame.ProxyLabelIfNeeded(node.Label);
-            Debug.Assert(node.Label == proxyLabel || !(F.CurrentFunction is IteratorFinallyMethodSymbol), "should not be proxying branches in finally");
-            return node.Update(proxyLabel, caseExpressionOpt, labelExpressionOpt);
+            BoundExpression caseExpressionOpt = (BoundExpression)this.Visit(node.CaseExpressionOpt)
+            BoundLabel labelExpressionOpt = (BoundLabel)this.Visit(node.LabelExpressionOpt)
+            var proxyLabel = _currentFinallyFrame.ProxyLabelIfNeeded(node.Label)
+            Debug.Assert(node.Label == proxyLabel || !(F.CurrentFunction is IteratorFinallyMethodSymbol), "should not be proxying branches in finally")
+            return node.Update(proxyLabel, caseExpressionOpt, labelExpressionOpt)
 
         public override BoundNode VisitConditionalGoto(BoundConditionalGoto node)
-            Debug.Assert(node.Label == _currentFinallyFrame.ProxyLabelIfNeeded(node.Label), "conditional leave?");
-            return base.VisitConditionalGoto(node);
+            Debug.Assert(node.Label == _currentFinallyFrame.ProxyLabelIfNeeded(node.Label), "conditional leave?")
+            return base.VisitConditionalGoto(node)
 
         public override BoundNode VisitTryStatement(BoundTryStatement node)
             // if node contains no yields, do regular rewrite in the current frame.
             if (!ContainsYields(node))
-                _tryNestingLevel++;
+                _tryNestingLevel++
                 var result = node.Update(
                     (BoundBlock)Visit(node.TryBlock),
                     VisitList(node.CatchBlocks),
@@ -330,36 +330,36 @@ namespace Microsoft.CodeAnalysis.CSharp
                     node.FinallyLabelOpt,
                     node.PreferFaultHandler)
 
-                _tryNestingLevel--;
-                return result;
+                _tryNestingLevel--
+                return result
 
-            Debug.Assert(node.CatchBlocks.IsEmpty, "try with yields must have no catches");
-            Debug.Assert(node.FinallyBlockOpt != null, "try with yields must have finally");
+            Debug.Assert(node.CatchBlocks.IsEmpty, "try with yields must have no catches")
+            Debug.Assert(node.FinallyBlockOpt != null, "try with yields must have finally")
 
             // rewrite TryBlock in a new frame.
-            var frame = PushFrame(node);
-            _tryNestingLevel++;
-            var rewrittenBody = (BoundStatement)this.Visit(node.TryBlock);
+            var frame = PushFrame(node)
+            _tryNestingLevel++
+            var rewrittenBody = (BoundStatement)this.Visit(node.TryBlock)
 
-            Debug.Assert(!frame.IsRoot());
-            Debug.Assert(frame.parent.knownStates.ContainsValue(frame), "parent must be aware about states in the child frame");
+            Debug.Assert(!frame.IsRoot())
+            Debug.Assert(frame.parent.knownStates.ContainsValue(frame), "parent must be aware about states in the child frame")
 
-            var finallyMethod = frame.handler;
-            var origMethod = F.CurrentFunction;
+            var finallyMethod = frame.handler
+            var origMethod = F.CurrentFunction
 
             // rewrite finally block into a Finally method.
-            F.CurrentFunction = finallyMethod;
-            var rewrittenHandler = (BoundStatement)this.Visit(node.FinallyBlockOpt);
+            F.CurrentFunction = finallyMethod
+            var rewrittenHandler = (BoundStatement)this.Visit(node.FinallyBlockOpt)
 
-            _tryNestingLevel--;
-            PopFrame();
+            _tryNestingLevel--
+            PopFrame()
 
             // {
             //      this.state = parentFinalizeState;
             //      body;
             //      return;
             // }
-            Debug.Assert(frame.parent.finalizeState == _currentFinallyFrame.finalizeState);
+            Debug.Assert(frame.parent.finalizeState == _currentFinallyFrame.finalizeState)
             rewrittenHandler = F.Block((object)this.cachedThis != null ?
                 ImmutableArray.Create(this.cachedThis) :
                 ImmutableArray<LocalSymbol>.Empty,
@@ -369,10 +369,10 @@ namespace Microsoft.CodeAnalysis.CSharp
                 F.Return()
             )
 
-            F.CloseMethod(rewrittenHandler);
-            F.CurrentFunction = origMethod;
+            F.CloseMethod(rewrittenHandler)
+            F.CurrentFunction = origMethod
 
-            var bodyStatements = ArrayBuilder<BoundStatement>.GetInstance();
+            var bodyStatements = ArrayBuilder<BoundStatement>.GetInstance()
 
             // add a call to the handler after the try body.
             //
@@ -381,61 +381,61 @@ namespace Microsoft.CodeAnalysis.CSharp
             //      body;
             //      this.Finally();   // will reset the state to the finally state of the parent.
             // }
-            bodyStatements.Add(F.Assignment(F.Field(F.This(), stateField), F.Literal(frame.finalizeState)));
-            bodyStatements.Add(rewrittenBody);
-            bodyStatements.Add(F.ExpressionStatement(F.Call(F.This(), finallyMethod)));
+            bodyStatements.Add(F.Assignment(F.Field(F.This(), stateField), F.Literal(frame.finalizeState)))
+            bodyStatements.Add(rewrittenBody)
+            bodyStatements.Add(F.ExpressionStatement(F.Call(F.This(), finallyMethod)))
 
             // handle proxy labels if have any
             if (frame.proxyLabels != null)
-                var dropThrough = F.GenerateLabel("dropThrough");
-                bodyStatements.Add(F.Goto(dropThrough));
-                var parent = frame.parent;
+                var dropThrough = F.GenerateLabel("dropThrough")
+                bodyStatements.Add(F.Goto(dropThrough))
+                var parent = frame.parent
 
                 foreach (var p in frame.proxyLabels)
-                    var proxy = p.Value;
-                    var destination = p.Key;
+                    var proxy = p.Value
+                    var destination = p.Key
 
                     // branch lands here
-                    bodyStatements.Add(F.Label(proxy));
+                    bodyStatements.Add(F.Label(proxy))
 
                     // finalize current state, proceed to destination.
-                    bodyStatements.Add(F.ExpressionStatement(F.Call(F.This(), finallyMethod)));
+                    bodyStatements.Add(F.ExpressionStatement(F.Call(F.This(), finallyMethod)))
 
                     // let the parent forward the branch appropriately
-                    var parentProxy = parent.ProxyLabelIfNeeded(destination);
-                    bodyStatements.Add(F.Goto(parentProxy));
+                    var parentProxy = parent.ProxyLabelIfNeeded(destination)
+                    bodyStatements.Add(F.Goto(parentProxy))
 
-                bodyStatements.Add(F.Label(dropThrough));
+                bodyStatements.Add(F.Label(dropThrough))
 
-            return F.Block(bodyStatements.ToImmutableAndFree());
+            return F.Block(bodyStatements.ToImmutableAndFree())
 
         private IteratorFinallyFrame PushFrame(BoundTryStatement statement)
-            var syntax = statement.Syntax;
+            var syntax = statement.Syntax
 
             if (slotAllocator?.TryGetPreviousStateMachineState(syntax, awaitId: default, out var finalizeState) != true)
-                finalizeState = _nextFinalizeState--;
+                finalizeState = _nextFinalizeState--
 
-            AddStateDebugInfo(syntax, awaitId: default, finalizeState);
+            AddStateDebugInfo(syntax, awaitId: default, finalizeState)
 
-            var finallyMethod = MakeSynthesizedFinally(finalizeState);
-            var newFrame = new IteratorFinallyFrame(_currentFinallyFrame, finalizeState, finallyMethod, _yieldsInTryAnalysis.Labels(statement));
-            newFrame.AddState(finalizeState);
+            var finallyMethod = MakeSynthesizedFinally(finalizeState)
+            var newFrame = new IteratorFinallyFrame(_currentFinallyFrame, finalizeState, finallyMethod, _yieldsInTryAnalysis.Labels(statement))
+            newFrame.AddState(finalizeState)
 
-            _currentFinallyFrame = newFrame;
-            return newFrame;
+            _currentFinallyFrame = newFrame
+            return newFrame
 
         private void PopFrame()
-            var result = _currentFinallyFrame;
-            _currentFinallyFrame = result.parent;
+            var result = _currentFinallyFrame
+            _currentFinallyFrame = result.parent
 
         private bool ContainsYields(BoundTryStatement statement)
-            return _yieldsInTryAnalysis.ContainsYields(statement);
+            return _yieldsInTryAnalysis.ContainsYields(statement)
 
         private IteratorFinallyMethodSymbol MakeSynthesizedFinally(StateMachineState finalizeState)
-            var stateMachineType = (IteratorStateMachine)F.CurrentType;
-            var finallyMethod = new IteratorFinallyMethodSymbol(stateMachineType, GeneratedNames.MakeIteratorFinallyMethodName(finalizeState));
+            var stateMachineType = (IteratorStateMachine)F.CurrentType
+            var finallyMethod = new IteratorFinallyMethodSymbol(stateMachineType, GeneratedNames.MakeIteratorFinallyMethodName(finalizeState))
 
-            F.ModuleBuilderOpt.AddSynthesizedDefinition(stateMachineType, finallyMethod.GetCciAdapter());
-            return finallyMethod;
+            F.ModuleBuilderOpt.AddSynthesizedDefinition(stateMachineType, finallyMethod.GetCciAdapter())
+            return finallyMethod
 
         #endregion

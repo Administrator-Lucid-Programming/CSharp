@@ -1,122 +1,122 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
-using System.Linq;
-using System.Reflection;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.DotnetRuntime.Extensions;
+using System.Collections.Generic
+using System.Collections.Immutable
+using System.Diagnostics
+using System.Diagnostics.CodeAnalysis
+using System.Linq
+using System.Reflection
+using Microsoft.CodeAnalysis
+using Microsoft.CodeAnalysis.CSharp
+using Microsoft.CodeAnalysis.CSharp.Syntax
+using Microsoft.CodeAnalysis.DotnetRuntime.Extensions
 
 namespace System.Text.Json.SourceGeneration
     internal static class RoslynExtensions
-        private static readonly Func<ITypeSymbol, bool>? s_isClosedTypeAccessor = CreateIsClosedTypeAccessor();
+        private static readonly Func<ITypeSymbol, bool>? s_isClosedTypeAccessor = CreateIsClosedTypeAccessor()
 
         public static LanguageVersion? GetLanguageVersion(this Compilation compilation)
-            => compilation is CSharpCompilation csc ? csc.LanguageVersion : null;
+            => compilation is CSharpCompilation csc ? csc.LanguageVersion : null
 
         public static INamedTypeSymbol? GetBestTypeByMetadataName(this Compilation compilation, Type type)
-            Debug.Assert(!type.IsArray, "Resolution logic only capable of handling named types.");
-            Debug.Assert(type.FullName != null);
-            return compilation.GetBestTypeByMetadataName(type.FullName);
+            Debug.Assert(!type.IsArray, "Resolution logic only capable of handling named types.")
+            Debug.Assert(type.FullName != null)
+            return compilation.GetBestTypeByMetadataName(type.FullName)
 
         public static Location? GetLocation(this ISymbol typeSymbol)
-            => typeSymbol.Locations.Length > 0 ? typeSymbol.Locations[0] : null;
+            => typeSymbol.Locations.Length > 0 ? typeSymbol.Locations[0] : null
 
         public static Location? GetLocation(this AttributeData attributeData)
-            SyntaxReference? reference = attributeData.ApplicationSyntaxReference;
-            return reference?.SyntaxTree.GetLocation(reference.Span);
+            SyntaxReference? reference = attributeData.ApplicationSyntaxReference
+            return reference?.SyntaxTree.GetLocation(reference.Span)
 
         /// <summary>
         /// Returns true if the specified location is contained in one of the syntax trees in the compilation.
         /// </summary>
         public static bool ContainsLocation(this Compilation compilation, Location location)
-            => location.SourceTree != null && compilation.ContainsSyntaxTree(location.SourceTree);
+            => location.SourceTree != null && compilation.ContainsSyntaxTree(location.SourceTree)
 
         /// <summary>
         /// Removes any type metadata that is erased at compile time, such as NRT annotations and tuple labels.
         /// </summary>
         public static ITypeSymbol EraseCompileTimeMetadata(this Compilation compilation, ITypeSymbol type)
             if (type.NullableAnnotation is NullableAnnotation.Annotated)
-                type = type.WithNullableAnnotation(NullableAnnotation.None);
+                type = type.WithNullableAnnotation(NullableAnnotation.None)
 
             if (type is IArrayTypeSymbol arrayType)
-                ITypeSymbol elementType = compilation.EraseCompileTimeMetadata(arrayType.ElementType);
-                return compilation.CreateArrayTypeSymbol(elementType, arrayType.Rank);
+                ITypeSymbol elementType = compilation.EraseCompileTimeMetadata(arrayType.ElementType)
+                return compilation.CreateArrayTypeSymbol(elementType, arrayType.Rank)
 
             if (type is INamedTypeSymbol namedType)
                 if (namedType.IsTupleType)
                     if (namedType.TupleElements.Length < 2)
-                        return type;
+                        return type
 
                     ImmutableArray<ITypeSymbol> erasedElements = namedType.TupleElements
                         .Select(e => compilation.EraseCompileTimeMetadata(e.Type))
                         .ToImmutableArray()
 
-                    type = compilation.CreateTupleTypeSymbol(erasedElements);
+                    type = compilation.CreateTupleTypeSymbol(erasedElements)
                 else if (namedType.IsGenericType)
                     if (namedType.IsUnboundGenericType)
-                        return namedType;
+                        return namedType
 
-                    ImmutableArray<ITypeSymbol> typeArguments = namedType.TypeArguments;
-                    INamedTypeSymbol? containingType = namedType.ContainingType;
+                    ImmutableArray<ITypeSymbol> typeArguments = namedType.TypeArguments
+                    INamedTypeSymbol? containingType = namedType.ContainingType
 
                     if (containingType?.IsGenericType == true)
-                        containingType = (INamedTypeSymbol)compilation.EraseCompileTimeMetadata(containingType);
-                        type = namedType = containingType.GetTypeMembers().First(t => t.Name == namedType.Name && t.Arity == namedType.Arity);
+                        containingType = (INamedTypeSymbol)compilation.EraseCompileTimeMetadata(containingType)
+                        type = namedType = containingType.GetTypeMembers().First(t => t.Name == namedType.Name && t.Arity == namedType.Arity)
 
                     if (typeArguments.Length > 0)
                         ITypeSymbol[] erasedTypeArgs = typeArguments
                             .Select(compilation.EraseCompileTimeMetadata)
                             .ToArray()
 
-                        type = namedType.ConstructedFrom.Construct(erasedTypeArgs);
+                        type = namedType.ConstructedFrom.Construct(erasedTypeArgs)
 
-            return type;
+            return type
 
         public static bool CanUseDefaultConstructorForDeserialization(this ITypeSymbol type, out IMethodSymbol? constructorInfo)
             if (type.IsAbstract || type.TypeKind is TypeKind.Interface || type is not INamedTypeSymbol namedType)
-                constructorInfo = null;
-                return false;
+                constructorInfo = null
+                return false
 
-            constructorInfo = namedType.GetExplicitlyDeclaredInstanceConstructors().FirstOrDefault(ctor => ctor.DeclaredAccessibility is Accessibility.Public && ctor.Parameters.Length == 0);
-            return constructorInfo != null || type.IsValueType;
+            constructorInfo = namedType.GetExplicitlyDeclaredInstanceConstructors().FirstOrDefault(ctor => ctor.DeclaredAccessibility is Accessibility.Public && ctor.Parameters.Length == 0)
+            return constructorInfo != null || type.IsValueType
 
         public static IEnumerable<IMethodSymbol> GetExplicitlyDeclaredInstanceConstructors(this INamedTypeSymbol type)
-            => type.Constructors.Where(ctor => !ctor.IsStatic && !(ctor.IsImplicitlyDeclared && type.IsValueType && ctor.Parameters.Length == 0));
+            => type.Constructors.Where(ctor => !ctor.IsStatic && !(ctor.IsImplicitlyDeclared && type.IsValueType && ctor.Parameters.Length == 0))
 
         public static bool ContainsAttribute(this ISymbol memberInfo, INamedTypeSymbol? attributeType)
-            => attributeType != null && memberInfo.GetAttributes().Any(attr => SymbolEqualityComparer.Default.Equals(attr.AttributeClass, attributeType));
+            => attributeType != null && memberInfo.GetAttributes().Any(attr => SymbolEqualityComparer.Default.Equals(attr.AttributeClass, attributeType))
 
         public static bool IsVirtual(this ISymbol symbol)
-            => symbol.IsVirtual || symbol.IsOverride || symbol.IsAbstract;
+            => symbol.IsVirtual || symbol.IsOverride || symbol.IsAbstract
 
         public static bool IsAssignableFrom(this ITypeSymbol? baseType, ITypeSymbol? type)
             if (baseType is null || type is null)
-                return false;
+                return false
 
             if (SymbolEqualityComparer.Default.Equals(baseType, type))
-                return true;
+                return true
 
             if (baseType.TypeKind is TypeKind.Interface)
                 if (type.AllInterfaces.Contains(baseType, SymbolEqualityComparer.Default))
-                    return true;
+                    return true
 
             for (INamedTypeSymbol? current = type as INamedTypeSymbol; current != null; current = current.BaseType)
                 if (SymbolEqualityComparer.Default.Equals(baseType, current))
-                    return true;
+                    return true
 
-            return false;
+            return false
 
         public static INamedTypeSymbol? GetCompatibleGenericBaseType(this ITypeSymbol type, INamedTypeSymbol? baseType)
             if (baseType is null)
-                return null;
+                return null
 
-            return type.GetCompatibleGenericBaseTypes(baseType).FirstOrDefault();
+            return type.GetCompatibleGenericBaseTypes(baseType).FirstOrDefault()
 
         /// <summary>
         /// Enumerates every ancestor of <paramref name="type"/> whose original definition matches
@@ -131,12 +131,12 @@ namespace System.Text.Json.SourceGeneration
         /// rules MUST be applied on both sides to keep reflection and source-gen behaviour in sync.
         /// </summary>
         public static IEnumerable<INamedTypeSymbol> GetCompatibleGenericBaseTypes(this ITypeSymbol type, INamedTypeSymbol baseTypeDefinition)
-            Debug.Assert(baseTypeDefinition.IsGenericTypeDefinition());
+            Debug.Assert(baseTypeDefinition.IsGenericTypeDefinition())
 
             if (baseTypeDefinition.TypeKind is TypeKind.Interface)
                 foreach (INamedTypeSymbol interfaceType in type.AllInterfaces)
                     if (IsMatchingGenericType(interfaceType, baseTypeDefinition))
-                        yield return interfaceType;
+                        yield return interfaceType
 
                 // Note: do NOT yield break here. `AllInterfaces` does not include `type` itself,
                 // so when `type` IS the interface we're looking for, the fall-through to the
@@ -146,11 +146,11 @@ namespace System.Text.Json.SourceGeneration
 
             for (INamedTypeSymbol? current = type as INamedTypeSymbol; current is not null; current = current.BaseType)
                 if (IsMatchingGenericType(current, baseTypeDefinition))
-                    yield return current;
-                    yield break;
+                    yield return current
+                    yield break
 
             static bool IsMatchingGenericType(INamedTypeSymbol candidate, INamedTypeSymbol baseType)
-                return candidate.IsGenericType && SymbolEqualityComparer.Default.Equals(candidate.ConstructedFrom, baseType);
+                return candidate.IsGenericType && SymbolEqualityComparer.Default.Equals(candidate.ConstructedFrom, baseType)
 
         /// <summary>
         /// Returns the full set of type parameters that must be bound to construct
@@ -159,17 +159,17 @@ namespace System.Text.Json.SourceGeneration
         /// <paramref name="typeDef"/> itself.
         /// </summary>
         public static List<ITypeParameterSymbol> GetAllTypeParameters(this INamedTypeSymbol typeDef)
-            var result = new List<ITypeParameterSymbol>();
-            AppendEnclosing(typeDef.ContainingType, result);
-            result.AddRange(typeDef.TypeParameters);
-            return result;
+            var result = new List<ITypeParameterSymbol>()
+            AppendEnclosing(typeDef.ContainingType, result)
+            result.AddRange(typeDef.TypeParameters)
+            return result
 
             static void AppendEnclosing(INamedTypeSymbol? enclosing, List<ITypeParameterSymbol> list)
                 if (enclosing is null)
-                    return;
+                    return
 
-                AppendEnclosing(enclosing.ContainingType, list);
-                list.AddRange(enclosing.TypeParameters);
+                AppendEnclosing(enclosing.ContainingType, list)
+                list.AddRange(enclosing.TypeParameters)
 
         /// <summary>
         /// Attempts to unify a <paramref name="pattern"/> type (which may contain type-parameter
@@ -197,10 +197,10 @@ namespace System.Text.Json.SourceGeneration
         public static bool TryUnifyWith(this ITypeSymbol pattern, ITypeSymbol target, IDictionary<ITypeParameterSymbol, ITypeSymbol> substitution)
             if (pattern is ITypeParameterSymbol patternParam)
                 if (substitution.TryGetValue(patternParam, out ITypeSymbol? existing))
-                    return SymbolEqualityComparer.Default.Equals(existing, target);
+                    return SymbolEqualityComparer.Default.Equals(existing, target)
 
-                substitution[patternParam] = target;
-                return true;
+                substitution[patternParam] = target
+                return true
 
             if (pattern is IArrayTypeSymbol patternArray)
                 return target is IArrayTypeSymbol targetArray
@@ -213,10 +213,10 @@ namespace System.Text.Json.SourceGeneration
 
             if (pattern is INamedTypeSymbol { IsGenericType: true } patternNamed)
                 if (target is not INamedTypeSymbol { IsGenericType: true } targetNamed)
-                    return false;
+                    return false
 
                 if (!SymbolEqualityComparer.Default.Equals(patternNamed.OriginalDefinition, targetNamed.OriginalDefinition))
-                    return false;
+                    return false
 
                 // Walk ContainingType to mirror reflection's Type.GetGenericArguments() flattening
                 // behaviour for nested generic types. For example, for Outer<int>.Box<T>, Roslyn
@@ -226,24 +226,24 @@ namespace System.Text.Json.SourceGeneration
                 // (e.g. unify Outer<int>.Box<T> with Outer<string>.Box<int>, false accept), and
                 // (b) fail to bind type parameters that only appear in the enclosing type
                 // (e.g. Outer<T>.Box<int> against Outer<string>.Box<int>, false reject).
-                INamedTypeSymbol? patternContaining = patternNamed.ContainingType;
-                INamedTypeSymbol? targetContaining = targetNamed.ContainingType;
+                INamedTypeSymbol? patternContaining = patternNamed.ContainingType
+                INamedTypeSymbol? targetContaining = targetNamed.ContainingType
                 if (patternContaining is not null && targetContaining is not null &&
                     !patternContaining.TryUnifyWith(targetContaining, substitution))
-                    return false;
+                    return false
 
-                ImmutableArray<ITypeSymbol> patternArgs = patternNamed.TypeArguments;
-                ImmutableArray<ITypeSymbol> targetArgs = targetNamed.TypeArguments;
+                ImmutableArray<ITypeSymbol> patternArgs = patternNamed.TypeArguments
+                ImmutableArray<ITypeSymbol> targetArgs = targetNamed.TypeArguments
                 if (patternArgs.Length != targetArgs.Length)
-                    return false;
+                    return false
 
                 for (int i = 0; i < patternArgs.Length; i++)
                     if (!patternArgs[i].TryUnifyWith(targetArgs[i], substitution))
-                        return false;
+                        return false
 
-                return true;
+                return true
 
-            return SymbolEqualityComparer.Default.Equals(pattern, target);
+            return SymbolEqualityComparer.Default.Equals(pattern, target)
 
         /// <summary>
         /// Returns the type that results from applying <paramref name="substitution"/> to every
@@ -254,7 +254,7 @@ namespace System.Text.Json.SourceGeneration
         /// </summary>
         public static ITypeSymbol SubstituteTypeParameters(this Compilation compilation, ITypeSymbol type, IReadOnlyDictionary<ITypeParameterSymbol, ITypeSymbol> substitution)
             if (type is ITypeParameterSymbol param)
-                return substitution.TryGetValue(param, out ITypeSymbol? mapped) ? mapped : type;
+                return substitution.TryGetValue(param, out ITypeSymbol? mapped) ? mapped : type
 
             if (type is INamedTypeSymbol { IsGenericType: true } named)
                 // Walk ContainingType so substitutions can reach type parameters declared on
@@ -263,43 +263,43 @@ namespace System.Text.Json.SourceGeneration
                 // TypeArguments is leaf-only and OriginalDefinition.Construct(...) discards the
                 // enclosing instantiation. Mirrors the reflection-side recursion through
                 // Type.GetGenericArguments() / MakeGenericType which flatten enclosing+leaf.
-                INamedTypeSymbol? containingType = named.ContainingType;
-                INamedTypeSymbol? substitutedContaining = null;
-                bool containingChanged = false;
+                INamedTypeSymbol? containingType = named.ContainingType
+                INamedTypeSymbol? substitutedContaining = null
+                bool containingChanged = false
                 if (containingType is { IsGenericType: true })
-                    substitutedContaining = (INamedTypeSymbol)compilation.SubstituteTypeParameters(containingType, substitution);
-                    containingChanged = !SymbolEqualityComparer.Default.Equals(substitutedContaining, containingType);
+                    substitutedContaining = (INamedTypeSymbol)compilation.SubstituteTypeParameters(containingType, substitution)
+                    containingChanged = !SymbolEqualityComparer.Default.Equals(substitutedContaining, containingType)
 
-                ImmutableArray<ITypeSymbol> args = named.TypeArguments;
-                ITypeSymbol[]? newArgs = null;
+                ImmutableArray<ITypeSymbol> args = named.TypeArguments
+                ITypeSymbol[]? newArgs = null
                 for (int i = 0; i < args.Length; i++)
-                    ITypeSymbol substituted = compilation.SubstituteTypeParameters(args[i], substitution);
+                    ITypeSymbol substituted = compilation.SubstituteTypeParameters(args[i], substitution)
                     if (!SymbolEqualityComparer.Default.Equals(substituted, args[i]))
-                        newArgs ??= args.ToArray();
-                        newArgs[i] = substituted;
+                        newArgs ??= args.ToArray()
+                        newArgs[i] = substituted
 
                 if (newArgs is null && !containingChanged)
-                    return type;
+                    return type
 
-                ITypeSymbol[] leafArgs = newArgs ?? args.ToArray();
+                ITypeSymbol[] leafArgs = newArgs ?? args.ToArray()
 
                 if (substitutedContaining is null)
-                    return named.OriginalDefinition.Construct(leafArgs);
+                    return named.OriginalDefinition.Construct(leafArgs)
 
                 // Locate the nested definition inside the substituted containing type and
                 // construct it with the substituted leaf args.
                 INamedTypeSymbol nestedDef = substitutedContaining
                     .GetTypeMembers(named.Name, leafArgs.Length)
                     .Single(t => SymbolEqualityComparer.Default.Equals(t.OriginalDefinition, named.OriginalDefinition));
-                return leafArgs.Length == 0 ? nestedDef : nestedDef.Construct(leafArgs);
+                return leafArgs.Length == 0 ? nestedDef : nestedDef.Construct(leafArgs)
 
             if (type is IArrayTypeSymbol array)
-                ITypeSymbol substituted = compilation.SubstituteTypeParameters(array.ElementType, substitution);
+                ITypeSymbol substituted = compilation.SubstituteTypeParameters(array.ElementType, substitution)
                 return SymbolEqualityComparer.Default.Equals(substituted, array.ElementType)
                     ? type
                     : compilation.CreateArrayTypeSymbol(substituted, array.Rank)
 
-            return type;
+            return type
 
         /// <summary>
         /// Returns <see langword="true"/> if <paramref name="arg"/> satisfies a
@@ -308,16 +308,16 @@ namespace System.Text.Json.SourceGeneration
         /// </summary>
         public static bool SatisfiesNewConstraint(this ITypeSymbol arg)
             if (arg.IsValueType)
-                return true;
+                return true
 
             if (arg is not INamedTypeSymbol named || named.IsAbstract || named.IsStatic)
-                return false;
+                return false
 
             foreach (IMethodSymbol ctor in named.InstanceConstructors)
                 if (ctor.Parameters.Length == 0 && ctor.DeclaredAccessibility == Accessibility.Public)
-                    return true;
+                    return true
 
-            return false;
+            return false
 
         /// <summary>
         /// Validates that every type parameter in <paramref name="parameters"/> has a substitution
@@ -345,33 +345,33 @@ namespace System.Text.Json.SourceGeneration
             out ITypeSymbol? failedArgument)
             foreach (ITypeParameterSymbol param in parameters)
                 if (!substitution.TryGetValue(param, out ITypeSymbol? arg))
-                    failedParameter = param;
-                    failedArgument = null;
-                    return false;
+                    failedParameter = param
+                    failedArgument = null
+                    return false
 
                 if (param.HasReferenceTypeConstraint && !arg.IsReferenceType)
-                    failedParameter = param;
-                    failedArgument = arg;
-                    return false;
+                    failedParameter = param
+                    failedArgument = arg
+                    return false
 
                 if (param.HasValueTypeConstraint)
                     if (!arg.IsValueType || arg is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T })
-                        failedParameter = param;
-                        failedArgument = arg;
-                        return false;
+                        failedParameter = param
+                        failedArgument = arg
+                        return false
 
                 if (param.HasUnmanagedTypeConstraint && !arg.IsUnmanagedType)
-                    failedParameter = param;
-                    failedArgument = arg;
-                    return false;
+                    failedParameter = param
+                    failedArgument = arg
+                    return false
 
                 if (param.HasConstructorConstraint && !arg.SatisfiesNewConstraint())
-                    failedParameter = param;
-                    failedArgument = arg;
-                    return false;
+                    failedParameter = param
+                    failedArgument = arg
+                    return false
 
                 foreach (ITypeSymbol constraintType in param.ConstraintTypes)
-                    ITypeSymbol substituted = compilation.SubstituteTypeParameters(constraintType, substitution);
+                    ITypeSymbol substituted = compilation.SubstituteTypeParameters(constraintType, substitution)
 
                     // Use HasImplicitConversion so generic variance is respected (e.g.
                     // `where T : IEnumerable<object>` is satisfied by `List<string>` via the
@@ -380,13 +380,13 @@ namespace System.Text.Json.SourceGeneration
                     // MakeGenericType (which delegates to the CLR type system, where interface
                     // variance is native).
                     if (!compilation.HasImplicitConversion(arg, substituted))
-                        failedParameter = param;
-                        failedArgument = arg;
-                        return false;
+                        failedParameter = param
+                        failedArgument = arg
+                        return false
 
-            failedParameter = null;
-            failedArgument = null;
-            return true;
+            failedParameter = null
+            failedArgument = null
+            return true
 
         /// <summary>
         /// Constructs <paramref name="typeDef"/> using <paramref name="allArgs"/>, accounting for
@@ -396,49 +396,49 @@ namespace System.Text.Json.SourceGeneration
         /// references to their generic outers carry the supplied type arguments.
         /// </summary>
         public static INamedTypeSymbol ConstructWithEnclosingTypeArguments(this INamedTypeSymbol typeDef, IReadOnlyList<ITypeSymbol> allArgs)
-            int offset = 0;
-            INamedTypeSymbol? constructedContaining = ConstructEnclosing(typeDef.ContainingType, allArgs, ref offset);
+            int offset = 0
+            INamedTypeSymbol? constructedContaining = ConstructEnclosing(typeDef.ContainingType, allArgs, ref offset)
 
-            int leafParamCount = typeDef.TypeParameters.Length;
-            ITypeSymbol[] leafArgs = new ITypeSymbol[leafParamCount];
+            int leafParamCount = typeDef.TypeParameters.Length
+            ITypeSymbol[] leafArgs = new ITypeSymbol[leafParamCount]
             for (int i = 0; i < leafParamCount; i++)
-                leafArgs[i] = allArgs[offset + i];
+                leafArgs[i] = allArgs[offset + i]
 
             if (constructedContaining is not null)
                 INamedTypeSymbol nestedDef = constructedContaining
                     .GetTypeMembers(typeDef.Name, leafParamCount)
                     .Single(t => SymbolEqualityComparer.Default.Equals(t.OriginalDefinition, typeDef))
-                return leafParamCount == 0 ? nestedDef : nestedDef.Construct(leafArgs);
+                return leafParamCount == 0 ? nestedDef : nestedDef.Construct(leafArgs)
 
-            return leafParamCount == 0 ? typeDef : typeDef.Construct(leafArgs);
+            return leafParamCount == 0 ? typeDef : typeDef.Construct(leafArgs)
 
             static INamedTypeSymbol? ConstructEnclosing(INamedTypeSymbol? type, IReadOnlyList<ITypeSymbol> allArgs, ref int offset)
                 if (type is null)
-                    return null;
+                    return null
 
-                INamedTypeSymbol? outer = ConstructEnclosing(type.ContainingType, allArgs, ref offset);
-                int paramCount = type.TypeParameters.Length;
+                INamedTypeSymbol? outer = ConstructEnclosing(type.ContainingType, allArgs, ref offset)
+                int paramCount = type.TypeParameters.Length
 
                 if (paramCount == 0)
                     if (outer is null)
-                        return type;
+                        return type
 
-                    return outer.GetTypeMembers(type.Name, 0).Single(t => SymbolEqualityComparer.Default.Equals(t.OriginalDefinition, type));
+                    return outer.GetTypeMembers(type.Name, 0).Single(t => SymbolEqualityComparer.Default.Equals(t.OriginalDefinition, type))
 
-                ITypeSymbol[] args = new ITypeSymbol[paramCount];
+                ITypeSymbol[] args = new ITypeSymbol[paramCount]
                 for (int i = 0; i < paramCount; i++)
-                    args[i] = allArgs[offset + i];
+                    args[i] = allArgs[offset + i]
 
-                offset += paramCount;
+                offset += paramCount
 
                 if (outer is null)
-                    return type.Construct(args);
+                    return type.Construct(args)
 
-                INamedTypeSymbol nestedDef = outer.GetTypeMembers(type.Name, paramCount).Single(t => SymbolEqualityComparer.Default.Equals(t.OriginalDefinition, type));
-                return nestedDef.Construct(args);
+                INamedTypeSymbol nestedDef = outer.GetTypeMembers(type.Name, paramCount).Single(t => SymbolEqualityComparer.Default.Equals(t.OriginalDefinition, type))
+                return nestedDef.Construct(args)
 
         public static bool IsGenericTypeDefinition(this ITypeSymbol type)
-            => type is INamedTypeSymbol { IsGenericType: true } namedType && SymbolEqualityComparer.Default.Equals(namedType, namedType.ConstructedFrom);
+            => type is INamedTypeSymbol { IsGenericType: true } namedType && SymbolEqualityComparer.Default.Equals(namedType, namedType.ConstructedFrom)
 
         public static bool IsNumberType(this ITypeSymbol type)
             return type.SpecialType is
@@ -447,43 +447,43 @@ namespace System.Text.Json.SourceGeneration
                     SpecialType.System_Single or SpecialType.System_Double or SpecialType.System_Decimal
 
         public static bool IsNullableType(this ITypeSymbol type)
-            => !type.IsValueType || type.OriginalDefinition.SpecialType is SpecialType.System_Nullable_T;
+            => !type.IsValueType || type.OriginalDefinition.SpecialType is SpecialType.System_Nullable_T
 
         public static bool IsNullableValueType(this ITypeSymbol type, [NotNullWhen(true)] out ITypeSymbol? elementType)
             if (type.IsValueType && type is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T })
-                elementType = ((INamedTypeSymbol)type).TypeArguments[0];
-                return true;
+                elementType = ((INamedTypeSymbol)type).TypeArguments[0]
+                return true
 
-            elementType = null;
-            return false;
+            elementType = null
+            return false
 
         public static ITypeSymbol GetMemberType(this ISymbol member)
-            Debug.Assert(member is IFieldSymbol or IPropertySymbol);
-            return member is IFieldSymbol fs ? fs.Type : ((IPropertySymbol)member).Type;
+            Debug.Assert(member is IFieldSymbol or IPropertySymbol)
+            return member is IFieldSymbol fs ? fs.Type : ((IPropertySymbol)member).Type
 
         public static bool IsOverriddenOrShadowedBy(this ISymbol member, ISymbol otherMember)
-            Debug.Assert(member is IFieldSymbol or IPropertySymbol);
-            Debug.Assert(otherMember is IFieldSymbol or IPropertySymbol);
-            return member.Name == otherMember.Name && member.ContainingType.IsAssignableFrom(otherMember.ContainingType);
+            Debug.Assert(member is IFieldSymbol or IPropertySymbol)
+            Debug.Assert(otherMember is IFieldSymbol or IPropertySymbol)
+            return member.Name == otherMember.Name && member.ContainingType.IsAssignableFrom(otherMember.ContainingType)
 
         public static bool MemberNameNeedsAtSign(this ISymbol symbol)
-            => SyntaxFacts.GetKeywordKind(symbol.Name) != SyntaxKind.None || SyntaxFacts.GetContextualKeywordKind(symbol.Name) != SyntaxKind.None;
+            => SyntaxFacts.GetKeywordKind(symbol.Name) != SyntaxKind.None || SyntaxFacts.GetContextualKeywordKind(symbol.Name) != SyntaxKind.None
 
         public static INamedTypeSymbol[] GetSortedTypeHierarchy(this ITypeSymbol type)
             if (type is not INamedTypeSymbol namedType)
-                return Array.Empty<INamedTypeSymbol>();
+                return Array.Empty<INamedTypeSymbol>()
 
             if (type.TypeKind != TypeKind.Interface)
-                var list = new List<INamedTypeSymbol>();
+                var list = new List<INamedTypeSymbol>()
                 for (INamedTypeSymbol? current = namedType; current != null; current = current.BaseType)
-                    list.Add(current);
+                    list.Add(current)
 
-                return list.ToArray();
+                return list.ToArray()
             else
                 // Interface hierarchies support multiple inheritance.
                 // For consistency with class hierarchy resolution order,
                 // sort topologically from most derived to least derived.
-                return JsonHelpers.TraverseGraphWithTopologicalSort<INamedTypeSymbol>(namedType, static t => t.AllInterfaces, SymbolEqualityComparer.Default);
+                return JsonHelpers.TraverseGraphWithTopologicalSort<INamedTypeSymbol>(namedType, static t => t.AllInterfaces, SymbolEqualityComparer.Default)
 
         /// <summary>
         /// Returns the kind keyword corresponding to the specified declaration syntax node.
@@ -491,22 +491,22 @@ namespace System.Text.Json.SourceGeneration
         public static string GetTypeKindKeyword(this TypeDeclarationSyntax typeDeclaration)
             switch (typeDeclaration.Kind())
                 case SyntaxKind.ClassDeclaration:
-                    return "class";
+                    return "class"
                 case SyntaxKind.InterfaceDeclaration:
-                    return "interface";
+                    return "interface"
                 case SyntaxKind.StructDeclaration:
-                    return "struct";
+                    return "struct"
                 case SyntaxKind.RecordDeclaration:
-                    return "record";
+                    return "record"
                 case SyntaxKind.RecordStructDeclaration:
-                    return "record struct";
+                    return "record struct"
                 case SyntaxKind.EnumDeclaration:
-                    return "enum";
+                    return "enum"
                 case SyntaxKind.DelegateDeclaration:
-                    return "delegate";
+                    return "delegate"
                 default:
-                    Debug.Fail("unexpected syntax kind");
-                    return null;
+                    Debug.Fail("unexpected syntax kind")
+                    return null
 
         public static void ResolveNullabilityAnnotations(this IFieldSymbol field, out bool isGetterNonNullable, out bool isSetterNonNullable)
             if (field.Type.IsNullableType())
@@ -514,12 +514,12 @@ namespace System.Text.Json.SourceGeneration
                 // (e.g. the same metadata is being used for both KeyValuePair<string, string?> and KeyValuePair<string, string>),
                 // we derive nullability annotations from the original definition of the field and not its instantiation.
                 // This preserves compatibility with the capabilities of the reflection-based NullabilityInfo reader.
-                field = field.OriginalDefinition;
+                field = field.OriginalDefinition
 
-                isGetterNonNullable = IsOutputTypeNonNullable(field, field.Type);
-                isSetterNonNullable = IsInputTypeNonNullable(field, field.Type);
+                isGetterNonNullable = IsOutputTypeNonNullable(field, field.Type)
+                isSetterNonNullable = IsInputTypeNonNullable(field, field.Type)
             else
-                isGetterNonNullable = isSetterNonNullable = false;
+                isGetterNonNullable = isSetterNonNullable = false
 
         public static void ResolveNullabilityAnnotations(this IPropertySymbol property, out bool isGetterNonNullable, out bool isSetterNonNullable)
             if (property.Type.IsNullableType())
@@ -527,12 +527,12 @@ namespace System.Text.Json.SourceGeneration
                 // (e.g. the same metadata is being used for both KeyValuePair<string, string?> and KeyValuePair<string, string>),
                 // we derive nullability annotations from the original definition of the field and not its instantiation.
                 // This preserves compatibility with the capabilities of the reflection-based NullabilityInfo reader.
-                property = property.OriginalDefinition;
+                property = property.OriginalDefinition
 
-                isGetterNonNullable = property.GetMethod != null && IsOutputTypeNonNullable(property, property.Type);
-                isSetterNonNullable = property.SetMethod != null && IsInputTypeNonNullable(property, property.Type);
+                isGetterNonNullable = property.GetMethod != null && IsOutputTypeNonNullable(property, property.Type)
+                isSetterNonNullable = property.SetMethod != null && IsInputTypeNonNullable(property, property.Type)
             else
-                isGetterNonNullable = isSetterNonNullable = false;
+                isGetterNonNullable = isSetterNonNullable = false
 
         public static bool IsNullable(this IParameterSymbol parameter)
             if (parameter.Type.IsNullableType())
@@ -540,36 +540,36 @@ namespace System.Text.Json.SourceGeneration
                 // (e.g. the same metadata is being used for both KeyValuePair<string, string?> and KeyValuePair<string, string>),
                 // we derive nullability annotations from the original definition of the field and not its instantiation.
                 // This preserves compatibility with the capabilities of the reflection-based NullabilityInfo reader.
-                parameter = parameter.OriginalDefinition;
-                return !IsInputTypeNonNullable(parameter, parameter.Type);
+                parameter = parameter.OriginalDefinition
+                return !IsInputTypeNonNullable(parameter, parameter.Type)
 
-            return false;
+            return false
 
         private static bool IsOutputTypeNonNullable(this ISymbol symbol, ITypeSymbol returnType)
             if (symbol.HasCodeAnalysisAttribute("MaybeNullAttribute"))
-                return false;
+                return false
 
             if (symbol.HasCodeAnalysisAttribute("NotNullAttribute"))
-                return true;
+                return true
 
             if (returnType is ITypeParameterSymbol { HasNotNullConstraint: false })
-                return false;
+                return false
 
-            return returnType.NullableAnnotation is NullableAnnotation.NotAnnotated;
+            return returnType.NullableAnnotation is NullableAnnotation.NotAnnotated
 
         private static bool IsInputTypeNonNullable(this ISymbol symbol, ITypeSymbol inputType)
-            Debug.Assert(inputType.IsNullableType());
+            Debug.Assert(inputType.IsNullableType())
 
             if (symbol.HasCodeAnalysisAttribute("AllowNullAttribute"))
-                return false;
+                return false
 
             if (symbol.HasCodeAnalysisAttribute("DisallowNullAttribute"))
-                return true;
+                return true
 
             if (inputType is ITypeParameterSymbol { HasNotNullConstraint: false })
-                return false;
+                return false
 
-            return inputType.NullableAnnotation is NullableAnnotation.NotAnnotated;
+            return inputType.NullableAnnotation is NullableAnnotation.NotAnnotated
 
         private static bool HasCodeAnalysisAttribute(this ISymbol symbol, string attributeName)
             return symbol.GetAttributes().Any(attr =>
@@ -602,10 +602,10 @@ namespace System.Text.Json.SourceGeneration
         /// </summary>
         public static bool IsClosedType(this INamedTypeSymbol type)
             if (type is not { TypeKind: TypeKind.Class, IsAbstract: true })
-                return false;
+                return false
 
             if (s_isClosedTypeAccessor is not null)
-                return s_isClosedTypeAccessor(type);
+                return s_isClosedTypeAccessor(type)
 
             foreach (SyntaxReference syntaxReference in type.DeclaringSyntaxReferences)
                 if (syntaxReference.GetSyntax() is BaseTypeDeclarationSyntax declaration)
@@ -615,13 +615,13 @@ namespace System.Text.Json.SourceGeneration
                         // version the generator compiles against. Compare the token text instead, which
                         // is stable across compiler versions.
                         if (modifier.Text is "closed")
-                            return true;
+                            return true
 
-            return false;
+            return false
 
         private static Func<ITypeSymbol, bool>? CreateIsClosedTypeAccessor()
             // IsClosed is unavailable in the Roslyn reference assemblies used to compile the generator.
-            MethodInfo? getter = typeof(ITypeSymbol).GetProperty("IsClosed")?.GetMethod;
+            MethodInfo? getter = typeof(ITypeSymbol).GetProperty("IsClosed")?.GetMethod
             return getter is null
                 ? null
                 : (Func<ITypeSymbol, bool>)getter.CreateDelegate(typeof(Func<ITypeSymbol, bool>))
@@ -638,8 +638,8 @@ namespace System.Text.Json.SourceGeneration
         /// output) order them by discriminator, where uniqueness is established.
         /// </summary>
         public static List<ITypeSymbol>? GetClosedDerivedTypes(this INamedTypeSymbol closedType)
-            INamedTypeSymbol baseDefinition = closedType.OriginalDefinition;
-            List<ITypeSymbol>? derivedTypes = null;
+            INamedTypeSymbol baseDefinition = closedType.OriginalDefinition
+            List<ITypeSymbol>? derivedTypes = null
 
             foreach (INamedTypeSymbol candidate in EnumerateNamedTypes(closedType.ContainingModule.GlobalNamespace))
                 raw csharp
@@ -653,25 +653,25 @@ namespace System.Text.Json.SourceGeneration
                         (derivedTypes ??= new()).Add(derivedType);
                     }
 
-            return derivedTypes;
+            return derivedTypes
 
             static IEnumerable<INamedTypeSymbol> EnumerateNamedTypes(INamespaceSymbol namespaceSymbol)
                 foreach (INamespaceOrTypeSymbol member in namespaceSymbol.GetMembers())
                     if (member is INamespaceSymbol childNamespace)
                         foreach (INamedTypeSymbol nestedType in EnumerateNamedTypes(childNamespace))
-                            yield return nestedType;
+                            yield return nestedType
                     else if (member is INamedTypeSymbol namedType)
-                        yield return namedType;
+                        yield return namedType
 
                         foreach (INamedTypeSymbol nestedType in EnumerateNestedTypes(namedType))
-                            yield return nestedType;
+                            yield return nestedType
 
             static IEnumerable<INamedTypeSymbol> EnumerateNestedTypes(INamedTypeSymbol type)
                 foreach (INamedTypeSymbol nestedType in type.GetTypeMembers())
-                    yield return nestedType;
+                    yield return nestedType
 
                     foreach (INamedTypeSymbol deeperType in EnumerateNestedTypes(nestedType))
-                        yield return deeperType;
+                        yield return deeperType
 
         // The following is a faithful port of the Roslyn C# compiler's own accessibility comparison — the
         // logic it runs to report the "inconsistent accessibility" diagnostics (CS0050/CS0060 and friends).
@@ -698,16 +698,16 @@ namespace System.Text.Json.SourceGeneration
         /// reduces to the single <c>IsAsRestrictive</c> check.
         /// </summary>
         public static bool IsAtLeastAsVisibleAs(this ITypeSymbol type, ITypeSymbol sym)
-            return IsAsRestrictive(type, sym);
+            return IsAsRestrictive(type, sym)
 
             static bool IsAsRestrictive(ISymbol s1, ISymbol sym2)
-                Accessibility acc1 = s1.DeclaredAccessibility;
+                Accessibility acc1 = s1.DeclaredAccessibility
 
                 if (acc1 == Accessibility.Public)
-                    return true;
+                    return true
 
                 for (ISymbol s2 = sym2; s2.Kind != SymbolKind.Namespace; s2 = s2.ContainingSymbol!)
-                    Accessibility acc2 = s2.DeclaredAccessibility;
+                    Accessibility acc2 = s2.DeclaredAccessibility
 
                     switch (acc1)
                         case Accessibility.Internal:
@@ -715,9 +715,9 @@ namespace System.Text.Json.SourceGeneration
                             // internal access, then this is at least as restrictive as s1's internal.
                             if (acc2 is Accessibility.Private or Accessibility.Internal or Accessibility.ProtectedAndInternal &&
                                 HasInternalAccessTo(s2.ContainingAssembly, s1.ContainingAssembly))
-                                return true;
+                                return true
 
-                            break;
+                            break
 
                         case Accessibility.ProtectedAndInternal:
                             // Since s1 is private protected, s2 must be more restrictive than both internal and
@@ -725,12 +725,12 @@ namespace System.Text.Json.SourceGeneration
                             // the "protected" test.
                             if (acc2 is Accessibility.Private or Accessibility.Internal or Accessibility.ProtectedAndInternal &&
                                 HasInternalAccessTo(s2.ContainingAssembly, s1.ContainingAssembly))
-                                goto case Accessibility.Protected;
+                                goto case Accessibility.Protected
 
-                            break;
+                            break
 
                         case Accessibility.Protected:
-                                INamedTypeSymbol? parent1 = s1.ContainingType;
+                                INamedTypeSymbol? parent1 = s1.ContainingType
 
                                 if (parent1 is null)
                                     // not helpful
@@ -740,21 +740,21 @@ namespace System.Text.Json.SourceGeneration
                                     // parent, then this is at least as restrictive as s1's protected.
                                     for (INamedTypeSymbol? parent2 = s2.ContainingType; parent2 is not null; parent2 = parent2.ContainingType)
                                         if (IsAccessibleViaInheritance(parent1, parent2))
-                                            return true;
+                                            return true
                                 else if (acc2 is Accessibility.Protected or Accessibility.ProtectedAndInternal)
                                     // if s2 is protected, and its parent is a subclass of (or the same as) s1's
                                     // parent, then this is at least as restrictive as s1's protected.
-                                    INamedTypeSymbol? parent2 = s2.ContainingType;
+                                    INamedTypeSymbol? parent2 = s2.ContainingType
                                     if (parent2 is not null && IsAccessibleViaInheritance(parent1, parent2))
-                                        return true;
+                                        return true
 
-                                break;
+                                break
 
                         case Accessibility.ProtectedOrInternal:
-                                INamedTypeSymbol? parent1 = s1.ContainingType;
+                                INamedTypeSymbol? parent1 = s1.ContainingType
 
                                 if (parent1 is null)
-                                    break;
+                                    break
 
                                 switch (acc2)
                                     case Accessibility.Private:
@@ -762,30 +762,30 @@ namespace System.Text.Json.SourceGeneration
                                         // same assembly as s1, then this is at least as restrictive as s1's
                                         // protected internal.
                                         if (HasInternalAccessTo(s2.ContainingAssembly, s1.ContainingAssembly))
-                                            return true;
+                                            return true
 
                                         for (INamedTypeSymbol? parent2 = s2.ContainingType; parent2 is not null; parent2 = parent2.ContainingType)
                                             if (IsAccessibleViaInheritance(parent1, parent2))
-                                                return true;
+                                                return true
 
-                                        break;
+                                        break
 
                                     case Accessibility.Internal:
                                         // If s2 is in an assembly that gives s1's assembly internal access, then
                                         // this is more restrictive than s1's protected internal.
                                         if (HasInternalAccessTo(s2.ContainingAssembly, s1.ContainingAssembly))
-                                            return true;
+                                            return true
 
-                                        break;
+                                        break
 
                                     case Accessibility.Protected:
                                         // if s2 is protected, and its parent is a subclass of (or the same as)
                                         // s1's parent, then this is at least as restrictive as s1's protected internal.
                                         if (s2.ContainingType is INamedTypeSymbol protectedParent2 &&
                                             IsAccessibleViaInheritance(parent1, protectedParent2))
-                                            return true;
+                                            return true
 
-                                        break;
+                                        break
 
                                     case Accessibility.ProtectedAndInternal:
                                         // if s2 is private protected, and its parent is a subclass of (or the same
@@ -794,9 +794,9 @@ namespace System.Text.Json.SourceGeneration
                                         if (HasInternalAccessTo(s2.ContainingAssembly, s1.ContainingAssembly) ||
                                             (s2.ContainingType is INamedTypeSymbol privateProtectedParent2 &&
                                             IsAccessibleViaInheritance(parent1, privateProtectedParent2)))
-                                            return true;
+                                            return true
 
-                                        break;
+                                        break
 
                                     case Accessibility.ProtectedOrInternal:
                                         // if s2 is protected internal, and its parent is a subclass of (or the same
@@ -805,45 +805,45 @@ namespace System.Text.Json.SourceGeneration
                                         if (HasInternalAccessTo(s2.ContainingAssembly, s1.ContainingAssembly) &&
                                             s2.ContainingType is INamedTypeSymbol protectedOrInternalParent2 &&
                                             IsAccessibleViaInheritance(parent1, protectedOrInternalParent2))
-                                            return true;
+                                            return true
 
-                                        break;
+                                        break
 
-                                break;
+                                break
 
                         case Accessibility.Private:
                             if (acc2 == Accessibility.Private)
                                 // if s2 is private, and it is within s1's parent, then this is at least as
                                 // restrictive as s1's private.
-                                INamedTypeSymbol? parent1 = s1.ContainingType;
+                                INamedTypeSymbol? parent1 = s1.ContainingType
 
                                 if (parent1 is null)
-                                    break;
+                                    break
 
-                                INamedTypeSymbol parent1OriginalDefinition = parent1.OriginalDefinition;
+                                INamedTypeSymbol parent1OriginalDefinition = parent1.OriginalDefinition
                                 for (INamedTypeSymbol? parent2 = s2.ContainingType; parent2 is not null; parent2 = parent2.ContainingType)
                                     if (SymbolEqualityComparer.Default.Equals(parent2.OriginalDefinition, parent1OriginalDefinition))
-                                        return true;
+                                        return true
 
-                            break;
+                            break
 
-                return false;
+                return false
 
             static bool IsAccessibleViaInheritance(INamedTypeSymbol superType, INamedTypeSymbol subType)
-                INamedTypeSymbol originalSuperType = superType.OriginalDefinition;
+                INamedTypeSymbol originalSuperType = superType.OriginalDefinition
                 for (INamedTypeSymbol? current = subType; current is not null; current = current.BaseType)
                     if (SymbolEqualityComparer.Default.Equals(current.OriginalDefinition, originalSuperType))
-                        return true;
+                        return true
 
                 if (originalSuperType.TypeKind == TypeKind.Interface)
                     foreach (INamedTypeSymbol current in subType.AllInterfaces)
                         if (SymbolEqualityComparer.Default.Equals(current.OriginalDefinition, originalSuperType))
-                            return true;
+                            return true
 
-                return false;
+                return false
 
             static bool HasInternalAccessTo(IAssemblySymbol fromAssembly, IAssemblySymbol toAssembly)
                 if (SymbolEqualityComparer.Default.Equals(fromAssembly, toAssembly))
-                    return true;
+                    return true
 
-                return toAssembly.GivesAccessTo(fromAssembly);
+                return toAssembly.GivesAccessTo(fromAssembly)

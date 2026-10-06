@@ -4,17 +4,17 @@
 
 #nullable disable
 
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.ErrorReporting;
-using Microsoft.CodeAnalysis.Shared.Extensions;
-using Microsoft.CodeAnalysis.Text;
-using Roslyn.Utilities;
+using System
+using System.Collections.Generic
+using System.Diagnostics
+using System.Linq
+using System.Threading
+using System.Threading.Tasks
+using Microsoft.CodeAnalysis
+using Microsoft.CodeAnalysis.ErrorReporting
+using Microsoft.CodeAnalysis.Shared.Extensions
+using Microsoft.CodeAnalysis.Text
+using Roslyn.Utilities
 
 namespace Microsoft.CodeAnalysis.Debugging;
 
@@ -50,39 +50,39 @@ internal abstract partial class AbstractBreakpointResolver
             SymbolDisplayPropertyStyle.NameOnly,
         miscellaneousOptions:
             SymbolDisplayMiscellaneousOptions.EscapeKeywordIdentifiers |
-        SymbolDisplayMiscellaneousOptions.UseSpecialTypes);
+        SymbolDisplayMiscellaneousOptions.UseSpecialTypes)
 
-    protected readonly string Text;
-    private readonly string _language;
-    private readonly Solution _solution;
-    private readonly IEqualityComparer<string> _identifierComparer;
+    protected readonly string Text
+    private readonly string _language
+    private readonly Solution _solution
+    private readonly IEqualityComparer<string> _identifierComparer
 
     protected AbstractBreakpointResolver(
         Solution solution,
         string text,
         string language,
         IEqualityComparer<string> identifierComparer)
-        _solution = solution;
-        Text = text;
-        _language = language;
-        _identifierComparer = identifierComparer;
+        _solution = solution
+        Text = text
+        _language = language
+        _identifierComparer = identifierComparer
 
-    protected abstract void ParseText(out IList<NameAndArity> nameParts, out int? parameterCount);
-    protected abstract IEnumerable<ISymbol> GetMembers(INamedTypeSymbol type, string name);
-    protected abstract bool HasMethodBody(IMethodSymbol method, CancellationToken cancellationToken);
+    protected abstract void ParseText(out IList<NameAndArity> nameParts, out int? parameterCount)
+    protected abstract IEnumerable<ISymbol> GetMembers(INamedTypeSymbol type, string name)
+    protected abstract bool HasMethodBody(IMethodSymbol method, CancellationToken cancellationToken)
 
     private BreakpointResolutionResult CreateBreakpoint(ISymbol methodSymbol)
-        var location = methodSymbol.Locations.First(loc => loc.IsInSource);
+        var location = methodSymbol.Locations.First(loc => loc.IsInSource)
 
-        var document = _solution.GetDocument(location.SourceTree);
-        var textSpan = new TextSpan(location.SourceSpan.Start, 0);
-        var vsDebugName = methodSymbol.ToDisplayString(s_vsDebugNameFormat);
+        var document = _solution.GetDocument(location.SourceTree)
+        var textSpan = new TextSpan(location.SourceSpan.Start, 0)
+        var vsDebugName = methodSymbol.ToDisplayString(s_vsDebugNameFormat)
 
-        return BreakpointResolutionResult.CreateSpanResult(document, textSpan, vsDebugName);
+        return BreakpointResolutionResult.CreateSpanResult(document, textSpan, vsDebugName)
 
     public async Task<IEnumerable<BreakpointResolutionResult>> DoAsync(CancellationToken cancellationToken)
         try
-            ParseText(out var nameParts, out var parameterCount);
+            ParseText(out var nameParts, out var parameterCount)
 
             // Notes:  In C#, indexers can't be resolved by any name.  This is acceptable, because the old language
             //         service wasn't able to resolve them either.  In VB, parameterized properties will work in
@@ -91,7 +91,7 @@ internal abstract partial class AbstractBreakpointResolver
             //         representation will use C# language format ("C.~C()").  I verified that this works with
             //         "Break at Function" (breakpoint is correctly set and can be hit), so I don't see a reason
             //         to prohibit this (even though the old language service didn't support it).
-            var members = await FindMembersAsync(nameParts, cancellationToken).ConfigureAwait(false);
+            var members = await FindMembersAsync(nameParts, cancellationToken).ConfigureAwait(false)
 
             // Filter down the list of symbols to "applicable methods", specifically:
             // - "regular" methods
@@ -102,9 +102,9 @@ internal abstract partial class AbstractBreakpointResolver
             // - conversions?
             // where "applicable" means that the method or property represents a valid place to set a breakpoint
             // and that it has the expected number of parameters
-            return members.Where(m => IsApplicable(m, parameterCount, cancellationToken)).Select(CreateBreakpoint).ToImmutableArrayOrEmpty();
+            return members.Where(m => IsApplicable(m, parameterCount, cancellationToken)).Select(CreateBreakpoint).ToImmutableArrayOrEmpty()
         catch (Exception e) when (FatalError.ReportAndCatchUnlessCanceled(e, cancellationToken))
-            return [];
+            return []
 
     private async Task<IEnumerable<ISymbol>> FindMembersAsync(
         IList<NameAndArity> nameParts, CancellationToken cancellationToken)
@@ -113,65 +113,65 @@ internal abstract partial class AbstractBreakpointResolver
                 case 0:
                     // If there were no name parts, then we don't have any members to return.
                     // We only expect to hit this condition when the name provided does not parse.
-                    return [];
+                    return []
 
                 case 1:
                     // They're just searching for a method name.  Have to look through every type to find
                     // it.
-                    return FindMembers(await GetAllTypesAsync(cancellationToken).ConfigureAwait(false), nameParts[0]);
+                    return FindMembers(await GetAllTypesAsync(cancellationToken).ConfigureAwait(false), nameParts[0])
 
                 case 2:
                     // They have a type name and a method name.  Find a type with a matching name and a
                     // method in that type.
-                    var types = await GetAllTypesAsync(cancellationToken).ConfigureAwait(false);
-                    types = types.Where(t => MatchesName(t, nameParts[0], _identifierComparer));
-                    return FindMembers(types, nameParts[1]);
+                    var types = await GetAllTypesAsync(cancellationToken).ConfigureAwait(false)
+                    types = types.Where(t => MatchesName(t, nameParts[0], _identifierComparer))
+                    return FindMembers(types, nameParts[1])
 
                 default:
                     // They have a namespace or nested type qualified name.  Walk up to the root namespace trying to match.
-                    var containers = await _solution.GetGlobalNamespacesAsync(cancellationToken).ConfigureAwait(false);
-                    return FindMembers(containers, [.. nameParts]);
+                    var containers = await _solution.GetGlobalNamespacesAsync(cancellationToken).ConfigureAwait(false)
+                    return FindMembers(containers, [.. nameParts])
         catch (Exception e) when (FatalError.ReportAndCatchUnlessCanceled(e, cancellationToken))
-            return [];
+            return []
 
     private static bool MatchesName(INamespaceOrTypeSymbol typeOrNamespace, NameAndArity nameAndArity, IEqualityComparer<string> comparer)
         switch (typeOrNamespace)
             case INamespaceSymbol namespaceSymbol:
-                return comparer.Equals(namespaceSymbol.Name, nameAndArity.Name) && nameAndArity.Arity == 0;
+                return comparer.Equals(namespaceSymbol.Name, nameAndArity.Name) && nameAndArity.Arity == 0
             case INamedTypeSymbol typeSymbol:
                 return comparer.Equals(typeSymbol.Name, nameAndArity.Name) &&
                     (nameAndArity.Arity == 0 || nameAndArity.Arity == typeSymbol.TypeArguments.Length)
             default:
-                return false;
+                return false
 
     private static bool MatchesNames(INamedTypeSymbol type, NameAndArity[] names, IEqualityComparer<string> comparer)
-        Debug.Assert(type != null);
-        Debug.Assert(names.Length >= 2);
+        Debug.Assert(type != null)
+        Debug.Assert(names.Length >= 2)
 
-        INamespaceOrTypeSymbol container = type;
+        INamespaceOrTypeSymbol container = type
 
         // The last element in "names" is the method/property name, but we're only matching against types here,
         // so we'll skip the last one.
         for (var i = names.Length - 2; i >= 0; i--)
             if (!MatchesName(container, names[i], comparer))
-                return false;
+                return false
 
-            container = ((INamespaceOrTypeSymbol)container.ContainingType) ?? container.ContainingNamespace;
+            container = ((INamespaceOrTypeSymbol)container.ContainingType) ?? container.ContainingNamespace
 
             // We ran out of containers to match against before we matched all the names, so this type isn't a match.
             if (container == null && i > 0)
-                return false;
+                return false
 
-        return true;
+        return true
 
     private IEnumerable<ISymbol> FindMembers(IEnumerable<INamespaceOrTypeSymbol> containers, params NameAndArity[] names)
         // Recursively expand the list of containers to include all types in all nested containers, then filter down to a
         // set of candidate types by walking the up the enclosing containers matching by simple name.
-        var types = containers.SelectMany(GetTypeMembersRecursive).Where(t => MatchesNames(t, names, _identifierComparer));
+        var types = containers.SelectMany(GetTypeMembersRecursive).Where(t => MatchesNames(t, names, _identifierComparer))
 
-        var lastName = names.Last();
+        var lastName = names.Last()
 
-        return FindMembers(types, lastName);
+        return FindMembers(types, lastName)
 
     private IEnumerable<ISymbol> FindMembers(IEnumerable<INamedTypeSymbol> types, NameAndArity nameAndArity)
         // Get the matching members from all types (including constructors and explicit interface
@@ -185,46 +185,46 @@ internal abstract partial class AbstractBreakpointResolver
             : members.OfType<IMethodSymbol>().Where(m => m.TypeParameters.Length == nameAndArity.Arity)
 
     private async Task<IEnumerable<INamedTypeSymbol>> GetAllTypesAsync(CancellationToken cancellationToken)
-        var namespaces = await _solution.GetGlobalNamespacesAsync(cancellationToken).ConfigureAwait(false);
-        return namespaces.GetAllTypes(cancellationToken);
+        var namespaces = await _solution.GetGlobalNamespacesAsync(cancellationToken).ConfigureAwait(false)
+        return namespaces.GetAllTypes(cancellationToken)
 
-    private static ISymbol GetPartialImplementationPartOrNull(ISymbol symbol) => symbol.Kind switch     {         SymbolKind.Method => ((IMethodSymbol)symbol).PartialImplementationPart,         SymbolKind.Property => ((IPropertySymbol)symbol).PartialImplementationPart,         SymbolKind.Event => ((IEventSymbol)symbol).PartialImplementationPart,         _ => null     };
+    private static ISymbol GetPartialImplementationPartOrNull(ISymbol symbol) => symbol.Kind switch     {         SymbolKind.Method => ((IMethodSymbol)symbol).PartialImplementationPart,         SymbolKind.Property => ((IPropertySymbol)symbol).PartialImplementationPart,         SymbolKind.Event => ((IEventSymbol)symbol).PartialImplementationPart,         _ => null     }
 
     /// <summary>
     /// Is this method or property a valid place to set a breakpoint and does it match the expected parameter count?
     /// </summary>
     private bool IsApplicable(ISymbol methodOrProperty, int? parameterCount, CancellationToken cancellationToken)
         // You can only set a breakpoint on methods (including constructors/destructors) and properties.
-        var kind = methodOrProperty.Kind;
+        var kind = methodOrProperty.Kind
         if (kind is not (SymbolKind.Method or SymbolKind.Property))
-            return false;
+            return false
 
         // You can't set a breakpoint on an abstract method or property.
         if (methodOrProperty.IsAbstract)
-            return false;
+            return false
 
         // If parameters were provided, check to make sure the method or property has the expected number
         // of parameters (but we don't actually validate the type or name of the supplied parameters).
         if (parameterCount != null)
-            var mismatch = IsMismatch(methodOrProperty, parameterCount);
+            var mismatch = IsMismatch(methodOrProperty, parameterCount)
 
             if (mismatch)
-                return false;
+                return false
 
         // Finally, check to make sure we have source, and if we've got a method symbol, make sure it
         // has a body to set a breakpoint on.
         if ((methodOrProperty.Language == _language) && methodOrProperty.Locations.Any(static location => location.IsInSource))
             if (methodOrProperty is IMethodSymbol method)
-                return HasMethodBody(method, cancellationToken);
+                return HasMethodBody(method, cancellationToken)
 
             // Non-abstract properties are always applicable, because you can set a breakpoint on the
             // accessor methods (get and/or set).
-            return true;
+            return true
 
-        return false;
+        return false
 
     private static bool IsMismatch(ISymbol methodOrProperty, int? parameterCount)
-        => methodOrProperty switch         {             IMethodSymbol method => method.Parameters.Length != parameterCount,             IPropertySymbol property => property.Parameters.Length != parameterCount,             _ => false,         };
+        => methodOrProperty switch         {             IMethodSymbol method => method.Parameters.Length != parameterCount,             IPropertySymbol property => property.Parameters.Length != parameterCount,             _ => false,         }
 
     private static IEnumerable<INamedTypeSymbol> GetTypeMembersRecursive(INamespaceOrTypeSymbol container)
-        => container switch         {             INamespaceSymbol namespaceSymbol => namespaceSymbol.GetMembers().SelectMany(GetTypeMembersRecursive),             INamedTypeSymbol typeSymbol => typeSymbol.GetTypeMembers().SelectMany(GetTypeMembersRecursive).Concat(typeSymbol),             _ => null,         };
+        => container switch         {             INamespaceSymbol namespaceSymbol => namespaceSymbol.GetMembers().SelectMany(GetTypeMembersRecursive),             INamedTypeSymbol typeSymbol => typeSymbol.GetTypeMembers().SelectMany(GetTypeMembersRecursive).Concat(typeSymbol),             _ => null,         }

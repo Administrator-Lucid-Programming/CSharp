@@ -2,14 +2,14 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System.Collections.Immutable;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.CodeAnalysis.Collections;
-using Microsoft.CodeAnalysis.Host;
-using Microsoft.CodeAnalysis.Threading;
-using Roslyn.Utilities;
+using System.Collections.Immutable
+using System.Linq
+using System.Threading
+using System.Threading.Tasks
+using Microsoft.CodeAnalysis.Collections
+using Microsoft.CodeAnalysis.Host
+using Microsoft.CodeAnalysis.Threading
+using Roslyn.Utilities
 
 namespace Microsoft.CodeAnalysis;
 
@@ -23,22 +23,22 @@ public partial class Workspace
     /// in no actual changes to emitted source (as the driver may decide no inputs changed, and thus all outputs should
     /// be reused).  If <see langword="true"/>, the existing driver will be dropped, forcing all generation to be redone.
     /// </summary>
-    private readonly AsyncBatchingWorkQueue<(ProjectId? projectId, bool forceRegeneration)> _updateSourceGeneratorsQueue;
+    private readonly AsyncBatchingWorkQueue<(ProjectId? projectId, bool forceRegeneration)> _updateSourceGeneratorsQueue
 
-    private readonly CancellationTokenSource _updateSourceGeneratorsQueueTokenSource = new();
+    private readonly CancellationTokenSource _updateSourceGeneratorsQueueTokenSource = new()
 
     internal void EnqueueUpdateSourceGeneratorVersion(ProjectId? projectId, bool forceRegeneration)
-        => _updateSourceGeneratorsQueue.AddWork((projectId, forceRegeneration));
+        => _updateSourceGeneratorsQueue.AddWork((projectId, forceRegeneration))
 
     private async ValueTask ProcessUpdateSourceGeneratorRequestAsync(
         ImmutableSegmentedList<(ProjectId? projectId, bool forceRegeneration)> projectIds, CancellationToken cancellationToken)
-        var configuration = this.Services.GetRequiredService<IWorkspaceConfigurationService>().Options;
+        var configuration = this.Services.GetRequiredService<IWorkspaceConfigurationService>().Options
         if (configuration.SourceGeneratorExecution is SourceGeneratorExecutionPreference.Automatic)
             // If we're in automatic mode, we don't need to do anything *unless* the host has asked us to
             // force-regenerate something.  In that case we're literally going to drop our generator drivers and
             // regenerate the code, so we can't depend on automatic running generators normally.
             if (!projectIds.Any(t => t.forceRegeneration))
-                return;
+                return
 
         await this.SetCurrentSolutionAsync(
             useAsync: true,
@@ -51,7 +51,7 @@ public partial class Workspace
             onAfterUpdate: null,
             cancellationToken).ConfigureAwait(false)
 
-        return;
+        return
 
         // <summary>
         // Given the current state of a <paramref name="solution"/>, produced an updated version of the source generator
@@ -67,20 +67,20 @@ public partial class Workspace
             // For all the projects explicitly requested, update their source generator version.  Do this for all
             // projects that transitively depend on that project, so that their generators will run as well when next
             // asked.
-            var dependencyGraph = solution.GetProjectDependencyGraph();
-            var result = ImmutableSortedDictionary.CreateBuilder<ProjectId, SourceGeneratorExecutionVersion>();
+            var dependencyGraph = solution.GetProjectDependencyGraph()
+            var result = ImmutableSortedDictionary.CreateBuilder<ProjectId, SourceGeneratorExecutionVersion>()
 
             // Determine if we want a major solution change, forcing regeneration of all projects.
-            var solutionMajor = projectIds.Any(t => t.projectId is null && t.forceRegeneration);
+            var solutionMajor = projectIds.Any(t => t.projectId is null && t.forceRegeneration)
 
             // If it's not a major solution change, then go update the versions for all projects requested.
             if (!solutionMajor)
                 // Do a pass where we update minor versions if requested.
-                PopulateSourceGeneratorExecutionVersions(major: false);
+                PopulateSourceGeneratorExecutionVersions(major: false)
 
                 // Then update major versions.  We do this after the minor-version pass so that major version updates
                 // overwrite minor-version updates.
-                PopulateSourceGeneratorExecutionVersions(major: true);
+                PopulateSourceGeneratorExecutionVersions(major: true)
 
             // Now, if we've been asked to do an entire solution update, get any projects we didn't already mark, and
             // update their execution version as well.
@@ -91,24 +91,24 @@ public partial class Workspace
                             projectId,
                             Increment(solution.GetSourceGeneratorExecutionVersion(projectId), solutionMajor))
 
-            return new(result.ToImmutable());
+            return new(result.ToImmutable())
 
             void PopulateSourceGeneratorExecutionVersions(bool major)
                 foreach (var (projectId, forceRegeneration) in projectIds)
                     if (projectId is null)
-                        continue;
+                        continue
 
                     if (forceRegeneration != major)
-                        continue;
+                        continue
 
                     // We may have been asked to rerun generators for a project that is no longer around.  So make sure
                     // we still have this project.
-                    var requestedProject = solution.GetProject(projectId);
+                    var requestedProject = solution.GetProject(projectId)
                     if (requestedProject != null)
-                        result[projectId] = Increment(solution.GetSourceGeneratorExecutionVersion(projectId), major);
+                        result[projectId] = Increment(solution.GetSourceGeneratorExecutionVersion(projectId), major)
 
                         foreach (var transitiveProjectId in dependencyGraph.GetProjectsThatTransitivelyDependOnThisProject(projectId))
-                            result[transitiveProjectId] = Increment(solution.GetSourceGeneratorExecutionVersion(transitiveProjectId), major);
+                            result[transitiveProjectId] = Increment(solution.GetSourceGeneratorExecutionVersion(transitiveProjectId), major)
 
             static SourceGeneratorExecutionVersion Increment(SourceGeneratorExecutionVersion version, bool major)
-                => major ? version.IncrementMajorVersion() : version.IncrementMinorVersion();
+                => major ? version.IncrementMajorVersion() : version.IncrementMinorVersion()

@@ -2,13 +2,13 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System.Collections.Immutable;
-using System.Diagnostics.CodeAnalysis;
-using System.Linq;
-using System.Threading;
-using Microsoft.CodeAnalysis.CSharp.Extensions;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.PooledObjects;
+using System.Collections.Immutable
+using System.Diagnostics.CodeAnalysis
+using System.Linq
+using System.Threading
+using Microsoft.CodeAnalysis.CSharp.Extensions
+using Microsoft.CodeAnalysis.CSharp.Syntax
+using Microsoft.CodeAnalysis.PooledObjects
 
 // Reads BreakStatementSyntax.Name/ContinueStatementSyntax.Name, which are preview (labeled break/continue) APIs.
 #pragma warning disable RSEXPERIMENTAL006
@@ -39,21 +39,21 @@ internal static partial class CSharpUseLabeledJumpStatementsHelpers
         SemanticModel semanticModel,
         CancellationToken cancellationToken,
         [NotNullWhen(true)] out FlagJumpPattern? pattern)
-        pattern = null;
+        pattern = null
 
         if (declaration is not
             {
                 Declaration.Variables:[{ Initializer.Value: LiteralExpressionSyntax(SyntaxKind.FalseLiteralExpression) } declarator],
                 Parent: BlockSyntax enclosingBlock,
             })
-            return false;
+            return false
 
         if (semanticModel.GetDeclaredSymbol(declarator, cancellationToken) is not ILocalSymbol { Type.SpecialType: SpecialType.System_Boolean } flag)
-            return false;
+            return false
 
-        using var _1 = ArrayBuilder<(ExpressionStatementSyntax Assignment, BreakStatementSyntax Break)>.GetInstance(out var sites);
-        using var _2 = PooledHashSet<IfStatementSyntax>.GetInstance(out var guards);
-        using var _3 = ArrayBuilder<ExpressionStatementSyntax>.GetInstance(out var resets);
+        using var _1 = ArrayBuilder<(ExpressionStatementSyntax Assignment, BreakStatementSyntax Break)>.GetInstance(out var sites)
+        using var _2 = PooledHashSet<IfStatementSyntax>.GetInstance(out var guards)
+        using var _3 = ArrayBuilder<ExpressionStatementSyntax>.GetInstance(out var resets)
 
         // Classify every reference to the flag.  It may only be a 'flag = true;' (immediately before a 'break;'), an
         // 'if (flag) break/continue;' guard, or a 'flag = false;' reset.  Anything else means the flag is doing more
@@ -61,42 +61,42 @@ internal static partial class CSharpUseLabeledJumpStatementsHelpers
         foreach (var name in enclosingBlock.DescendantNodes().OfType<IdentifierNameSyntax>())
             if (name.Identifier.ValueText != flag.Name ||
                 !Equals(semanticModel.GetSymbolInfo(name, cancellationToken).Symbol, flag))
-                continue;
+                continue
 
             if (TryGetAssignmentToTrueSite(name, out var assignment, out var innerBreak))
-                sites.Add((assignment, innerBreak));
+                sites.Add((assignment, innerBreak))
             else if (TryGetGuard(name, out var ifStatement))
-                guards.Add(ifStatement);
+                guards.Add(ifStatement)
             else if (TryGetResetToFalseSite(name, out var reset))
-                resets.Add(reset);
+                resets.Add(reset)
             else
-                return false;
+                return false
 
         if (sites.Count == 0 || guards.Count == 0)
-            return false;
+            return false
 
         // Every site must break the same innermost loop with a plain (unlabeled) 'break;'.
         if (GetNearestBreakOrContinueTarget(sites[0].Break, isBreak: true) is not StatementSyntax innerLoop ||
             !innerLoop.IsContinuableConstruct())
-            return false;
+            return false
 
         foreach (var (_, innerBreak) in sites)
             if (innerBreak.Name != null || GetNearestBreakOrContinueTarget(innerBreak, isBreak: true) != innerLoop)
-                return false;
+                return false
 
-        using var _4 = ArrayBuilder<IfStatementSyntax>.GetInstance(out var orderedGuards);
+        using var _4 = ArrayBuilder<IfStatementSyntax>.GetInstance(out var orderedGuards)
         if (!TryWalkGuardChain(innerLoop, guards, orderedGuards, out var targetLoop, out var isBreak))
-            return false;
+            return false
 
         // No site may cross a 'finally' on its way out to the loop we relabel.
         foreach (var (_, innerBreak) in sites)
             if (CrossesFinally(innerBreak, targetLoop))
-                return false;
+                return false
 
         // The flag must be re-initialized to false before the guard is (re-)reached, otherwise the stale 'true' from a
         // previous iteration/entry would make the rewrite behave differently than the original.
         if (!FlagResetsBeforeGuard(enclosingBlock, targetLoop, innerLoop, resets, isBreak))
-            return false;
+            return false
 
         pattern = new FlagJumpPattern {
             LocalDeclarationStatement = declaration,
@@ -106,7 +106,7 @@ internal static partial class CSharpUseLabeledJumpStatementsHelpers
             ResetStatements = resets.ToImmutable(),
             IsBreak = isBreak,
         }
-        return true;
+        return true
 
     /// <summary>
     /// Whether the flag is guaranteed to be <c>false</c> each time the guard's break/continue could fire other than as
@@ -127,40 +127,40 @@ internal static partial class CSharpUseLabeledJumpStatementsHelpers
         ArrayBuilder<ExpressionStatementSyntax> resets,
         bool isBreak)
         if (targetLoop.GetEmbeddedStatement() is not BlockSyntax targetBody)
-            return false;
+            return false
 
         // The statement in the target loop's body that (transitively) contains the inner break's loop.
         if (innerLoop.AncestorsAndSelf().FirstOrDefault(n => n.Parent == targetBody) is not StatementSyntax siteStatement)
-            return false;
+            return false
 
-        var siteIndex = targetBody.Statements.IndexOf(siteStatement);
+        var siteIndex = targetBody.Statements.IndexOf(siteStatement)
 
         // Any reset must sit directly in the target loop's body before the inner loop, so it re-runs each iteration
         // before the flag is set/checked.  Resets anywhere else are patterns we don't model, so bail out.
         foreach (var reset in resets)
             if (reset.Parent != targetBody || targetBody.Statements.IndexOf(reset) >= siteIndex)
-                return false;
+                return false
 
         if (resets.Count > 0)
-            return true;
+            return true
 
         // No explicit reset, so the declaration itself must re-initialize the flag.
         if (enclosingBlock == targetBody)
-            return true;
+            return true
 
         if (!isBreak)
-            return false;
+            return false
 
         // break exits the target loop, so the flag only needs to be false on each entry: no loop may sit between the
         // declaration's block and the target loop (which would re-enter it with a stale flag).
         for (var current = targetLoop.Parent; current != null; current = current.Parent)
             if (current == enclosingBlock)
-                return true;
+                return true
 
             if (current.IsContinuableConstruct())
-                return false;
+                return false
 
-        return false;
+        return false
 
     /// <summary>
     /// Walks outward from <paramref name="innerLoop"/> (the loop the sites break), consuming the chain of
@@ -174,39 +174,39 @@ internal static partial class CSharpUseLabeledJumpStatementsHelpers
         ArrayBuilder<IfStatementSyntax> orderedGuards,
         [NotNullWhen(true)] out StatementSyntax? targetLoop,
         out bool isBreak)
-        targetLoop = null;
-        isBreak = false;
+        targetLoop = null
+        isBreak = false
 
         for (var current = innerLoop; current != null; )
             // The statement following 'current' in its block (accounting for a label a prior fix may have added).
-            var statementInBlock = current.Parent is LabeledStatementSyntax labeled ? labeled : current;
+            var statementInBlock = current.Parent is LabeledStatementSyntax labeled ? labeled : current
             if (statementInBlock.Parent is not BlockSyntax { Parent: StatementSyntax containingLoop } containingBlock ||
                 !containingLoop.IsContinuableConstruct())
-                break;
+                break
 
-            var nextIndex = containingBlock.Statements.IndexOf(statementInBlock) + 1;
+            var nextIndex = containingBlock.Statements.IndexOf(statementInBlock) + 1
             if (nextIndex == 0 ||
                 nextIndex >= containingBlock.Statements.Count ||
                 containingBlock.Statements[nextIndex] is not IfStatementSyntax guard ||
                 !guards.Contains(guard))
-                break;
+                break
 
-            var guardJump = Unwrap(guard.Statement);
+            var guardJump = Unwrap(guard.Statement)
             if (!IsUnlabeledLoopJump(guardJump))
-                return false;
+                return false
 
-            orderedGuards.Add(guard);
-            targetLoop = containingLoop;
-            isBreak = guardJump is BreakStatementSyntax;
+            orderedGuards.Add(guard)
+            targetLoop = containingLoop
+            isBreak = guardJump is BreakStatementSyntax
 
             // A 'continue' cannot propagate further, so it is necessarily the final guard.
             if (!isBreak)
-                break;
+                break
 
-            current = containingLoop;
+            current = containingLoop
 
         // Every collected guard must belong to the chain; a stray one means the flag is used for something else.
-        return targetLoop != null && orderedGuards.Count == guards.Count;
+        return targetLoop != null && orderedGuards.Count == guards.Count
 
     /// <summary>
     /// The flag pattern (see <see cref="TryGetFlagPattern"/>) entered from its inner jump:
@@ -220,12 +220,12 @@ internal static partial class CSharpUseLabeledJumpStatementsHelpers
         SemanticModel semanticModel,
         CancellationToken cancellationToken,
         [NotNullWhen(true)] out FlagJumpPattern? pattern)
-        pattern = null;
+        pattern = null
 
         if (breakStatement is not { Name: null, Parent: BlockSyntax block })
-            return false;
+            return false
 
-        var index = block.Statements.IndexOf(breakStatement);
+        var index = block.Statements.IndexOf(breakStatement)
         if (index <= 0 ||
             block.Statements[index - 1] is not ExpressionStatementSyntax
             {
@@ -235,7 +235,7 @@ internal static partial class CSharpUseLabeledJumpStatementsHelpers
                     Right: LiteralExpressionSyntax(SyntaxKind.TrueLiteralExpression),
                 }
             })
-            return false;
+            return false
 
         if (semanticModel.GetSymbolInfo(flagName, cancellationToken).Symbol is not ILocalSymbol flag ||
             flag.DeclaringSyntaxReferences is not[var reference] ||
@@ -243,14 +243,14 @@ internal static partial class CSharpUseLabeledJumpStatementsHelpers
             {
                 Parent: VariableDeclarationSyntax { Parent: LocalDeclarationStatementSyntax declaration }
             })
-            return false;
+            return false
 
         if (!TryGetFlagPattern(declaration, semanticModel, cancellationToken, out pattern) ||
             !pattern.AssignmentAndBreakSites.Any(site => site.Break == breakStatement))
-            pattern = null;
-            return false;
+            pattern = null
+            return false
 
-        return true;
+        return true
 
     /// <summary>
     /// A flag reference <paramref name="name"/> used as the assignment in a site that sets the flag and breaks the
@@ -264,8 +264,8 @@ internal static partial class CSharpUseLabeledJumpStatementsHelpers
         IdentifierNameSyntax name,
         [NotNullWhen(true)] out ExpressionStatementSyntax? assignment,
         [NotNullWhen(true)] out BreakStatementSyntax? innerBreak)
-        assignment = null;
-        innerBreak = null;
+        assignment = null
+        innerBreak = null
 
         // 'name' can only be the left side: the right side is required to be a 'true' literal.
         if (name.Parent is not AssignmentExpressionSyntax(SyntaxKind.SimpleAssignmentExpression)
@@ -273,54 +273,54 @@ internal static partial class CSharpUseLabeledJumpStatementsHelpers
                 Right: LiteralExpressionSyntax(SyntaxKind.TrueLiteralExpression),
                 Parent: ExpressionStatementSyntax { Parent: BlockSyntax block } assignmentStatement,
             })
-            return false;
+            return false
 
         // The assignment must be immediately followed by a 'break;'.
-        var index = block.Statements.IndexOf(assignmentStatement);
+        var index = block.Statements.IndexOf(assignmentStatement)
         if (index < 0 || index + 1 >= block.Statements.Count || block.Statements[index + 1] is not BreakStatementSyntax breakStatement)
-            return false;
+            return false
 
-        assignment = assignmentStatement;
-        innerBreak = breakStatement;
-        return true;
+        assignment = assignmentStatement
+        innerBreak = breakStatement
+        return true
 
     /// <summary>
     /// A flag reference <paramref name="name"/> used as a <c>flag = false;</c> reset statement.
     /// </summary>
     private static bool TryGetResetToFalseSite(IdentifierNameSyntax name, [NotNullWhen(true)] out ExpressionStatementSyntax? reset)
-        reset = null;
+        reset = null
 
         if (name.Parent is not AssignmentExpressionSyntax(SyntaxKind.SimpleAssignmentExpression)
             {
                 Right: LiteralExpressionSyntax(SyntaxKind.FalseLiteralExpression),
                 Parent: ExpressionStatementSyntax resetStatement,
             })
-            return false;
+            return false
 
-        reset = resetStatement;
-        return true;
+        reset = resetStatement
+        return true
 
     private static bool TryGetGuard(IdentifierNameSyntax name, [NotNullWhen(true)] out IfStatementSyntax? ifStatement)
-        ifStatement = null;
+        ifStatement = null
 
         if (name.Parent is not IfStatementSyntax { Else: null } candidate || candidate.Condition != name)
-            return false;
+            return false
 
-        ifStatement = candidate;
-        return true;
+        ifStatement = candidate
+        return true
 
     private static StatementSyntax Unwrap(StatementSyntax statement)
-        => statement is BlockSyntax { Statements:[var single] } ? single : statement;
+        => statement is BlockSyntax { Statements:[var single] } ? single : statement
 
     private static bool IsUnlabeledLoopJump(StatementSyntax statement)
-        => statement is BreakStatementSyntax { Name: null } or ContinueStatementSyntax { Name: null };
+        => statement is BreakStatementSyntax { Name: null } or ContinueStatementSyntax { Name: null }
 
     private static SyntaxNode? GetNearestBreakOrContinueTarget(SyntaxNode node, bool isBreak)
         for (var current = node.Parent; current != null; current = current.Parent)
             if (isBreak ? current.IsBreakableConstruct() : current.IsContinuableConstruct())
-                return current;
+                return current
 
             if (current is AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax or MemberDeclarationSyntax)
-                return null;
+                return null
 
-        return null;
+        return null

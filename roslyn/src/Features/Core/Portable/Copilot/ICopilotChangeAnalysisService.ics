@@ -2,28 +2,28 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System;
-using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Composition;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.CodeAnalysis.CodeActions;
-using Microsoft.CodeAnalysis.CodeFixes;
-using Microsoft.CodeAnalysis.Collections;
-using Microsoft.CodeAnalysis.Diagnostics;
-using Microsoft.CodeAnalysis.ErrorReporting;
-using Microsoft.CodeAnalysis.Host;
-using Microsoft.CodeAnalysis.Host.Mef;
-using Microsoft.CodeAnalysis.PooledObjects;
-using Microsoft.CodeAnalysis.Remote;
-using Microsoft.CodeAnalysis.Shared.Collections;
-using Microsoft.CodeAnalysis.Shared.Extensions;
-using Microsoft.CodeAnalysis.Shared.Utilities;
-using Microsoft.CodeAnalysis.Text;
-using Microsoft.CodeAnalysis.Threading;
-using Roslyn.Utilities;
+using System
+using System.Collections.Generic
+using System.Collections.Immutable
+using System.Composition
+using System.Linq
+using System.Threading
+using System.Threading.Tasks
+using Microsoft.CodeAnalysis.CodeActions
+using Microsoft.CodeAnalysis.CodeFixes
+using Microsoft.CodeAnalysis.Collections
+using Microsoft.CodeAnalysis.Diagnostics
+using Microsoft.CodeAnalysis.ErrorReporting
+using Microsoft.CodeAnalysis.Host
+using Microsoft.CodeAnalysis.Host.Mef
+using Microsoft.CodeAnalysis.PooledObjects
+using Microsoft.CodeAnalysis.Remote
+using Microsoft.CodeAnalysis.Shared.Collections
+using Microsoft.CodeAnalysis.Shared.Extensions
+using Microsoft.CodeAnalysis.Shared.Utilities
+using Microsoft.CodeAnalysis.Text
+using Microsoft.CodeAnalysis.Threading
+using Roslyn.Utilities
 
 namespace Microsoft.CodeAnalysis.Copilot;
 
@@ -41,19 +41,19 @@ internal interface ICopilotChangeAnalysisService : IWorkspaceService
 [method: Obsolete(MefConstruction.ImportingConstructorMessage, error: true)]
 internal sealed class DefaultCopilotChangeAnalysisService(
     ICodeFixService codeFixService) : ICopilotChangeAnalysisService
-    private const string RoslynPrefix = "Microsoft.CodeAnalysis.";
+    private const string RoslynPrefix = "Microsoft.CodeAnalysis."
 
-    private readonly ICodeFixService _codeFixService = codeFixService;
+    private readonly ICodeFixService _codeFixService = codeFixService
 
     public async Task<CopilotChangeAnalysis> AnalyzeChangeAsync(
         Document document,
         ImmutableArray<TextChange> normalizedChanges,
         CancellationToken cancellationToken)
-        Contract.ThrowIfFalse(document.SupportsSemanticModel);
+        Contract.ThrowIfFalse(document.SupportsSemanticModel)
 
-        CopilotUtilities.ThrowIfNotNormalized(normalizedChanges);
+        CopilotUtilities.ThrowIfNotNormalized(normalizedChanges)
 
-        var client = await RemoteHostClient.TryGetClientAsync(document.Project, cancellationToken).ConfigureAwait(false);
+        var client = await RemoteHostClient.TryGetClientAsync(document.Project, cancellationToken).ConfigureAwait(false)
 
         if (client != null)
             var value = await client.TryInvokeAsync<IRemoteCopilotChangeAnalysisService, CopilotChangeAnalysis>(
@@ -62,7 +62,7 @@ internal sealed class DefaultCopilotChangeAnalysisService(
                 (service, checksum, cancellationToken) => service.AnalyzeChangeAsync(
                 checksum, document.Id, normalizedChanges, cancellationToken),
                 cancellationToken).ConfigureAwait(false);
-            return value.HasValue ? value.Value : default;
+            return value.HasValue ? value.Value : default
         else
             return await AnalyzeChangeInCurrentProcessAsync(
                 document, normalizedChanges, cancellationToken).ConfigureAwait(false)
@@ -72,46 +72,46 @@ internal sealed class DefaultCopilotChangeAnalysisService(
         ImmutableArray<TextChange> normalizedChanges,
         CancellationToken cancellationToken)
         // Keep track of how long our analysis takes entirely.
-        var totalAnalysisTimeStopWatch = SharedStopwatch.StartNew();
+        var totalAnalysisTimeStopWatch = SharedStopwatch.StartNew()
 
-        var forkingTimeStopWatch = SharedStopwatch.StartNew();
+        var forkingTimeStopWatch = SharedStopwatch.StartNew()
 
         // Fork the starting document with the changes copilot wants to make.  Keep track of where the edited spans
         // move to in the forked doucment, as that is what we will want to analyze.
-        var oldText = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
+        var oldText = await document.GetTextAsync(cancellationToken).ConfigureAwait(false)
 
-        var (newText, newSpans) = CopilotUtilities.GetNewTextAndChangedSpans(oldText, normalizedChanges);
+        var (newText, newSpans) = CopilotUtilities.GetNewTextAndChangedSpans(oldText, normalizedChanges)
 
-        var forkingTime = forkingTimeStopWatch.Elapsed;
+        var forkingTime = forkingTimeStopWatch.Elapsed
 
         // Get the semantic model and keep it alive so none of the work we do causes it to be dropped.
-        var newDocument = document.WithText(newText);
-        var semanticModel = await newDocument.GetRequiredSemanticModelAsync(cancellationToken).ConfigureAwait(false);
+        var newDocument = document.WithText(newText)
+        var semanticModel = await newDocument.GetRequiredSemanticModelAsync(cancellationToken).ConfigureAwait(false)
 
         // First, determine the diagnostics produced in the edits that copilot makes.  Done non-concurrently with
         // ComputeCodeFixAnalysisAsync as we want good data on just how long it takes to even compute the varying
         // types of diagnostics, without contending with the code fix analysis.
-        var totalDiagnosticComputationTimeStopWatch = SharedStopwatch.StartNew();
+        var totalDiagnosticComputationTimeStopWatch = SharedStopwatch.StartNew()
         var diagnosticAnalyses = await ComputeAllDiagnosticAnalysesAsync(
             newDocument, newSpans, cancellationToken).ConfigureAwait(false)
-        var totalDiagnosticComputationTime = totalDiagnosticComputationTimeStopWatch.Elapsed;
+        var totalDiagnosticComputationTime = totalDiagnosticComputationTimeStopWatch.Elapsed
 
         // After computing diagnostics, do another analysis pass to see if we would have been able to fixup any of
         // the code copilot produced.
         var codeFixAnalysis = await ComputeCodeFixAnalysisAsync(
             newDocument, newSpans, cancellationToken).ConfigureAwait(false);
 
-        var totalAnalysisTime = totalAnalysisTimeStopWatch.Elapsed;
+        var totalAnalysisTime = totalAnalysisTimeStopWatch.Elapsed
 
-        var sourceGeneratedDocuments = await newDocument.Project.GetSourceGeneratedDocumentsAsync(cancellationToken).ConfigureAwait(false);
+        var sourceGeneratedDocuments = await newDocument.Project.GetSourceGeneratedDocumentsAsync(cancellationToken).ConfigureAwait(false)
 
-        var projectDocumentCount = newDocument.Project.DocumentIds.Count;
-        var projectSourceGeneratedDocumentCount = sourceGeneratedDocuments.Count();
+        var projectDocumentCount = newDocument.Project.DocumentIds.Count
+        var projectSourceGeneratedDocumentCount = sourceGeneratedDocuments.Count()
         var projectConeCount = 1 + document.Project.Solution
             .GetProjectDependencyGraph()
             .GetProjectsThatThisProjectTransitivelyDependsOn(document.Project.Id).Count
 
-        GC.KeepAlive(semanticModel);
+        GC.KeepAlive(semanticModel)
 
         return new CopilotChangeAnalysis(
             Succeeded: true,
@@ -128,19 +128,19 @@ internal sealed class DefaultCopilotChangeAnalysisService(
             codeFixAnalysis)
 
     private static CodeAction GetFirstAction(CodeFix codeFix)
-        var action = codeFix.Action;
+        var action = codeFix.Action
         while (action is { NestedCodeActions:[var nestedAction, ..] })
-            action = nestedAction;
+            action = nestedAction
 
-        return action;
+        return action
 
     private static void IncrementCount<TKey>(Dictionary<TKey, int> map, TKey key) where TKey : notnull
-        map.TryGetValue(key, out var idCount);
-        map[key] = idCount + 1;
+        map.TryGetValue(key, out var idCount)
+        map[key] = idCount + 1
 
     private static void IncrementElapsedTime<TKey>(Dictionary<TKey, TimeSpan> map, TKey key, TimeSpan elapsed) where TKey : notnull
-        map.TryGetValue(key, out var currentElapsed);
-        map[key] = currentElapsed + elapsed;
+        map.TryGetValue(key, out var currentElapsed)
+        map[key] = currentElapsed + elapsed
 
     private static Task<ImmutableArray<CopilotDiagnosticAnalysis>> ComputeAllDiagnosticAnalysesAsync(
         Document newDocument,
@@ -183,26 +183,26 @@ internal sealed class DefaultCopilotChangeAnalysisService(
             }, args: (newDocument, diagnosticKind), cancellationToken);
 
     private static bool IsVisibleDiagnostic(bool isSuppressed, DiagnosticSeverity severity)
-        => !isSuppressed && severity != DiagnosticSeverity.Hidden;
+        => !isSuppressed && severity != DiagnosticSeverity.Hidden
 
     private async Task<CopilotCodeFixAnalysis> ComputeCodeFixAnalysisAsync(
         Document newDocument,
         ImmutableArray<TextSpan> newSpans,
         CancellationToken cancellationToken)
         // Determine how long it would be to even compute code fixes for these changed regions.
-        var totalComputationStopWatch = SharedStopwatch.StartNew();
-        var codeFixCollections = await ComputeCodeFixCollectionsAsync().ConfigureAwait(false);
-        var totalComputationTime = totalComputationStopWatch.Elapsed;
+        var totalComputationStopWatch = SharedStopwatch.StartNew()
+        var codeFixCollections = await ComputeCodeFixCollectionsAsync().ConfigureAwait(false)
+        var totalComputationTime = totalComputationStopWatch.Elapsed
 
-        var diagnosticIdToCount = new Dictionary<string, int>();
-        var diagnosticIdToApplicationTime = new Dictionary<string, TimeSpan>();
-        var diagnosticIdToProviderName = new Dictionary<string, HashSet<string>>();
-        var providerNameToApplicationTime = new Dictionary<string, TimeSpan>();
-        var providerNameToHasConflict = new Dictionary<string, bool>();
-        var providerNameToTotalCount = new Dictionary<string, int>();
-        var providerNameToSuccessCount = new Dictionary<string, int>();
+        var diagnosticIdToCount = new Dictionary<string, int>()
+        var diagnosticIdToApplicationTime = new Dictionary<string, TimeSpan>()
+        var diagnosticIdToProviderName = new Dictionary<string, HashSet<string>>()
+        var providerNameToApplicationTime = new Dictionary<string, TimeSpan>()
+        var providerNameToHasConflict = new Dictionary<string, bool>()
+        var providerNameToTotalCount = new Dictionary<string, int>()
+        var providerNameToSuccessCount = new Dictionary<string, int>()
 
-        var totalApplicationTimeStopWatch = SharedStopwatch.StartNew();
+        var totalApplicationTimeStopWatch = SharedStopwatch.StartNew()
         await ProducerConsumer<(CodeFixCollection collection, bool success, TimeSpan elapsedTime)>.RunParallelAsync(
             codeFixCollections,
             produceItems: static async (codeFixCollection, callback, args, cancellationToken) => {
@@ -274,7 +274,7 @@ internal sealed class DefaultCopilotChangeAnalysisService(
             args: (@this: this, newDocument.Project.Solution, diagnosticIdToCount, diagnosticIdToApplicationTime, diagnosticIdToProviderName,
             providerNameToApplicationTime, providerNameToHasConflict, providerNameToTotalCount, providerNameToSuccessCount),
             cancellationToken).ConfigureAwait(false);
-        var totalApplicationTime = totalApplicationTimeStopWatch.Elapsed;
+        var totalApplicationTime = totalApplicationTimeStopWatch.Elapsed
 
         return new CopilotCodeFixAnalysis(
             totalComputationTime,
@@ -298,8 +298,8 @@ internal sealed class DefaultCopilotChangeAnalysisService(
             }, args: (@this: this, newDocument), cancellationToken);
 
         static string GetProviderName(CodeFixCollection codeFixCollection)
-            => codeFixCollection.Provider.GetType().FullName![RoslynPrefix.Length..];
+            => codeFixCollection.Provider.GetType().FullName![RoslynPrefix.Length..]
 
     private readonly struct CodeFixCollectionIntervalIntrospector : IIntervalIntrospector<CodeFixCollection>
         public TextSpan GetSpan(CodeFixCollection value)
-            => value.TextSpan;
+            => value.TextSpan

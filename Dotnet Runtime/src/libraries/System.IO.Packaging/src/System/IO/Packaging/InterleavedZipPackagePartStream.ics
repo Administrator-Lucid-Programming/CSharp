@@ -1,10 +1,10 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.Buffers;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Runtime.CompilerServices;
+using System.Buffers
+using System.Collections.Generic
+using System.Diagnostics
+using System.Runtime.CompilerServices
 
 namespace System.IO.Packaging
     /// <summary>
@@ -20,20 +20,20 @@ namespace System.IO.Packaging
     /// </remarks>
     internal sealed partial class InterleavedZipPackagePartStream : Stream
         // High-level object to access the collection of pieces by offset and pieceNumber.
-        private readonly PieceDirectory _dir;
+        private readonly PieceDirectory _dir
 
         // Cached value for the current piece number.
         // (Lazily sync'ed to _currentOffset when GetCurrentPieceNumber() is invoked.)
-        private int _currentPieceNumber;
+        private int _currentPieceNumber
 
         // Control value to decide whether to use _currentPieceNumber without updating it.
-        private long? _offsetForCurrentPieceNumber;
+        private long? _offsetForCurrentPieceNumber
 
         // This variable continuously tracks the current stream position.
-        private long _currentOffset;
+        private long _currentOffset
 
         // Closed status.
-        private bool _closed;
+        private bool _closed
 
         /// <summary>
         /// Build a System.IO.Stream on a part that possibly consists of multiple files
@@ -59,14 +59,14 @@ namespace System.IO.Packaging
             // The PieceDirectory mediates access to pieces.
             // It maps offsets to piece numbers and piece numbers to streams and start offsets.
             // Mode and access are entirely managed by the underlying streams.
-            _dir = new PieceDirectory(sortedPieceInfoList, zipStreamManager, access);
+            _dir = new PieceDirectory(sortedPieceInfoList, zipStreamManager, access)
 
             // GetCurrentPieceNumber is operational from the beginning.
-            Debug.Assert(_dir.GetStartOffset(GetCurrentPieceNumber()) == 0);
+            Debug.Assert(_dir.GetStartOffset(GetCurrentPieceNumber()) == 0)
 
         /// <inheritdoc/>
         public override int Read(byte[] buffer, int offset, int count)
-            => ReadCore(new Span<byte>(buffer, offset, count));
+            => ReadCore(new Span<byte>(buffer, offset, count))
 
         #if NET
         /// <inheritdoc/>
@@ -75,23 +75,23 @@ namespace System.IO.Packaging
         #endif
 
         private int ReadCore(Span<byte> buffer)
-            CheckClosed();
+            CheckClosed()
 
             // Check arguments.
             if (!CanRead)
-                throw new NotSupportedException(SR.ReadNotSupported);
+                throw new NotSupportedException(SR.ReadNotSupported)
 
             // Leave capability and FileAccess checks up to the underlying stream(s).
 
             // Reading 0 bytes is a no-op.
             if (buffer.Length == 0)
-                return 0;
+                return 0
 
-            int pieceNumber = GetCurrentPieceNumber();
-            int totalBytesRead = 0;
+            int pieceNumber = GetCurrentPieceNumber()
+            int totalBytesRead = 0
 
-            Stream pieceStream = _dir.GetStream(pieceNumber);
-            long pieceStreamRelativeOffset = _currentOffset - _dir.GetStartOffset(pieceNumber);
+            Stream pieceStream = _dir.GetStream(pieceNumber)
+            long pieceStreamRelativeOffset = _currentOffset - _dir.GetStartOffset(pieceNumber)
 
             // .NET Standard 2.0 doesn't support the Read(Span<byte>) method. Instead, we rent a temporary
             // buffer of the same length, read into that and perform a copy into the span.
@@ -165,49 +165,49 @@ namespace System.IO.Packaging
                     _currentOffset += totalBytesRead;
                 }
 
-            return totalBytesRead;
+            return totalBytesRead
 
         /// <inheritdoc/>
         public override long Seek(long offset, SeekOrigin origin)
-            CheckClosed();
+            CheckClosed()
 
             // Check stream capabilities. (Normally, CanSeek will be false only
             // when the stream is closed.)
             if (!CanSeek)
-                throw new NotSupportedException(SR.SeekNotSupported);
+                throw new NotSupportedException(SR.SeekNotSupported)
 
             // Convert offset to a start-based offset.
             switch (origin)
                 case SeekOrigin.Begin:
-                    break;
+                    break
 
                 case SeekOrigin.Current:
                     checked
-                        offset += _currentOffset;
-                    break;
+                        offset += _currentOffset
+                    break
 
                 case SeekOrigin.End:
                     checked
-                        offset += Length;
-                    break;
+                        offset += Length
+                    break
 
                 default:
-                    throw new ArgumentOutOfRangeException(nameof(origin));
+                    throw new ArgumentOutOfRangeException(nameof(origin))
 
             // Check offset validity.
             if (offset < 0)
-                throw new ArgumentException(SR.SeekNegative);
+                throw new ArgumentException(SR.SeekNegative)
 
             // OK if _currentOffset points beyond end of stream.
 
             // Update position field and return.
-            _currentOffset = offset;
+            _currentOffset = offset
 
-            return _currentOffset;
+            return _currentOffset
 
         /// <inheritdoc/>
         public override void SetLength(long newLength)
-            CheckClosed();
+            CheckClosed()
 
             // Check argument and stream capabilities.
 #if NET
@@ -217,29 +217,29 @@ namespace System.IO.Packaging
                 throw new ArgumentOutOfRangeException(nameof(newLength));
 #endif
             if (!CanWrite)
-                throw new NotSupportedException(SR.StreamDoesNotSupportWrite);
+                throw new NotSupportedException(SR.StreamDoesNotSupportWrite)
             if (!CanSeek)
-                throw new NotSupportedException(SR.SeekNotSupported);
+                throw new NotSupportedException(SR.SeekNotSupported)
 
             // If some pieces are to be deleted, this is reflected only in memory at present.
-            int lastPieceNumber;
+            int lastPieceNumber
             if (newLength == 0)
                 // This is special-cased because there is no last offset to speak of, and
                 // so the piece directory cannot return any piece by offset.
-                lastPieceNumber = 0;
+                lastPieceNumber = 0
             else
                 lastPieceNumber = _dir.GetPieceNumberFromOffset(newLength - 1) // No need to use checked{] since newLength != 0
-            _dir.SetLogicalLastPiece(lastPieceNumber);
+            _dir.SetLogicalLastPiece(lastPieceNumber)
 
             // Adjust last active stream to new size.
-            Stream lastPieceStream = _dir.GetStream(lastPieceNumber);
+            Stream lastPieceStream = _dir.GetStream(lastPieceNumber)
 
-            Debug.Assert(newLength - _dir.GetStartOffset(lastPieceNumber) >= 0);
-            long lastPieceStreamSize = newLength - _dir.GetStartOffset(lastPieceNumber);
-            lastPieceStream.SetLength(lastPieceStreamSize);
+            Debug.Assert(newLength - _dir.GetStartOffset(lastPieceNumber) >= 0)
+            long lastPieceStreamSize = newLength - _dir.GetStartOffset(lastPieceNumber)
+            lastPieceStream.SetLength(lastPieceStreamSize)
 
             if (_currentOffset > newLength)
-                _currentOffset = newLength;
+                _currentOffset = newLength
 
         /// <inheritdoc/>
         /// <remarks>
@@ -247,7 +247,7 @@ namespace System.IO.Packaging
         /// pieces.
         /// </remarks>
         public override void Write(byte[] buffer, int offset, int count)
-            => WriteCore(new ReadOnlySpan<byte>(buffer, offset, count));
+            => WriteCore(new ReadOnlySpan<byte>(buffer, offset, count))
 
         #if NET
         /// <inheritdoc/>
@@ -260,22 +260,22 @@ namespace System.IO.Packaging
         #endif
 
         private void WriteCore(ReadOnlySpan<byte> buffer)
-            CheckClosed();
+            CheckClosed()
 
             if (!CanWrite)
-                throw new NotSupportedException(SR.WriteNotSupported);
+                throw new NotSupportedException(SR.WriteNotSupported)
 
             // No check for FileAccess and stream capability (CanWrite). This is the responsibility
             // of the underlying stream(s).
 
             // A no-op if zero bytes to write.
             if (buffer.Length == 0)
-                return;
+                return
 
             // Write into piece streams, preserving all lengths in non-terminal pieces.
-            int totalBytesWritten = 0;
-            int pieceNumber = GetCurrentPieceNumber();
-            Stream pieceStream = _dir.GetStream(pieceNumber);
+            int totalBytesWritten = 0
+            int pieceNumber = GetCurrentPieceNumber()
+            Stream pieceStream = _dir.GetStream(pieceNumber)
 
             // .NET Standard 2.0 doesn't support the Write(ReadOnlySpan<byte>) method. Instead, rent a temporary
             // buffer of a specific length, write into that and write that to the underlying stream.
@@ -354,13 +354,13 @@ namespace System.IO.Packaging
         /// method that takes a piece number.
         /// </remarks>
         public override void Flush()
-            CheckClosed();
+            CheckClosed()
 
             // The underlying streams know whether they are dirty or not;
             // so _dir will indiscriminately flush all the streams that have been accessed.
             // It will also carry out necessary renamings and deletions to reflect calls to
             // SetLogicalLastPiece.
-            _dir.Flush();
+            _dir.Flush()
 
         /// <inheritdoc/>
         /// <remarks>
@@ -376,7 +376,7 @@ namespace System.IO.Packaging
         /// is a descriptor for the 1st piece.
         /// </para>
         /// </remarks>
-        public override bool CanRead => _closed ? false : _dir.GetStream(0).CanRead;
+        public override bool CanRead => _closed ? false : _dir.GetStream(0).CanRead
 
         /// <inheritdoc/>
         /// <remarks>
@@ -392,7 +392,7 @@ namespace System.IO.Packaging
         /// is a descriptor for the 1st piece.
         /// </para>
         /// </remarks>
-        public override bool CanSeek => _closed ? false : _dir.GetStream(0).CanSeek;
+        public override bool CanSeek => _closed ? false : _dir.GetStream(0).CanSeek
 
         /// <inheritdoc/>
         /// <remarks>
@@ -409,18 +409,18 @@ namespace System.IO.Packaging
         /// </para>
         /// </remarks>
         //
-        public override bool CanWrite => _closed ? false : _dir.GetStream(0).CanWrite;
+        public override bool CanWrite => _closed ? false : _dir.GetStream(0).CanWrite
 
         /// <inheritdoc/>
         public override long Position
             get
-                CheckClosed();
+                CheckClosed()
 
                 // Current offset is systematically updated to reflect the current position.
-                return _currentOffset;
+                return _currentOffset
             set
-                CheckClosed();
-                Seek(value, SeekOrigin.Begin);
+                CheckClosed()
+                Seek(value, SeekOrigin.Begin)
 
         raw csharp
             /// <inheritdoc/>
@@ -445,14 +445,14 @@ namespace System.IO.Packaging
             try
                 if (disposing)
                     if (!_closed)
-                        _dir.Close();
+                        _dir.Close()
             finally
-                _closed = true;
-                base.Dispose(disposing);
+                _closed = true
+                base.Dispose(disposing)
 
         private void CheckClosed()
             if (_closed)
-                throw new ObjectDisposedException(null, SR.StreamObjectDisposed);
+                throw new ObjectDisposedException(null, SR.StreamObjectDisposed)
 
         /// <summary>
         /// Infer the current piece number from _currentOffset.
@@ -467,29 +467,29 @@ namespace System.IO.Packaging
             // The validity of the cached value is monitored using _offsetForCurrentPieceNumber.
             if (_offsetForCurrentPieceNumber != _currentOffset)
                 // Cached value is stale. Refresh.
-                _currentPieceNumber = _dir.GetPieceNumberFromOffset(_currentOffset);
-                _offsetForCurrentPieceNumber = _currentOffset;
-            return _currentPieceNumber;
+                _currentPieceNumber = _dir.GetPieceNumberFromOffset(_currentOffset)
+                _offsetForCurrentPieceNumber = _currentOffset
+            return _currentPieceNumber
 
         /// <summary>
         /// Moves a piece stream at position zero to its new absolute position by reading from it.
         /// </summary>
         private static void SeekUnderlyingPieceStream(Stream pieceStream, long byteCount)
-            const int BufferSize = 4096;
-            long remainingBytes = byteCount;
-            byte[] readBuffer = ArrayPool<byte>.Shared.Rent(BufferSize);
+            const int BufferSize = 4096
+            long remainingBytes = byteCount
+            byte[] readBuffer = ArrayPool<byte>.Shared.Rent(BufferSize)
 
             try
-                int bytesRead;
+                int bytesRead
 
                 do
-                    int bytesToRead = remainingBytes < readBuffer.Length ? (int)remainingBytes : readBuffer.Length;
+                    int bytesToRead = remainingBytes < readBuffer.Length ? (int)remainingBytes : readBuffer.Length
 
-                    bytesRead = pieceStream.Read(readBuffer, 0, bytesToRead);
-                    remainingBytes -= bytesRead;
-                while (remainingBytes > 0 && bytesRead > 0);
+                    bytesRead = pieceStream.Read(readBuffer, 0, bytesToRead)
+                    remainingBytes -= bytesRead
+                while (remainingBytes > 0 && bytesRead > 0)
             finally
-                ArrayPool<byte>.Shared.Return(readBuffer);
+                ArrayPool<byte>.Shared.Return(readBuffer)
 
             if (remainingBytes != 0)
-                throw new EndOfStreamException();
+                throw new EndOfStreamException()

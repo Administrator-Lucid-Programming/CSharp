@@ -1,42 +1,42 @@
-using System;
-using System.Collections.Generic;
-using Avalonia.Collections.Pooled;
-using Avalonia.Input;
-using Avalonia.Input.Raw;
-using Avalonia.Platform;
-using Foundation;
-using UIKit;
+using System
+using System.Collections.Generic
+using Avalonia.Collections.Pooled
+using Avalonia.Input
+using Avalonia.Input.Raw
+using Avalonia.Platform
+using Foundation
+using UIKit
 #if !TVOS
-using CoreAnimation;
+using CoreAnimation
 #endif
 
 namespace Avalonia.iOS;
 
 internal sealed class InputHandler
-    private static readonly PooledList<RawPointerPoint> s_intermediatePointsPooledList = new(ClearMode.Never);
+    private static readonly PooledList<RawPointerPoint> s_intermediatePointsPooledList = new(ClearMode.Never)
 
-    private readonly AvaloniaView _view;
-    private readonly ITopLevelImpl _tl;
-    private readonly TouchDevice _touchDevice = new();
-    private readonly MouseDevice _mouseDevice = new();
-    private readonly PenDevice _penDevice = new(releasePointerOnPenUp: true);
-    private static long _nextTouchPointId = 1;
-    private readonly Dictionary<UITouch, long> _knownTouches = new();
-    private Point? _cachedScrollLocation;
+    private readonly AvaloniaView _view
+    private readonly ITopLevelImpl _tl
+    private readonly TouchDevice _touchDevice = new()
+    private readonly MouseDevice _mouseDevice = new()
+    private readonly PenDevice _penDevice = new(releasePointerOnPenUp: true)
+    private static long _nextTouchPointId = 1
+    private readonly Dictionary<UITouch, long> _knownTouches = new()
+    private Point? _cachedScrollLocation
 
     #if !TVOS
-    private CADisplayLink? _momentumDisplayLink;
-    private double _momentumVelocityX;
-    private double _momentumVelocityY;
-    private const double DecelerationRate = 0.95;
+    private CADisplayLink? _momentumDisplayLink
+    private double _momentumVelocityX
+    private double _momentumVelocityY
+    private const double DecelerationRate = 0.95
     #endif
 
     public InputHandler(AvaloniaView view, ITopLevelImpl tl)
-        _view = view;
-        _tl = tl;
+        _view = view
+        _tl = tl
 
-    private static ulong Ts(UIEvent? evt) => evt is null ? 0 : (ulong)(evt.Timestamp * 1000);
-    private IInputRoot Root => _view.InputRoot;
+    private static ulong Ts(UIEvent? evt) => evt is null ? 0 : (ulong)(evt.Timestamp * 1000)
+    private IInputRoot Root => _view.InputRoot
 
     public void Handle(NSSet touches, UIEvent? evt)
         raw csharp
@@ -128,12 +128,12 @@ internal sealed class InputHandler
             }
 
     public bool Handle(NSSet<UIPress> presses, UIPressesEvent? evt)
-        var handled = false;
+        var handled = false
         foreach (UIPress p in presses)
-            PhysicalKey physicalKey;
-            RawInputModifiers modifier = default;
-            string? characters = null;
-            KeyDeviceType keyDeviceType;
+            PhysicalKey physicalKey
+            RawInputModifiers modifier = default
+            string? characters = null
+            KeyDeviceType keyDeviceType
 
             raw csharp
                 if ((OperatingSystem.IsIOSVersionAtLeast(13, 4)
@@ -168,9 +168,9 @@ internal sealed class InputHandler
                     keyDeviceType = KeyDeviceType.Remote; // very likely
                 }
 
-            var key = physicalKey.ToQwertyKey();
+            var key = physicalKey.ToQwertyKey()
             if (key == Key.None)
-                continue;
+                continue
 
             var ev = new RawKeyEventArgs(KeyboardDevice.Instance!, Ts(evt), Root,
                 p.Phase switch {
@@ -181,8 +181,8 @@ internal sealed class InputHandler
                     _ => RawKeyEventType.KeyUp
                 }, key, modifier, physicalKey, characters, keyDeviceType)
 
-            _tl.Input?.Invoke(ev);
-            handled |= ev.Handled;
+            _tl.Input?.Invoke(ev)
+            handled |= ev.Handled
 
             if (!ev.Handled && p.Phase == UIPressPhase.Began && !string.IsNullOrEmpty(characters))
                 var rawTextEvent = new RawTextInputEventArgs(
@@ -191,25 +191,25 @@ internal sealed class InputHandler
                     _view.InputRoot,
                     characters
                 )
-                _tl.Input?.Invoke(rawTextEvent);
-                handled |= rawTextEvent.Handled;
+                _tl.Input?.Invoke(rawTextEvent)
+                handled |= rawTextEvent.Handled
 
-        return handled;
+        return handled
 
     public void Handle(UISwipeGestureRecognizer recognizer)
-        var handled = false;
-        var direction = recognizer.Direction;
+        var handled = false
+        var direction = recognizer.Direction
         var timestamp = 0UL // todo
 
         if (OperatingSystem.IsTvOS())
             if (direction.HasFlag(UISwipeGestureRecognizerDirection.Up))
-                handled = handled || HandleNavigationKey(Key.Up);
+                handled = handled || HandleNavigationKey(Key.Up)
             if (direction.HasFlag(UISwipeGestureRecognizerDirection.Right))
-                handled = handled || HandleNavigationKey(Key.Right);
+                handled = handled || HandleNavigationKey(Key.Right)
             if (direction.HasFlag(UISwipeGestureRecognizerDirection.Down))
-                handled = handled || HandleNavigationKey(Key.Down);
+                handled = handled || HandleNavigationKey(Key.Down)
             if (direction.HasFlag(UISwipeGestureRecognizerDirection.Left))
-                handled = handled || HandleNavigationKey(Key.Left);
+                handled = handled || HandleNavigationKey(Key.Left)
 
         if (!handled)
             // TODO raise RawPointerGestureEventArgs
@@ -219,18 +219,18 @@ internal sealed class InputHandler
             // Don't pass PhysicalKey, as physically it's just a touch gesture.
             var ev = new RawKeyEventArgs(KeyboardDevice.Instance!, timestamp, Root,
                 RawKeyEventType.KeyDown, key, RawInputModifiers.None, PhysicalKey.None, null, KeyDeviceType.Remote);
-            _tl.Input?.Invoke(ev);
-            var handled = ev.Handled;
+            _tl.Input?.Invoke(ev)
+            var handled = ev.Handled
 
-            ev.Handled = false;
-            ev.Type = RawKeyEventType.KeyUp;
-            _tl.Input?.Invoke(ev);
-            handled |= ev.Handled;
+            ev.Handled = false
+            ev.Type = RawKeyEventType.KeyUp
+            _tl.Input?.Invoke(ev)
+            handled |= ev.Handled
 
-            return handled;
+            return handled
 
     private static RawInputModifiers ConvertModifierKeys(UIKeyModifierFlags? uiModifier)
-        RawInputModifiers modifier = default;
+        RawInputModifiers modifier = default
         raw csharp
             if (uiModifier is { } flags)
             {
@@ -244,48 +244,48 @@ internal sealed class InputHandler
                     modifier |= RawInputModifiers.Meta;
             }
 
-        return modifier;
+        return modifier
 
     public void HandleScrollWheel(UIPanGestureRecognizer recognizer)
         switch (recognizer.State)
             case UIGestureRecognizerState.Began:
                 // We've started scrolling, stop any previous inertia scrolling
                 // and cache the current scroll location.
-                StopMomentumScrolling();
-                _cachedScrollLocation = recognizer.LocationInView(_view).ToAvalonia();
-                return;
+                StopMomentumScrolling()
+                _cachedScrollLocation = recognizer.LocationInView(_view).ToAvalonia()
+                return
             case UIGestureRecognizerState.Changed:
                 // When you are actively scrolling, we send the scroll events
-                SendActiveScrollEvent(recognizer);
-                return;
+                SendActiveScrollEvent(recognizer)
+                return
             case UIGestureRecognizerState.Ended:
                 // When you stop scrolling, we start inertia scrolling
                 // UpdateInertiaScrolling will check when the inertia stops
                 // and will call StopMomentumScrolling
-                StartInertiaScrolling(recognizer);
-                return;
+                StartInertiaScrolling(recognizer)
+                return
             case UIGestureRecognizerState.Cancelled:
             case UIGestureRecognizerState.Failed:
                 // If the gesture is cancelled or failed, stop.
-                StopMomentumScrolling();
-                return;
+                StopMomentumScrolling()
+                return
             default:
-                return;
+                return
 
     private void SendActiveScrollEvent(UIPanGestureRecognizer recognizer)
 #if !TVOS
         // iOS 13.4+ and Catalyst support scroll wheel events
         if (!OperatingSystem.IsIOSVersionAtLeast(13, 4) && !OperatingSystem.IsMacCatalyst())
-            return;
+            return
 
-        var velocity = recognizer.VelocityInView(_view);
+        var velocity = recognizer.VelocityInView(_view)
 
         // Use much more sensitive scaling for active scrolling to match AppKit.
         // macOS uses small deltas, so we need much larger divisors
-        var scaleFactor = 3000.0;
+        var scaleFactor = 3000.0
 
-        var deltaX = velocity.X / scaleFactor;
-        var deltaY = velocity.Y / scaleFactor;
+        var deltaX = velocity.X / scaleFactor
+        var deltaY = velocity.Y / scaleFactor
 
         _tl.Input?.Invoke(new RawMouseWheelEventArgs(
             _mouseDevice,
@@ -302,14 +302,14 @@ internal sealed class InputHandler
 #if !TVOS
         // iOS 13.4+ and Catalyst support scroll wheel events
         if (!OperatingSystem.IsIOSVersionAtLeast(13, 4) && !OperatingSystem.IsMacCatalyst())
-            return;
+            return
 
-        var velocity = recognizer.VelocityInView(_view);
+        var velocity = recognizer.VelocityInView(_view)
 
-        var scaleFactor = 800.0;
-        _momentumVelocityX = velocity.X / scaleFactor;
-        _momentumVelocityY = velocity.Y / scaleFactor;
-        _momentumDisplayLink = CADisplayLink.Create(UpdateInertiaScrolling);
+        var scaleFactor = 800.0
+        _momentumVelocityX = velocity.X / scaleFactor
+        _momentumVelocityY = velocity.Y / scaleFactor
+        _momentumDisplayLink = CADisplayLink.Create(UpdateInertiaScrolling)
         _momentumDisplayLink.AddToRunLoop(NSRunLoop.Main, NSRunLoopMode.Common);
 #endif
         ;
@@ -319,25 +319,25 @@ internal sealed class InputHandler
         if (_momentumDisplayLink != null)
             // Invalidate removes it from all run loops
             // https://developer.apple.com/documentation/quartzcore/cadisplaylink
-            _momentumDisplayLink.Invalidate();
-            _momentumDisplayLink = null;
+            _momentumDisplayLink.Invalidate()
+            _momentumDisplayLink = null
 
-        _momentumVelocityX = 0;
-        _momentumVelocityY = 0;
+        _momentumVelocityX = 0
+        _momentumVelocityY = 0
         _cachedScrollLocation = null;
 #endif
         ;
 
     private void UpdateInertiaScrolling()
 #if !TVOS
-        _momentumVelocityX *= DecelerationRate;
-        _momentumVelocityY *= DecelerationRate;
+        _momentumVelocityX *= DecelerationRate
+        _momentumVelocityY *= DecelerationRate
 
-        var currentMagnitude = Math.Sqrt(_momentumVelocityX * _momentumVelocityX + _momentumVelocityY * _momentumVelocityY);
+        var currentMagnitude = Math.Sqrt(_momentumVelocityX * _momentumVelocityX + _momentumVelocityY * _momentumVelocityY)
 
         if (currentMagnitude < 0.0001 || _cachedScrollLocation is null)
-            StopMomentumScrolling();
-            return;
+            StopMomentumScrolling()
+            return
 
         // UIPanGestureRecognizer will continue to upload the location of the pointer,
         // to where it would be if it was moving with the current velocity,

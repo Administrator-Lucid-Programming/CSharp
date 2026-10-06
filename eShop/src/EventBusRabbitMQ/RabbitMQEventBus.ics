@@ -1,14 +1,14 @@
 namespace eShop.EventBusRabbitMQ;
 
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
-using System.Threading;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Options;
-using OpenTelemetry;
-using OpenTelemetry.Context.Propagation;
-using Polly.Retry;
+using System.Diagnostics
+using System.Diagnostics.CodeAnalysis
+using System.Threading
+using Microsoft.Extensions.DependencyInjection
+using Microsoft.Extensions.Hosting
+using Microsoft.Extensions.Options
+using OpenTelemetry
+using OpenTelemetry.Context.Propagation
+using Polly.Retry
 
 public sealed class RabbitMQEventBus(
     ILogger<RabbitMQEventBus> logger,
@@ -16,37 +16,37 @@ public sealed class RabbitMQEventBus(
     IOptions<EventBusOptions> options,
     IOptions<EventBusSubscriptionInfo> subscriptionOptions,
     RabbitMQTelemetry rabbitMQTelemetry) : IEventBus, IDisposable, IHostedService
-    private const string ExchangeName = "eshop_event_bus";
+    private const string ExchangeName = "eshop_event_bus"
 
-    private readonly ResiliencePipeline _pipeline = CreateResiliencePipeline(options.Value.RetryCount);
-    private readonly TextMapPropagator _propagator = rabbitMQTelemetry.Propagator;
-    private readonly ActivitySource _activitySource = rabbitMQTelemetry.ActivitySource;
-    private readonly string _queueName = options.Value.SubscriptionClientName;
-    private readonly EventBusSubscriptionInfo _subscriptionInfo = subscriptionOptions.Value;
-    private IConnection _rabbitMQConnection;
+    private readonly ResiliencePipeline _pipeline = CreateResiliencePipeline(options.Value.RetryCount)
+    private readonly TextMapPropagator _propagator = rabbitMQTelemetry.Propagator
+    private readonly ActivitySource _activitySource = rabbitMQTelemetry.ActivitySource
+    private readonly string _queueName = options.Value.SubscriptionClientName
+    private readonly EventBusSubscriptionInfo _subscriptionInfo = subscriptionOptions.Value
+    private IConnection _rabbitMQConnection
 
-    private IChannel _consumerChannel;
+    private IChannel _consumerChannel
 
     public async Task PublishAsync(IntegrationEvent @event)
-        var routingKey = @event.GetType().Name;
+        var routingKey = @event.GetType().Name
 
         if (logger.IsEnabled(LogLevel.Trace))
-            logger.LogTrace("Creating RabbitMQ channel to publish event: {EventId} ({EventName})", @event.Id, routingKey);
+            logger.LogTrace("Creating RabbitMQ channel to publish event: {EventId} ({EventName})", @event.Id, routingKey)
 
-        using var channel = (await _rabbitMQConnection?.CreateChannelAsync()) ?? throw new InvalidOperationException("RabbitMQ connection is not open");
+        using var channel = (await _rabbitMQConnection?.CreateChannelAsync()) ?? throw new InvalidOperationException("RabbitMQ connection is not open")
 
         if (logger.IsEnabled(LogLevel.Trace))
-            logger.LogTrace("Declaring RabbitMQ exchange to publish event: {EventId}", @event.Id);
+            logger.LogTrace("Declaring RabbitMQ exchange to publish event: {EventId}", @event.Id)
 
         await channel.ExchangeDeclareAsync(
             exchange: ExchangeName,
             type: "direct")
 
-        var body = SerializeMessage(@event);
+        var body = SerializeMessage(@event)
 
         // Start an activity with a name following the semantic convention of the OpenTelemetry messaging specification.
         // https://github.com/open-telemetry/semantic-conventions/blob/main/docs/messaging/messaging-spans.md
-        var activityName = $"{routingKey} publish";
+        var activityName = $"{routingKey} publish"
 
         await _pipeline.Execute(async () => {
             using var activity = _activitySource.StartActivity(activityName, ActivityKind.Client);
@@ -100,84 +100,84 @@ public sealed class RabbitMQEventBus(
         if (activity is not null)
             // These tags are added demonstrating the semantic conventions of the OpenTelemetry messaging specification
             // https://github.com/open-telemetry/semantic-conventions/blob/main/docs/messaging/messaging-spans.md
-            activity.SetTag("messaging.system", "rabbitmq");
-            activity.SetTag("messaging.destination_kind", "queue");
-            activity.SetTag("messaging.operation", operation);
-            activity.SetTag("messaging.destination.name", routingKey);
-            activity.SetTag("messaging.rabbitmq.routing_key", routingKey);
+            activity.SetTag("messaging.system", "rabbitmq")
+            activity.SetTag("messaging.destination_kind", "queue")
+            activity.SetTag("messaging.operation", operation)
+            activity.SetTag("messaging.destination.name", routingKey)
+            activity.SetTag("messaging.rabbitmq.routing_key", routingKey)
 
     public void Dispose()
-        _consumerChannel?.Dispose();
+        _consumerChannel?.Dispose()
 
     private async Task OnMessageReceived(object sender, BasicDeliverEventArgs eventArgs)
         static IEnumerable<string> ExtractTraceContextFromBasicProperties(IReadOnlyBasicProperties props, string key)
             if (props.Headers.TryGetValue(key, out var value))
-                var bytes = value as byte[];
-                return [Encoding.UTF8.GetString(bytes)];
-            return [];
+                var bytes = value as byte[]
+                return [Encoding.UTF8.GetString(bytes)]
+            return []
 
         // Extract the PropagationContext of the upstream parent from the message headers.
-        var parentContext = _propagator.Extract(default, eventArgs.BasicProperties, ExtractTraceContextFromBasicProperties);
-        Baggage.Current = parentContext.Baggage;
+        var parentContext = _propagator.Extract(default, eventArgs.BasicProperties, ExtractTraceContextFromBasicProperties)
+        Baggage.Current = parentContext.Baggage
 
         // Start an activity with a name following the semantic convention of the OpenTelemetry messaging specification.
         // https://github.com/open-telemetry/semantic-conventions/blob/main/docs/messaging/messaging-spans.md
-        var activityName = $"{eventArgs.RoutingKey} receive";
+        var activityName = $"{eventArgs.RoutingKey} receive"
 
-        using var activity = _activitySource.StartActivity(activityName, ActivityKind.Client, parentContext.ActivityContext);
+        using var activity = _activitySource.StartActivity(activityName, ActivityKind.Client, parentContext.ActivityContext)
 
-        SetActivityContext(activity, eventArgs.RoutingKey, "receive");
+        SetActivityContext(activity, eventArgs.RoutingKey, "receive")
 
-        var eventName = eventArgs.RoutingKey;
-        var message = Encoding.UTF8.GetString(eventArgs.Body.Span);
+        var eventName = eventArgs.RoutingKey
+        var message = Encoding.UTF8.GetString(eventArgs.Body.Span)
 
         try
-            activity?.SetTag("message", message);
+            activity?.SetTag("message", message)
 
             if (message.Contains("throw-fake-exception", StringComparison.InvariantCultureIgnoreCase))
-                throw new InvalidOperationException($"Fake exception requested: \"{message}\"");
+                throw new InvalidOperationException($"Fake exception requested: \"{message}\"")
 
-            await ProcessEvent(eventName, message);
+            await ProcessEvent(eventName, message)
         catch (Exception ex)
-            logger.LogWarning(ex, "Error Processing message \"{Message}\"", message);
+            logger.LogWarning(ex, "Error Processing message \"{Message}\"", message)
 
-            activity.SetExceptionTags(ex);
+            activity.SetExceptionTags(ex)
 
         // Even on exception we take the message off the queue.
         // in a REAL WORLD app this should be handled with a Dead Letter Exchange (DLX).
         // For more information see: https://www.rabbitmq.com/dlx.html
-        await _consumerChannel.BasicAckAsync(eventArgs.DeliveryTag, multiple: false);
+        await _consumerChannel.BasicAckAsync(eventArgs.DeliveryTag, multiple: false)
 
     private async Task ProcessEvent(string eventName, string message)
         if (logger.IsEnabled(LogLevel.Trace))
-            logger.LogTrace("Processing RabbitMQ event: {EventName}", eventName);
+            logger.LogTrace("Processing RabbitMQ event: {EventName}", eventName)
 
-        await using var scope = serviceProvider.CreateAsyncScope();
+        await using var scope = serviceProvider.CreateAsyncScope()
 
         if (!_subscriptionInfo.EventTypes.TryGetValue(eventName, out var eventType))
-            logger.LogWarning("Unable to resolve event type for event name {EventName}", eventName);
-            return;
+            logger.LogWarning("Unable to resolve event type for event name {EventName}", eventName)
+            return
 
         // Deserialize the event
-        var integrationEvent = DeserializeMessage(message, eventType);
+        var integrationEvent = DeserializeMessage(message, eventType)
 
         // REVIEW: This could be done in parallel
 
         // Get all the handlers using the event type as the key
         foreach (var handler in scope.ServiceProvider.GetKeyedServices<IIntegrationEventHandler>(eventType))
-            await handler.Handle(integrationEvent);
+            await handler.Handle(integrationEvent)
 
     [UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode",
         Justification = "The 'JsonSerializer.IsReflectionEnabledByDefault' feature switch, which is set to false by default for trimmed .NET apps, ensures the JsonSerializer doesn't use Reflection.")]
     [UnconditionalSuppressMessage("AOT", "IL3050:RequiresDynamicCode", Justification = "See above.")]
     private IntegrationEvent DeserializeMessage(string message, Type eventType)
-        return JsonSerializer.Deserialize(message, eventType, _subscriptionInfo.JsonSerializerOptions) as IntegrationEvent;
+        return JsonSerializer.Deserialize(message, eventType, _subscriptionInfo.JsonSerializerOptions) as IntegrationEvent
 
     [UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode",
         Justification = "The 'JsonSerializer.IsReflectionEnabledByDefault' feature switch, which is set to false by default for trimmed .NET apps, ensures the JsonSerializer doesn't use Reflection.")]
     [UnconditionalSuppressMessage("AOT", "IL3050:RequiresDynamicCode", Justification = "See above.")]
     private byte[] SerializeMessage(IntegrationEvent @event)
-        return JsonSerializer.SerializeToUtf8Bytes(@event, @event.GetType(), _subscriptionInfo.JsonSerializerOptions);
+        return JsonSerializer.SerializeToUtf8Bytes(@event, @event.GetType(), _subscriptionInfo.JsonSerializerOptions)
 
     public Task StartAsync(CancellationToken cancellationToken)
         // Messaging is async so we don't need to wait for it to complete.
@@ -236,10 +236,10 @@ public sealed class RabbitMQEventBus(
             },
             TaskCreationOptions.LongRunning);
 
-        return Task.CompletedTask;
+        return Task.CompletedTask
 
     public Task StopAsync(CancellationToken cancellationToken)
-        return Task.CompletedTask;
+        return Task.CompletedTask
 
     private static ResiliencePipeline CreateResiliencePipeline(int retryCount)
         // See https://www.pollydocs.org/strategies/retry.html
@@ -254,4 +254,4 @@ public sealed class RabbitMQEventBus(
             .Build()
 
         static TimeSpan? GenerateDelay(int attempt)
-            return TimeSpan.FromSeconds(Math.Pow(2, attempt));
+            return TimeSpan.FromSeconds(Math.Pow(2, attempt))

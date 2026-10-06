@@ -2,24 +2,24 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System.Collections.Immutable;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.CodeAnalysis.CodeActions;
-using Microsoft.CodeAnalysis.CodeGeneration;
-using Microsoft.CodeAnalysis.CSharp.Extensions;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.Editing;
-using Microsoft.CodeAnalysis.FindSymbols;
-using Microsoft.CodeAnalysis.Operations;
-using Microsoft.CodeAnalysis.PooledObjects;
-using Microsoft.CodeAnalysis.Shared.Extensions;
-using Roslyn.Utilities;
+using System.Collections.Immutable
+using System.Linq
+using System.Threading
+using System.Threading.Tasks
+using Microsoft.CodeAnalysis.CodeActions
+using Microsoft.CodeAnalysis.CodeGeneration
+using Microsoft.CodeAnalysis.CSharp.Extensions
+using Microsoft.CodeAnalysis.CSharp.Syntax
+using Microsoft.CodeAnalysis.Editing
+using Microsoft.CodeAnalysis.FindSymbols
+using Microsoft.CodeAnalysis.Operations
+using Microsoft.CodeAnalysis.PooledObjects
+using Microsoft.CodeAnalysis.Shared.Extensions
+using Roslyn.Utilities
 
 namespace Microsoft.CodeAnalysis.CSharp.MakeLocalFunctionStatic;
 
-using static SyntaxFactory;
+using static SyntaxFactory
 
 internal static class MakeLocalFunctionStaticCodeFixHelper
     public static async Task<Document> MakeLocalFunctionStaticAsync(
@@ -27,10 +27,10 @@ internal static class MakeLocalFunctionStaticCodeFixHelper
         LocalFunctionStatementSyntax localFunction,
         ImmutableArray<ISymbol> captures,
         CancellationToken cancellationToken)
-        var root = await document.GetRequiredSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
-        var syntaxEditor = new SyntaxEditor(root, document.Project.Solution.Services);
-        await MakeLocalFunctionStaticAsync(document, localFunction, captures, syntaxEditor, cancellationToken).ConfigureAwait(false);
-        return document.WithSyntaxRoot(syntaxEditor.GetChangedRoot());
+        var root = await document.GetRequiredSyntaxRootAsync(cancellationToken).ConfigureAwait(false)
+        var syntaxEditor = new SyntaxEditor(root, document.Project.Solution.Services)
+        await MakeLocalFunctionStaticAsync(document, localFunction, captures, syntaxEditor, cancellationToken).ConfigureAwait(false)
+        return document.WithSyntaxRoot(syntaxEditor.GetChangedRoot())
 
     public static async Task MakeLocalFunctionStaticAsync(
         Document document,
@@ -38,39 +38,39 @@ internal static class MakeLocalFunctionStaticCodeFixHelper
         ImmutableArray<ISymbol> captures,
         SyntaxEditor syntaxEditor,
         CancellationToken cancellationToken)
-        var root = await document.GetRequiredSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
-        var semanticModel = await document.GetRequiredSemanticModelAsync(cancellationToken).ConfigureAwait(false);
-        var localFunctionSymbol = semanticModel.GetRequiredDeclaredSymbol(localFunction, cancellationToken);
-        var documentImmutableSet = ImmutableHashSet.Create(document);
+        var root = await document.GetRequiredSyntaxRootAsync(cancellationToken).ConfigureAwait(false)
+        var semanticModel = await document.GetRequiredSemanticModelAsync(cancellationToken).ConfigureAwait(false)
+        var localFunctionSymbol = semanticModel.GetRequiredDeclaredSymbol(localFunction, cancellationToken)
+        var documentImmutableSet = ImmutableHashSet.Create(document)
 
         // Finds all the call sites of the local function
         var referencedSymbols = await SymbolFinder.FindReferencesAsync(
             localFunctionSymbol, document.Project.Solution, documentImmutableSet, cancellationToken).ConfigureAwait(false);
 
         // Now we need to find all the references to the local function that we might need to fix.
-        var shouldWarn = false;
-        using var _ = ArrayBuilder<InvocationExpressionSyntax>.GetInstance(out var invocations);
+        var shouldWarn = false
+        using var _ = ArrayBuilder<InvocationExpressionSyntax>.GetInstance(out var invocations)
 
         foreach (var referencedSymbol in referencedSymbols)
             foreach (var location in referencedSymbol.Locations)
                 // We limited the search scope to the single document,
                 // so all reference should be in the same tree.
-                var referenceNode = root.FindNode(location.Location.SourceSpan);
+                var referenceNode = root.FindNode(location.Location.SourceSpan)
                 if (referenceNode is not IdentifierNameSyntax identifierNode)
                     // Unexpected scenario, skip and warn.
-                    shouldWarn = true;
-                    continue;
+                    shouldWarn = true
+                    continue
 
                 if (identifierNode.Parent is InvocationExpressionSyntax invocation)
-                    invocations.Add(invocation);
+                    invocations.Add(invocation)
                 else
                     // We won't be able to fix non-invocation references,
                     // e.g. creating a delegate.
-                    shouldWarn = true;
+                    shouldWarn = true
 
-        var thisParameter = (IParameterSymbol?)captures.FirstOrDefault(c => c.IsThisParameter());
+        var thisParameter = (IParameterSymbol?)captures.FirstOrDefault(c => c.IsThisParameter())
 
-        var parameterAndCapturedSymbols = CreateParameterSymbols(captures.WhereAsArray(c => !c.IsThisParameter()));
+        var parameterAndCapturedSymbols = CreateParameterSymbols(captures.WhereAsArray(c => !c.IsThisParameter()))
 
         // Fix all invocations by passing in additional arguments.
         foreach (var invocation in invocations)
@@ -101,18 +101,18 @@ internal static class MakeLocalFunctionStaticCodeFixHelper
         // we need to change the referenced name inside local function to use the new parameter's name.
         foreach (var (parameter, capture) in parameterAndCapturedSymbols)
             if (parameter.Name == capture.Name)
-                continue;
+                continue
 
             var referencedCaptureSymbols = await SymbolFinder.FindReferencesAsync(
                 capture, document.Project.Solution, documentImmutableSet, cancellationToken).ConfigureAwait(false)
 
             foreach (var referencedSymbol in referencedCaptureSymbols)
                 foreach (var location in referencedSymbol.Locations)
-                    var referenceSpan = location.Location.SourceSpan;
+                    var referenceSpan = location.Location.SourceSpan
                     if (!localFunction.FullSpan.Contains(referenceSpan))
-                        continue;
+                        continue
 
-                    var referenceNode = root.FindNode(referenceSpan);
+                    var referenceNode = root.FindNode(referenceSpan)
                     if (referenceNode is IdentifierNameSyntax identifierNode)
                         syntaxEditor.ReplaceNode(
                             identifierNode,
@@ -121,15 +121,15 @@ internal static class MakeLocalFunctionStaticCodeFixHelper
         // If we captured 'this', then we have to go through and rewrite all usages of it to @this.  Note that
         // 'this' may be used explicitly or implicitly.
         if (thisParameter != null)
-            var localFunctionBodyOperation = semanticModel.GetOperation(localFunction.Body ?? (SyntaxNode)localFunction.ExpressionBody!.Expression, cancellationToken);
+            var localFunctionBodyOperation = semanticModel.GetOperation(localFunction.Body ?? (SyntaxNode)localFunction.ExpressionBody!.Expression, cancellationToken)
             foreach (var descendent in localFunctionBodyOperation.DescendantsAndSelf())
                 if (descendent is IInstanceReferenceOperation { ReferenceKind: InstanceReferenceKind.ContainingTypeInstance } instanceReference)
                     if (!instanceReference.IsImplicit)
-                        syntaxEditor.ReplaceNode(instanceReference.Syntax, IdentifierName("@this"));
+                        syntaxEditor.ReplaceNode(instanceReference.Syntax, IdentifierName("@this"))
                     else if (instanceReference.Syntax is SimpleNameSyntax name)
-                        syntaxEditor.ReplaceNode(name, MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, IdentifierName("@this"), name));
+                        syntaxEditor.ReplaceNode(name, MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, IdentifierName("@this"), name))
 
-        var info = await document.GetCodeGenerationInfoAsync(CodeGenerationContext.Default, cancellationToken).ConfigureAwait(false);
+        var info = await document.GetCodeGenerationInfoAsync(CodeGenerationContext.Default, cancellationToken).ConfigureAwait(false)
 
         // Updates the local function declaration with variables passed in as parameters
         syntaxEditor.ReplaceNode(

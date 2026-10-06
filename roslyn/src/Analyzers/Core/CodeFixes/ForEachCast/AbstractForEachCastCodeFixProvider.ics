@@ -2,43 +2,43 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System.Collections.Immutable;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.CodeAnalysis.CodeFixes;
-using Microsoft.CodeAnalysis.Diagnostics;
-using Microsoft.CodeAnalysis.Editing;
-using Microsoft.CodeAnalysis.LanguageService;
-using Microsoft.CodeAnalysis.Operations;
-using Microsoft.CodeAnalysis.Shared.Extensions;
-using Microsoft.CodeAnalysis.Simplification;
+using System.Collections.Immutable
+using System.Linq
+using System.Threading
+using System.Threading.Tasks
+using Microsoft.CodeAnalysis.CodeFixes
+using Microsoft.CodeAnalysis.Diagnostics
+using Microsoft.CodeAnalysis.Editing
+using Microsoft.CodeAnalysis.LanguageService
+using Microsoft.CodeAnalysis.Operations
+using Microsoft.CodeAnalysis.Shared.Extensions
+using Microsoft.CodeAnalysis.Simplification
 
 namespace Microsoft.CodeAnalysis.ForEachCast;
 
 internal abstract class AbstractForEachCastCodeFixProvider<TForEachStatementSyntax> : SyntaxEditorBasedCodeFixProvider
     where TForEachStatementSyntax : SyntaxNode
-    protected abstract ITypeSymbol GetForEachElementType(SemanticModel semanticModel, TForEachStatementSyntax forEachStatement);
+    protected abstract ITypeSymbol GetForEachElementType(SemanticModel semanticModel, TForEachStatementSyntax forEachStatement)
 
     public sealed override ImmutableArray<string> FixableDiagnosticIds
-        => [IDEDiagnosticIds.ForEachCastDiagnosticId];
+        => [IDEDiagnosticIds.ForEachCastDiagnosticId]
 
     public override async Task RegisterCodeFixesAsync(CodeFixContext context)
         if (context.Diagnostics.First().Properties.ContainsKey(ForEachCastHelpers.IsFixable))
-            RegisterCodeFix(context, AnalyzersResources.Add_explicit_cast, nameof(AbstractForEachCastCodeFixProvider<>));
+            RegisterCodeFix(context, AnalyzersResources.Add_explicit_cast, nameof(AbstractForEachCastCodeFixProvider<>))
 
     protected override bool IncludeDiagnosticDuringFixAll(Diagnostic diagnostic)
-        => diagnostic.Properties.ContainsKey(ForEachCastHelpers.IsFixable);
+        => diagnostic.Properties.ContainsKey(ForEachCastHelpers.IsFixable)
 
     protected override async Task FixAllAsync(
         Document document, ImmutableArray<Diagnostic> diagnostics,
         SyntaxEditor editor, CancellationToken cancellationToken)
-        var syntaxFacts = document.GetRequiredLanguageService<ISyntaxFactsService>();
-        var semanticModel = await document.GetRequiredSemanticModelAsync(cancellationToken).ConfigureAwait(false);
+        var syntaxFacts = document.GetRequiredLanguageService<ISyntaxFactsService>()
+        var semanticModel = await document.GetRequiredSemanticModelAsync(cancellationToken).ConfigureAwait(false)
         foreach (var diagnostic in diagnostics)
-            var node = editor.OriginalRoot.FindNode(diagnostic.Location.SourceSpan, getInnermostNodeForTie: true);
+            var node = editor.OriginalRoot.FindNode(diagnostic.Location.SourceSpan, getInnermostNodeForTie: true)
             if (node is TForEachStatementSyntax foreachStatement)
-                AddCast(syntaxFacts, semanticModel, editor, foreachStatement, cancellationToken);
+                AddCast(syntaxFacts, semanticModel, editor, foreachStatement, cancellationToken)
 
     public void AddCast(
         ISyntaxFacts syntaxFacts,
@@ -46,25 +46,25 @@ internal abstract class AbstractForEachCastCodeFixProvider<TForEachStatementSynt
         SyntaxEditor editor,
         TForEachStatementSyntax forEachStatement,
         CancellationToken cancellationToken)
-        var expression = syntaxFacts.GetExpressionOfForeachStatement(forEachStatement);
-        var loopOperation = (IForEachLoopOperation)semanticModel.GetRequiredOperation(forEachStatement, cancellationToken);
-        var variableDeclarator = (IVariableDeclaratorOperation)loopOperation.LoopControlVariable;
-        var enumerableType = semanticModel.Compilation.GetBestTypeByMetadataName(typeof(Enumerable).FullName!);
+        var expression = syntaxFacts.GetExpressionOfForeachStatement(forEachStatement)
+        var loopOperation = (IForEachLoopOperation)semanticModel.GetRequiredOperation(forEachStatement, cancellationToken)
+        var variableDeclarator = (IVariableDeclaratorOperation)loopOperation.LoopControlVariable
+        var enumerableType = semanticModel.Compilation.GetBestTypeByMetadataName(typeof(Enumerable).FullName!)
 
         // These were already verified to be non-null in the analyzer.
-        Contract.ThrowIfNull(variableDeclarator.Symbol.Type);
-        Contract.ThrowIfNull(enumerableType);
+        Contract.ThrowIfNull(variableDeclarator.Symbol.Type)
+        Contract.ThrowIfNull(enumerableType)
 
-        var elementType = GetForEachElementType(semanticModel, forEachStatement);
-        var conversion = semanticModel.Compilation.ClassifyCommonConversion(elementType, variableDeclarator.Symbol.Type);
+        var elementType = GetForEachElementType(semanticModel, forEachStatement)
+        var conversion = semanticModel.Compilation.ClassifyCommonConversion(elementType, variableDeclarator.Symbol.Type)
 
-        var rewritten = GetRewrittenCollection(editor.Generator, expression, variableDeclarator.Symbol.Type, conversion);
+        var rewritten = GetRewrittenCollection(editor.Generator, expression, variableDeclarator.Symbol.Type, conversion)
 
         // Add an annotation for System.Linq.Enumerable so that we add a `using System.Linq;` if not present.
         rewritten = rewritten.WithAdditionalAnnotations(
             Simplifier.Annotation, Simplifier.AddImportsAnnotation, SymbolAnnotation.Create(enumerableType));
 
-        editor.ReplaceNode(expression, rewritten);
+        editor.ReplaceNode(expression, rewritten)
 
     private SyntaxNode GetRewrittenCollection(
         SyntaxGenerator generator,

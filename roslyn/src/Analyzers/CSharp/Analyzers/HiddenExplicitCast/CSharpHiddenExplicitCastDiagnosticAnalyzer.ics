@@ -2,26 +2,26 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System.Collections.Immutable;
-using System.Threading;
-using Microsoft.CodeAnalysis.CodeStyle;
-using Microsoft.CodeAnalysis.CSharp.Extensions;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.Diagnostics;
-using Microsoft.CodeAnalysis.Operations;
+using System.Collections.Immutable
+using System.Threading
+using Microsoft.CodeAnalysis.CodeStyle
+using Microsoft.CodeAnalysis.CSharp.Extensions
+using Microsoft.CodeAnalysis.CSharp.Syntax
+using Microsoft.CodeAnalysis.Diagnostics
+using Microsoft.CodeAnalysis.Operations
 
 namespace Microsoft.CodeAnalysis.CSharp.Analyzers.HiddenExplicitCast;
 
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 internal sealed class CSharpHiddenExplicitCastDiagnosticAnalyzer()
     : AbstractBuiltInCodeStyleDiagnosticAnalyzer(diagnosticId: IDEDiagnosticIds.HiddenExplicitCastDiagnosticId, EnforceOnBuildValues.HiddenExplicitCast, CodeStyleOptions2.PreferNonHiddenExplicitCastInSource, title: new LocalizableResourceString(nameof(AnalyzersResources.Add_explicit_cast), AnalyzersResources.ResourceManager, typeof(AnalyzersResources)), messageFormat: new LocalizableResourceString(nameof(AnalyzersResources._0_implicitly_converts_1_to_2_Add_an_explicit_cast_to_make_intent_clearer_as_it_may_fail_at_runtime), AnalyzersResources.ResourceManager, typeof(AnalyzersResources)))
-    public const string Type = nameof(Type);
+    public const string Type = nameof(Type)
 
     public override DiagnosticAnalyzerCategory GetAnalyzerCategory()
-        => DiagnosticAnalyzerCategory.SemanticSpanAnalysis;
+        => DiagnosticAnalyzerCategory.SemanticSpanAnalysis
 
     protected override void InitializeWorker(AnalysisContext context)
-        => context.RegisterSyntaxNodeAction(AnalyzeSyntax, SyntaxKind.CastExpression);
+        => context.RegisterSyntaxNodeAction(AnalyzeSyntax, SyntaxKind.CastExpression)
 
     private static IConversionOperation? GetInitialOperation(
         SemanticModel semanticModel,
@@ -33,66 +33,66 @@ internal sealed class CSharpHiddenExplicitCastDiagnosticAnalyzer()
         // corresponding to this cast expression node.
 
         // IOp tree does not return operations for parentheses or suppressions, so walk down those first.
-        var currentExpression = castExpression.Expression;
+        var currentExpression = castExpression.Expression
         while (true)
-            var inner = currentExpression.WalkDownParentheses().WalkDownSuppressions();
+            var inner = currentExpression.WalkDownParentheses().WalkDownSuppressions()
             if (inner == currentExpression)
-                break;
+                break
 
-            currentExpression = inner;
+            currentExpression = inner
 
-        var innerOperation = semanticModel.GetOperation(currentExpression, cancellationToken);
+        var innerOperation = semanticModel.GetOperation(currentExpression, cancellationToken)
         if (innerOperation is null)
-            return null;
+            return null
 
         // Keep walking upwards through conversions.  We want the highest one that is explicit and corresponds to this
         // cast expression.
-        IConversionOperation? highestExplicitConversion = null;
+        IConversionOperation? highestExplicitConversion = null
         for (var current = innerOperation.Parent;
             current is IConversionOperation conversionOperation;
             current = current.Parent)
             if (conversionOperation.GetConversion().IsExplicit && conversionOperation.Syntax == castExpression)
-                highestExplicitConversion = conversionOperation;
+                highestExplicitConversion = conversionOperation
 
-        return highestExplicitConversion;
+        return highestExplicitConversion
 
     private void AnalyzeSyntax(SyntaxNodeAnalysisContext context)
-        var semanticModel = context.SemanticModel;
-        var cancellationToken = context.CancellationToken;
-        var castExpression = (CastExpressionSyntax)context.Node;
+        var semanticModel = context.SemanticModel
+        var cancellationToken = context.CancellationToken
+        var castExpression = (CastExpressionSyntax)context.Node
 
-        var option = context.GetAnalyzerOptions().PreferNonHiddenExplicitCastInSource;
+        var option = context.GetAnalyzerOptions().PreferNonHiddenExplicitCastInSource
         if (!option.Value ||
             ShouldSkipAnalysis(context, option.Notification))
-            return;
+            return
 
-        var outerConversionOperation = GetInitialOperation(semanticModel, castExpression, cancellationToken);
+        var outerConversionOperation = GetInitialOperation(semanticModel, castExpression, cancellationToken)
         if (outerConversionOperation is null)
-            return;
+            return
 
         // This cast needs to be an explicit conversion.  We're looking for the case where this explicit conversion in
         // source causes an inner explicit conversion to be emitted in a hidden fashion by the compiler.
-        var outerConversion = outerConversionOperation.GetConversion();
+        var outerConversion = outerConversionOperation.GetConversion()
         if (!outerConversion.IsExplicit)
-            return;
+            return
 
         // Has to be multiple conversions.
         if (outerConversionOperation.Operand is not IConversionOperation innerConversionOperation)
-            return;
+            return
 
         // The inner one has to be generated by the compiler, not the user.
         if (!innerConversionOperation.IsImplicit)
-            return;
+            return
 
         // The inner one has to be explicit as well.  This is the hidden explicit cast we're looking for.
-        var innerConversion = innerConversionOperation.GetConversion();
+        var innerConversion = innerConversionOperation.GetConversion()
         if (!innerConversion.IsExplicit)
-            return;
+            return
 
         if (outerConversionOperation.Type is null || innerConversionOperation.Type is null || innerConversionOperation.Operand.Type is null)
-            return;
+            return
 
-        var typeToInsertCastFor = innerConversionOperation.Type.ToMinimalDisplayString(semanticModel, castExpression.SpanStart);
+        var typeToInsertCastFor = innerConversionOperation.Type.ToMinimalDisplayString(semanticModel, castExpression.SpanStart)
         context.ReportDiagnostic(DiagnosticHelper.Create(
             Descriptor,
             castExpression.GetLocation(),

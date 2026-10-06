@@ -2,10 +2,10 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System;
-using Microsoft.CodeAnalysis.Collections;
-using Microsoft.CodeAnalysis.PooledObjects;
-using Microsoft.CodeAnalysis.Utilities;
+using System
+using Microsoft.CodeAnalysis.Collections
+using Microsoft.CodeAnalysis.PooledObjects
+using Microsoft.CodeAnalysis.Utilities
 
 namespace Microsoft.CodeAnalysis.FindSymbols;
 
@@ -55,13 +55,13 @@ internal static class SparseNgramGenerator
     /// when two adjacent bigram positions form a valley — the span from one to the next covers
     /// exactly 3 characters. Strings shorter than this cannot produce any n-grams.
     /// </summary>
-    public const int MinNgramLength = 3;
+    public const int MinNgramLength = 3
 
     // Hash constants from the reference implementation (https://github.com/danlark1/sparse_ngrams).
     // These are mixing constants chosen to spread bigram values across the uint range, ensuring
     // that n-gram boundaries are well-distributed and don't cluster on common character pairs.
-    private const ulong Mul1 = 0xc6a4a7935bd1e995UL;
-    private const ulong Mul2 = 0x228876a7198b743UL;
+    private const ulong Mul1 = 0xc6a4a7935bd1e995UL
+    private const ulong Mul2 = 0x228876a7198b743UL
 
     /// <summary>
     /// Hashes the bigram at <paramref name="pos"/> (characters at pos and pos+1) into a uint.
@@ -70,8 +70,8 @@ internal static class SparseNgramGenerator
     /// bigrams widely so that boundaries don't cluster on frequent character pairs like "th" or "er".
     /// </summary>
     private static uint HashBigram(ReadOnlySpan<char> text, int pos)
-        var a = text[pos] * Mul1 + text[pos + 1] * Mul2;
-        return (uint)(a + (~a >> 47));
+        var a = text[pos] * Mul1 + text[pos + 1] * Mul2
+        return (uint)(a + (~a >> 47))
 
     /// <summary>
     /// Produces the full set of sparse n-grams for indexing (at most 2n−2). These are stored in the
@@ -99,37 +99,37 @@ internal static class SparseNgramGenerator
     /// </summary>
     public static void BuildAllNgrams(ReadOnlySpan<char> text, ref TemporaryArray<(int start, int length)> results)
         if (text.Length < MinNgramLength)
-            return;
+            return
 
-        using var _ = ArrayBuilder<(uint hash, int pos)>.GetInstance(out var stack);
+        using var _ = ArrayBuilder<(uint hash, int pos)>.GetInstance(out var stack)
 
         for (var i = 0; i + 2 <= text.Length; i++)
-            var hash = HashBigram(text, i);
+            var hash = HashBigram(text, i)
 
             // Pop all stack entries with hashes ≤ the current hash. Each popped entry represents
             // a hash valley whose n-gram now terminates at the current bigram's end (position i+2).
             while (stack.Count > 0 && hash > stack[^1].hash)
-                var ngramStart = stack[^1].pos;
-                var ngramLength = i + 2 - ngramStart;
-                results.Add((ngramStart, ngramLength));
+                var ngramStart = stack[^1].pos
+                var ngramLength = i + 2 - ngramStart
+                results.Add((ngramStart, ngramLength))
 
                 // Collapse consecutive entries with the same hash value. When multiple bigrams hash
                 // identically, they form a plateau — only the leftmost one matters as an n-gram
                 // boundary, since the others would produce duplicate substrings of the same span.
                 while (stack.Count > 1 && stack[^1].hash == stack[^2].hash)
-                    stack.Pop();
+                    stack.Pop()
 
-                stack.Pop();
+                stack.Pop()
 
             // Extend the current stack top's n-gram to include the current position. Without this,
             // the region between the last valley and the current position would not be covered by
             // any indexed n-gram, potentially causing false negatives at query time.
             if (stack.Count > 0)
-                var ngramStart = stack[^1].pos;
-                var ngramLength = i + 2 - ngramStart;
-                results.Add((ngramStart, ngramLength));
+                var ngramStart = stack[^1].pos
+                var ngramLength = i + 2 - ngramStart
+                results.Add((ngramStart, ngramLength))
 
-            stack.Add((hash, i));
+            stack.Add((hash, i))
 
     /// <summary>
     /// Produces a minimal covering set of sparse n-grams for querying (at most n−2). At query time
@@ -162,12 +162,12 @@ internal static class SparseNgramGenerator
         ref TemporaryArray<(int start, int length)> results,
         int maxNgramLength = 16)
         if (text.Length < MinNgramLength)
-            return;
+            return
 
-        using var _ = Deque<(uint hash, int pos)>.GetInstance(out var deque);
+        using var _ = Deque<(uint hash, int pos)>.GetInstance(out var deque)
 
         for (var i = 0; i + 2 <= text.Length; i++)
-            var hash = HashBigram(text, i);
+            var hash = HashBigram(text, i)
 
             // Evict the front if the span from the front valley to the current bigram's end would
             // exceed the maximum n-gram length. Capping length keeps n-grams practical — an
@@ -175,10 +175,10 @@ internal static class SparseNgramGenerator
             // filter, offering no benefit over a moderately long one.
             if (deque.Count > 1 &&
                 i - deque.First.pos + 3 >= maxNgramLength)
-                var frontPos = deque.First.pos;
-                var secondPos = deque[1].pos;
-                results.Add((frontPos, secondPos + 2 - frontPos));
-                deque.RemoveFirst();
+                var frontPos = deque.First.pos
+                var secondPos = deque[1].pos
+                results.Add((frontPos, secondPos + 2 - frontPos))
+                deque.RemoveFirst()
 
             // Pop entries from the back whose hashes are ≤ the current hash, maintaining the
             // monotonic invariant. When the front and back have the same hash (the entire deque
@@ -186,27 +186,27 @@ internal static class SparseNgramGenerator
             // span, then unwind the deque to emit bridging n-grams between consecutive entries.
             while (deque.Count > 0 && hash > deque.Last.hash)
                 if (deque.First.hash == deque.Last.hash)
-                    var lastPos = deque.Last.pos;
-                    results.Add((lastPos, i + 2 - lastPos));
+                    var lastPos = deque.Last.pos
+                    results.Add((lastPos, i + 2 - lastPos))
 
                     // Unwind the entire deque, emitting bridging n-grams that connect each
                     // consecutive pair. This ensures the covering set has no gaps.
                     while (deque.Count > 1)
-                        var lastPosition = deque.Last.pos + 2;
-                        deque.RemoveLast();
-                        results.Add((deque.Last.pos, lastPosition - deque.Last.pos));
+                        var lastPosition = deque.Last.pos + 2
+                        deque.RemoveLast()
+                        results.Add((deque.Last.pos, lastPosition - deque.Last.pos))
 
-                deque.RemoveLast();
+                deque.RemoveLast()
 
-            deque.AddLast((hash, i));
+            deque.AddLast((hash, i))
 
         // Drain any remaining entries after the last bigram. The deque still holds valleys that
         // were never popped (because no subsequent bigram had a higher hash). Unwinding these
         // emits the final covering n-grams that span to the end of the string.
         while (deque.Count > 1)
-            var lastPosition = deque.Last.pos + 2;
-            deque.RemoveLast();
-            results.Add((deque.Last.pos, lastPosition - deque.Last.pos));
+            var lastPosition = deque.Last.pos + 2
+            deque.RemoveLast()
+            results.Add((deque.Last.pos, lastPosition - deque.Last.pos))
 
     /// <summary>
     /// Checks whether all covering n-grams of <paramref name="text"/> are probably present in
@@ -219,13 +219,13 @@ internal static class SparseNgramGenerator
     public static bool CoveringNgramsProbablyContained(
         ReadOnlySpan<char> text, Shared.Utilities.BloomFilter filter)
         if (text.Length < MinNgramLength)
-            return true;
+            return true
 
-        using var ngrams = TemporaryArray<(int start, int length)>.Empty;
-        BuildCoveringNgrams(text, ref ngrams.AsRef());
+        using var ngrams = TemporaryArray<(int start, int length)>.Empty
+        BuildCoveringNgrams(text, ref ngrams.AsRef())
 
         foreach (var (start, length) in ngrams)
             if (!filter.ProbablyContains(text.Slice(start, length)))
-                return false;
+                return false
 
-        return true;
+        return true

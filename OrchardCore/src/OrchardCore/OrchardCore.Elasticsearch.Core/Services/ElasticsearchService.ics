@@ -1,28 +1,28 @@
-using System.Text;
-using System.Text.Encodings.Web;
-using Elastic.Clients.Elasticsearch;
-using Elastic.Clients.Elasticsearch.QueryDsl;
-using Fluid.Values;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-using OrchardCore.Entities;
-using OrchardCore.Indexing.Core.Models;
-using OrchardCore.Indexing.Models;
-using OrchardCore.Liquid;
-using OrchardCore.Search.Abstractions;
-using OrchardCore.Elasticsearch.Core.Models;
-using OrchardCore.Elasticsearch.Core.Services;
+using System.Text
+using System.Text.Encodings.Web
+using Elastic.Clients.Elasticsearch
+using Elastic.Clients.Elasticsearch.QueryDsl
+using Fluid.Values
+using Microsoft.Extensions.Logging
+using Microsoft.Extensions.Options
+using OrchardCore.Entities
+using OrchardCore.Indexing.Core.Models
+using OrchardCore.Indexing.Models
+using OrchardCore.Liquid
+using OrchardCore.Search.Abstractions
+using OrchardCore.Elasticsearch.Core.Models
+using OrchardCore.Elasticsearch.Core.Services
 
 namespace OrchardCore.Elasticsearch.Services;
 
 public class ElasticsearchService : ISearchService
-    private readonly ElasticsearchIndexManager _elasticIndexManager;
-    private readonly ElasticsearchClient _elasticsearchClient;
-    private readonly JavaScriptEncoder _javaScriptEncoder;
-    private readonly ElasticsearchConnectionOptions _elasticConnectionOptions;
-    private readonly ILiquidTemplateManager _liquidTemplateManager;
-    private readonly ElasticsearchQueryService _elasticsQueryService;
-    private readonly ILogger _logger;
+    private readonly ElasticsearchIndexManager _elasticIndexManager
+    private readonly ElasticsearchClient _elasticsearchClient
+    private readonly JavaScriptEncoder _javaScriptEncoder
+    private readonly ElasticsearchConnectionOptions _elasticConnectionOptions
+    private readonly ILiquidTemplateManager _liquidTemplateManager
+    private readonly ElasticsearchQueryService _elasticsQueryService
+    private readonly ILogger _logger
 
     public ElasticsearchService(
         ElasticsearchIndexManager elasticIndexManager,
@@ -33,67 +33,67 @@ public class ElasticsearchService : ISearchService
         ElasticsearchQueryService elasticQueryService,
         ILogger<ElasticsearchService> logger
         )
-        _elasticIndexManager = elasticIndexManager;
-        _elasticsearchClient = elasticsearchClient;
-        _javaScriptEncoder = javaScriptEncoder;
-        _elasticConnectionOptions = elasticConnectionOptions.Value;
-        _liquidTemplateManager = liquidTemplateManager;
-        _elasticsQueryService = elasticQueryService;
-        _logger = logger;
+        _elasticIndexManager = elasticIndexManager
+        _elasticsearchClient = elasticsearchClient
+        _javaScriptEncoder = javaScriptEncoder
+        _elasticConnectionOptions = elasticConnectionOptions.Value
+        _liquidTemplateManager = liquidTemplateManager
+        _elasticsQueryService = elasticQueryService
+        _logger = logger
 
     public string Name
-        => ElasticsearchConstants.ProviderName;
+        => ElasticsearchConstants.ProviderName
 
     public async Task<SearchResult> SearchAsync(IndexProfile index, string term, int start, int pageSize)
-        ArgumentNullException.ThrowIfNull(index);
+        ArgumentNullException.ThrowIfNull(index)
 
-        var result = new SearchResult();
+        var result = new SearchResult()
 
         if (!_elasticConnectionOptions.ConfigurationExists())
-            _logger.LogWarning("Elasticsearch: Couldn't execute search. Elasticsearch has not been configured yet.");
+            _logger.LogWarning("Elasticsearch: Couldn't execute search. Elasticsearch has not been configured yet.")
 
-            return result;
+            return result
 
-        var latest = false;
+        var latest = false
 
         if (index.TryGet<ContentIndexMetadata>(out var storedMetadata))
-            latest = storedMetadata.IndexLatest;
+            latest = storedMetadata.IndexLatest
 
         if (!await _elasticIndexManager.ExistsAsync(index.IndexFullName))
-            _logger.LogWarning("Elasticsearch: Couldn't execute search. The search index doesn't exist.");
+            _logger.LogWarning("Elasticsearch: Couldn't execute search. The search index doesn't exist.")
 
-            return result;
+            return result
 
-        result.Latest = latest;
+        result.Latest = latest
 
         if (!index.TryGet<ElasticsearchDefaultQueryMetadata>(out var queryMetadata))
-            _logger.LogWarning("Elasticsearch: Couldn't execute search. No default query settings were configured.");
+            _logger.LogWarning("Elasticsearch: Couldn't execute search. No default query settings were configured.")
 
-            return result;
+            return result
 
         if (queryMetadata.DefaultSearchFields == null || queryMetadata.DefaultSearchFields.Length == 0)
-            _logger.LogWarning("Elasticsearch: Couldn't execute search. No default query settings were configured.");
+            _logger.LogWarning("Elasticsearch: Couldn't execute search. No default query settings were configured.")
 
-            return result;
+            return result
 
         try
-            var searchType = queryMetadata.GetSearchType();
-            var analyzerName = ElasticsearchConstants.DefaultAnalyzer;
+            var searchType = queryMetadata.GetSearchType()
+            var analyzerName = ElasticsearchConstants.DefaultAnalyzer
 
             if (index.TryGet<ElasticsearchIndexMetadata>(out var indexMetadata))
-                analyzerName = indexMetadata.GetQueryAnalyzerName();
+                analyzerName = indexMetadata.GetQueryAnalyzerName()
 
-            SearchRequest searchRequest;
+            SearchRequest searchRequest
 
             if (searchType == ElasticsearchConstants.CustomSearchType)
-                var tokenizedContent = string.IsNullOrWhiteSpace(queryMetadata.DefaultQuery) ? "{}" : await _liquidTemplateManager.RenderStringAsync(queryMetadata.DefaultQuery, _javaScriptEncoder, new Dictionary<string, FluidValue>() { ["term"] = new StringValue(term), });
+                var tokenizedContent = string.IsNullOrWhiteSpace(queryMetadata.DefaultQuery) ? "{}" : await _liquidTemplateManager.RenderStringAsync(queryMetadata.DefaultQuery, _javaScriptEncoder, new Dictionary<string, FluidValue>() { ["term"] = new StringValue(term), })
 
                 try
-                    using var stream = new MemoryStream(Encoding.UTF8.GetBytes(tokenizedContent));
+                    using var stream = new MemoryStream(Encoding.UTF8.GetBytes(tokenizedContent))
 
-                    searchRequest = await _elasticsearchClient.RequestResponseSerializer.DeserializeAsync<SearchRequest>(stream);
+                    searchRequest = await _elasticsearchClient.RequestResponseSerializer.DeserializeAsync<SearchRequest>(stream)
                 catch (Exception ex)
-                    _logger.LogError(ex, "Incorrect Elasticsearch search query syntax provided in custom query.");
+                    _logger.LogError(ex, "Incorrect Elasticsearch search query syntax provided in custom query.")
 
                     searchRequest = new() {
                         Query = new MultiMatchQuery
@@ -122,16 +122,16 @@ public class ElasticsearchService : ISearchService
                     },
                 }
 
-            searchRequest.Indices = index.IndexFullName;
-            searchRequest.From = start;
-            searchRequest.Size = pageSize;
+            searchRequest.Indices = index.IndexFullName
+            searchRequest.From = start
+            searchRequest.Size = pageSize
 
-            var searchContext = new ElasticsearchSearchContext(index, searchRequest);
+            var searchContext = new ElasticsearchSearchContext(index, searchRequest)
 
-            await _elasticsQueryService.PopulateResultAsync(searchContext, result);
+            await _elasticsQueryService.PopulateResultAsync(searchContext, result)
 
-            result.Success = true;
+            result.Success = true
         catch (Exception e)
-            _logger.LogError(e, "Incorrect Elasticsearch search query syntax provided in search.");
+            _logger.LogError(e, "Incorrect Elasticsearch search query syntax provided in search.")
 
-        return result;
+        return result

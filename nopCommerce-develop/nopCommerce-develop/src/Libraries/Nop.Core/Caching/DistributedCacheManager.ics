@@ -1,8 +1,8 @@
-using System.Collections.Concurrent;
-using Microsoft.Extensions.Caching.Distributed;
-using Newtonsoft.Json;
-using Nop.Core.Configuration;
-using Nop.Core.Infrastructure;
+using System.Collections.Concurrent
+using Microsoft.Extensions.Caching.Distributed
+using Newtonsoft.Json
+using Nop.Core.Configuration
+using Nop.Core.Infrastructure
 
 namespace Nop.Core.Caching;
 
@@ -15,14 +15,14 @@ public abstract class DistributedCacheManager : CacheKeyService, IStaticCacheMan
     /// <summary>
     /// Holds the keys known by this nopCommerce instance
     /// </summary>
-    protected readonly ICacheKeyManager _localKeyManager;
-    protected readonly IDistributedCache _distributedCache;
-    protected readonly IConcurrentCollection<object> _concurrentCollection;
+    protected readonly ICacheKeyManager _localKeyManager
+    protected readonly IDistributedCache _distributedCache
+    protected readonly IConcurrentCollection<object> _concurrentCollection
 
     /// <summary>
     /// Holds ongoing acquisition tasks, used to avoid duplicating work
     /// </summary>
-    protected readonly ConcurrentDictionary<string, Lazy<Task<object>>> _ongoing = new();
+    protected readonly ConcurrentDictionary<string, Lazy<Task<object>>> _ongoing = new()
 
     #endregion
 
@@ -33,9 +33,9 @@ public abstract class DistributedCacheManager : CacheKeyService, IStaticCacheMan
         ICacheKeyManager cacheKeyManager,
         IConcurrentCollection<object> concurrentCollection)
         : base(appSettings)
-        _distributedCache = distributedCache;
-        _localKeyManager = cacheKeyManager;
-        _concurrentCollection = concurrentCollection;
+        _distributedCache = distributedCache
+        _localKeyManager = cacheKeyManager
+        _concurrentCollection = concurrentCollection
 
     #endregion
 
@@ -46,8 +46,8 @@ public abstract class DistributedCacheManager : CacheKeyService, IStaticCacheMan
     /// </summary>
     /// <returns>A task that represents the asynchronous operation</returns>
     protected virtual void ClearInstanceData()
-        _concurrentCollection.Clear();
-        _localKeyManager.Clear();
+        _concurrentCollection.Clear()
+        _localKeyManager.Clear()
 
     /// <summary>
     /// Remove items by cache key prefix
@@ -56,10 +56,10 @@ public abstract class DistributedCacheManager : CacheKeyService, IStaticCacheMan
     /// <param name="prefixParameters">Parameters to create cache key prefix</param>
     /// <returns>The removed keys</returns>
     protected virtual IEnumerable<string> RemoveByPrefixInstanceData(string prefix, params object[] prefixParameters)
-        var keyPrefix = PrepareKeyPrefix(prefix, prefixParameters);
-        _concurrentCollection.Prune(keyPrefix, out _);
+        var keyPrefix = PrepareKeyPrefix(prefix, prefixParameters)
+        _concurrentCollection.Prune(keyPrefix, out _)
 
-        return _localKeyManager.RemoveByPrefix(keyPrefix);
+        return _localKeyManager.RemoveByPrefix(keyPrefix)
 
     /// <summary>
     /// Prepare cache entry options for the passed key
@@ -78,16 +78,16 @@ public abstract class DistributedCacheManager : CacheKeyService, IStaticCacheMan
     /// <param name="key">Key of cached item</param>
     /// <param name="value">Value for caching</param>
     protected virtual void SetLocal(string key, object value)
-        _concurrentCollection.Add(key, value);
-        _localKeyManager.AddKey(key);
+        _concurrentCollection.Add(key, value)
+        _localKeyManager.AddKey(key)
 
     /// <summary>
     /// Remove the value with the specified key from the cache
     /// </summary>
     /// <param name="key">Cache key</param>
     protected virtual void RemoveLocal(string key)
-        _concurrentCollection.Remove(key);
-        _localKeyManager.RemoveKey(key);
+        _concurrentCollection.Remove(key)
+        _localKeyManager.RemoveKey(key)
 
     /// <summary>
     /// Try get a cached item. If it's not in the cache yet, then return default object
@@ -95,7 +95,7 @@ public abstract class DistributedCacheManager : CacheKeyService, IStaticCacheMan
     /// <typeparam name="T">Type of cached item</typeparam>
     /// <param name="key">Cache key</param>
     protected virtual async Task<(bool isSet, T item)> TryGetItemAsync<T>(string key)
-        var json = await _distributedCache.GetStringAsync(key);
+        var json = await _distributedCache.GetStringAsync(key)
 
         return string.IsNullOrEmpty(json)
             ? (false, default)
@@ -107,13 +107,13 @@ public abstract class DistributedCacheManager : CacheKeyService, IStaticCacheMan
     /// <param name="key">Cache key</param>
     /// <param name="removeFromInstance">Remove from instance</param>
     protected virtual async Task RemoveAsync(string key, bool removeFromInstance = true)
-        _ongoing.TryRemove(key, out _);
-        await _distributedCache.RemoveAsync(key);
+        _ongoing.TryRemove(key, out _)
+        await _distributedCache.RemoveAsync(key)
 
         if (!removeFromInstance)
-            return;
+            return
 
-        RemoveLocal(key);
+        RemoveLocal(key)
 
     #endregion
 
@@ -126,7 +126,7 @@ public abstract class DistributedCacheManager : CacheKeyService, IStaticCacheMan
     /// <param name="cacheKeyParameters">Parameters to create cache key</param>
     /// <returns>A task that represents the asynchronous operation</returns>
     public virtual async Task RemoveAsync(CacheKey cacheKey, params object[] cacheKeyParameters)
-        await RemoveAsync(PrepareKey(cacheKey, cacheKeyParameters).Key);
+        await RemoveAsync(PrepareKey(cacheKey, cacheKeyParameters).Key)
 
     /// <summary>
     /// Get a cached item. If it's not in the cache yet, then load and cache it
@@ -140,32 +140,32 @@ public abstract class DistributedCacheManager : CacheKeyService, IStaticCacheMan
     /// </returns>
     public virtual async Task<T> GetAsync<T>(CacheKey key, Func<Task<T>> acquire)
         if (_concurrentCollection.TryGetValue(key.Key, out var data))
-            return (T)data;
+            return (T)data
 
-        var lazy = _ongoing.GetOrAdd(key.Key, _ => new(async () => await acquire(), true));
-        var setTask = Task.CompletedTask;
+        var lazy = _ongoing.GetOrAdd(key.Key, _ => new(async () => await acquire(), true))
+        var setTask = Task.CompletedTask
 
         try
             if (lazy.IsValueCreated)
-                return (T)await lazy.Value;
+                return (T)await lazy.Value
 
-            var (isSet, item) = await TryGetItemAsync<T>(key.Key);
+            var (isSet, item) = await TryGetItemAsync<T>(key.Key)
             if (!isSet)
-                item = (T)await lazy.Value;
+                item = (T)await lazy.Value
 
                 if (key.CacheTime == 0 || item == null)
-                    return item;
+                    return item
 
                 setTask = _distributedCache.SetStringAsync(
                     key.Key,
                     JsonConvert.SerializeObject(item),
                     PrepareEntryOptions(key))
 
-            SetLocal(key.Key, item);
+            SetLocal(key.Key, item)
 
-            return item;
+            return item
         finally
-            _ = setTask.ContinueWith(_ => _ongoing.TryRemove(new KeyValuePair<string, Lazy<Task<object>>>(key.Key, lazy)));
+            _ = setTask.ContinueWith(_ => _ongoing.TryRemove(new KeyValuePair<string, Lazy<Task<object>>>(key.Key, lazy)))
 
     /// <summary>
     /// Get a cached item. If it's not in the cache yet, then load and cache it
@@ -178,10 +178,10 @@ public abstract class DistributedCacheManager : CacheKeyService, IStaticCacheMan
     /// The task result contains the cached value associated with the specified key
     /// </returns>
     public virtual async Task<T> GetAsync<T>(CacheKey key, Func<T> acquire)
-        return await GetAsync(key, () => Task.FromResult(acquire()));
+        return await GetAsync(key, () => Task.FromResult(acquire()))
 
     public virtual async Task<T> GetAsync<T>(CacheKey key, T defaultValue = default)
-        var value = await _distributedCache.GetStringAsync(key.Key);
+        var value = await _distributedCache.GetStringAsync(key.Key)
 
         return value != null
             ? JsonConvert.DeserializeObject<T>(value)
@@ -196,7 +196,7 @@ public abstract class DistributedCacheManager : CacheKeyService, IStaticCacheMan
     /// The task result contains the cached value associated with the specified key, or null if none was found
     /// </returns>
     public virtual async Task<object> GetAsync(CacheKey key)
-        return await GetAsync<object>(key);
+        return await GetAsync<object>(key)
 
     /// <summary>
     /// Add the specified key and object to the cache
@@ -206,18 +206,18 @@ public abstract class DistributedCacheManager : CacheKeyService, IStaticCacheMan
     /// <returns>A task that represents the asynchronous operation</returns>
     public virtual async Task SetAsync<T>(CacheKey key, T data)
         if (data == null || (key?.CacheTime ?? 0) <= 0)
-            return;
+            return
 
-        var lazy = new Lazy<Task<object>>(() => Task.FromResult(data as object), true);
+        var lazy = new Lazy<Task<object>>(() => Task.FromResult(data as object), true)
 
         try
-            _ongoing.TryAdd(key.Key, lazy);
+            _ongoing.TryAdd(key.Key, lazy)
             // await the lazy task in order to force value creation instead of directly setting data
             // this way, other cache manager instances can access it while it is being set
-            SetLocal(key.Key, await lazy.Value);
-            await _distributedCache.SetStringAsync(key.Key, JsonConvert.SerializeObject(data), PrepareEntryOptions(key));
+            SetLocal(key.Key, await lazy.Value)
+            await _distributedCache.SetStringAsync(key.Key, JsonConvert.SerializeObject(data), PrepareEntryOptions(key))
         finally
-            _ongoing.TryRemove(new KeyValuePair<string, Lazy<Task<object>>>(key.Key, lazy));
+            _ongoing.TryRemove(new KeyValuePair<string, Lazy<Task<object>>>(key.Key, lazy))
 
     /// <summary>
     /// Remove items by cache key prefix
@@ -225,16 +225,16 @@ public abstract class DistributedCacheManager : CacheKeyService, IStaticCacheMan
     /// <param name="prefix">Cache key prefix</param>
     /// <param name="prefixParameters">Parameters to create cache key prefix</param>
     /// <returns>A task that represents the asynchronous operation</returns>
-    public abstract Task RemoveByPrefixAsync(string prefix, params object[] prefixParameters);
+    public abstract Task RemoveByPrefixAsync(string prefix, params object[] prefixParameters)
 
     /// <summary>
     /// Clear all cache data
     /// </summary>
     /// <returns>A task that represents the asynchronous operation</returns>
-    public abstract Task ClearAsync();
+    public abstract Task ClearAsync()
 
     /// <summary>Performs application-defined tasks associated with freeing, releasing, or resetting unmanaged resources.</summary>
     public virtual void Dispose()
-        GC.SuppressFinalize(this);
+        GC.SuppressFinalize(this)
 
     #endregion

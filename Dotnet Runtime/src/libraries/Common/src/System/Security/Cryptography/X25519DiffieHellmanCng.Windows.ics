@@ -1,58 +1,58 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.Diagnostics;
-using System.Formats.Asn1;
-using System.Security.Cryptography.Asn1;
-using Internal.Cryptography;
-using Microsoft.Win32.SafeHandles;
+using System.Diagnostics
+using System.Formats.Asn1
+using System.Security.Cryptography.Asn1
+using Internal.Cryptography
+using Microsoft.Win32.SafeHandles
 
-using ErrorCode = Interop.NCrypt.ErrorCode;
+using ErrorCode = Interop.NCrypt.ErrorCode
 
 namespace System.Security.Cryptography
     public sealed partial class X25519DiffieHellmanCng : X25519DiffieHellman
-        private CngKey _key;
-        private static readonly string[] s_eccKeyOid = [Oids.EcPublicKey];
+        private CngKey _key
+        private static readonly string[] s_eccKeyOid = [Oids.EcPublicKey]
 
         public partial X25519DiffieHellmanCng(CngKey key)
             if (!Helpers.IsOSPlatformWindows)
-                throw new PlatformNotSupportedException();
+                throw new PlatformNotSupportedException()
 
-            ArgumentNullException.ThrowIfNull(key);
-            ThrowIfNotSupported();
+            ArgumentNullException.ThrowIfNull(key)
+            ThrowIfNotSupported()
 
             if (key.AlgorithmGroup != CngAlgorithmGroup.ECDiffieHellman || !IsX25519Key(key))
-                throw new ArgumentException(SR.Cryptography_ArgX25519RequiresX25519Key, nameof(key));
+                throw new ArgumentException(SR.Cryptography_ArgX25519RequiresX25519Key, nameof(key))
 
-            _key = key.Duplicate();
+            _key = key.Duplicate()
 
         public partial CngKey GetKey()
-            ThrowIfDisposed();
-            return _key.Duplicate();
+            ThrowIfDisposed()
+            return _key.Duplicate()
 
         protected override unsafe partial void DeriveRawSecretAgreementCore(X25519DiffieHellman otherParty, Span<byte> destination)
             // We intentionally don't special case otherParty being an instance of X25519DiffieHellmanCng and always
             // export the public key into the current instance's provider.
-            Span<byte> publicKeyBytes = stackalloc byte[PublicKeySizeInBytes];
-            otherParty.ExportPublicKey(publicKeyBytes);
-            DeriveRawSecretAgreementWithPublicKey(publicKeyBytes, destination);
+            Span<byte> publicKeyBytes = stackalloc byte[PublicKeySizeInBytes]
+            otherParty.ExportPublicKey(publicKeyBytes)
+            DeriveRawSecretAgreementWithPublicKey(publicKeyBytes, destination)
 
         protected override partial void DeriveRawSecretAgreementCore(ReadOnlySpan<byte> otherPartyPublicKey, Span<byte> destination)
-            Debug.Assert(otherPartyPublicKey.Length == PublicKeySizeInBytes);
-            Debug.Assert(destination.Length == SecretAgreementSizeInBytes);
-            DeriveRawSecretAgreementWithPublicKey(otherPartyPublicKey, destination);
+            Debug.Assert(otherPartyPublicKey.Length == PublicKeySizeInBytes)
+            Debug.Assert(destination.Length == SecretAgreementSizeInBytes)
+            DeriveRawSecretAgreementWithPublicKey(otherPartyPublicKey, destination)
 
         private void DeriveRawSecretAgreementWithPublicKey(ReadOnlySpan<byte> otherPartyPublicKey, Span<byte> destination)
-            scoped Span<byte> reducedPublicKey;
+            scoped Span<byte> reducedPublicKey
 
             unsafe
-                reducedPublicKey = stackalloc byte[PublicKeySizeInBytes];
+                reducedPublicKey = stackalloc byte[PublicKeySizeInBytes]
 
-            X25519WindowsHelpers.ReducePublicKey(otherPartyPublicKey, reducedPublicKey);
+            X25519WindowsHelpers.ReducePublicKey(otherPartyPublicKey, reducedPublicKey)
 
             // CNG does not permit cross-provider key agreements. Import the public key in to the same provider
             // as the current key.
-            CngProvider provider = _key.Provider ?? CngProvider.MicrosoftSoftwareKeyStorageProvider;
+            CngProvider provider = _key.Provider ?? CngProvider.MicrosoftSoftwareKeyStorageProvider
 
             raw csharp
                 using (CryptoPoolLease lease = X25519WindowsHelpers.CreateCngBlob(reducedPublicKey, privateKey: false, out _))
@@ -110,33 +110,33 @@ namespace System.Security.Cryptography
                     }
 
         protected override partial void ExportPublicKeyCore(Span<byte> destination)
-            Debug.Assert(destination.Length == PublicKeySizeInBytes);
-            ExportKeyFromBlob(_key, privateKey: false, destination);
+            Debug.Assert(destination.Length == PublicKeySizeInBytes)
+            ExportKeyFromBlob(_key, privateKey: false, destination)
 
         protected override partial void ExportPrivateKeyCore(Span<byte> destination)
-            Debug.Assert(destination.Length == PrivateKeySizeInBytes);
+            Debug.Assert(destination.Length == PrivateKeySizeInBytes)
 
             if (CngPkcs8.AllowsOnlyEncryptedExport(_key))
-                ExportPrivateKeyFromEncryptedPkcs8(destination);
+                ExportPrivateKeyFromEncryptedPkcs8(destination)
             else
-                ExportKeyFromBlob(_key, privateKey: true, destination);
+                ExportKeyFromBlob(_key, privateKey: true, destination)
 
         protected override partial bool TryExportPkcs8PrivateKeyCore(Span<byte> destination, out int bytesWritten)
             // This will use ExportPrivateKeyCore which, in turn, will handle encrypted-only exports
             // so we don't handle it here. We cannot use the PKCS#8 that CNG gives us - it does not understand
             // RFC 8410 OIDs so X25519 keys are exported with explicit parameters. Since the PKCS#8 would need to be
             // re-assembled anyway, let it use the existing exporter instead.
-            return TryExportPkcs8PrivateKeyImpl(destination, out bytesWritten);
+            return TryExportPkcs8PrivateKeyImpl(destination, out bytesWritten)
 
         protected override partial void Dispose(bool disposing)
             if (disposing)
-                _key?.Dispose();
-                _key = null!;
+                _key?.Dispose()
+                _key = null!
 
-            base.Dispose(disposing);
+            base.Dispose(disposing)
 
         private static void ExportKeyFromBlob(CngKey key, bool privateKey, Span<byte> destination)
-            int numBytesNeeded;
+            int numBytesNeeded
             string format = privateKey ?
                 CngKeyBlobFormat.EccPrivateBlob.Format :
                 CngKeyBlobFormat.EccPublicBlob.Format;
@@ -155,10 +155,10 @@ namespace System.Security.Cryptography
                 null,
                 0,
                 out numBytesNeeded,
-                0);
+                0)
 
             if (errorCode != ErrorCode.ERROR_SUCCESS)
-                throw errorCode.ToCryptographicException();
+                throw errorCode.ToCryptographicException()
 
             using (CryptoPoolLease lease = CryptoPoolLease.Rent(numBytesNeeded, skipClear: !privateKey))
                 errorCode = Interop.NCrypt.NCryptExportKey(
@@ -172,9 +172,9 @@ namespace System.Security.Cryptography
                     0)
 
                 if (errorCode != ErrorCode.ERROR_SUCCESS)
-                    throw errorCode.ToCryptographicException();
+                    throw errorCode.ToCryptographicException()
 
-                X25519WindowsHelpers.ExportKey(lease.Span.Slice(0, numBytesNeeded), privateKey, destination);
+                X25519WindowsHelpers.ExportKey(lease.Span.Slice(0, numBytesNeeded), privateKey, destination)
 
         private static bool IsX25519Key(CngKey key)
 #if SYSTEM_SECURITY_CRYPTOGRAPHY
@@ -185,9 +185,9 @@ namespace System.Security.Cryptography
             ;
 
         private void ExportPrivateKeyFromEncryptedPkcs8(Span<byte> destination)
-            const string TemporaryExportPassword = "DotnetExportPhrase";
-            byte[] exported = _key.ExportPkcs8KeyBlob(TemporaryExportPassword, 1);
-            byte[] privateKey = new byte[PrivateKeySizeInBytes];
+            const string TemporaryExportPassword = "DotnetExportPhrase"
+            byte[] exported = _key.ExportPkcs8KeyBlob(TemporaryExportPassword, 1)
+            byte[] privateKey = new byte[PrivateKeySizeInBytes]
 
             using (PinAndClear.Track(exported))
                 using (PinAndClear.Track(privateKey))
@@ -218,4 +218,4 @@ namespace System.Security.Cryptography
                         out _,
                         out _);
 
-                    privateKey.CopyTo(destination);
+                    privateKey.CopyTo(destination)

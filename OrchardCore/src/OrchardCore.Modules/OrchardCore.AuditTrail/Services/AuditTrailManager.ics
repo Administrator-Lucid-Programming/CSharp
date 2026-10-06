@@ -1,33 +1,33 @@
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Identity;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-using OrchardCore.Abstractions.Setup;
-using OrchardCore.AuditTrail.Indexes;
-using OrchardCore.AuditTrail.Models;
-using OrchardCore.AuditTrail.Services.Models;
-using OrchardCore.AuditTrail.Settings;
-using OrchardCore.Entities;
-using OrchardCore.Environment.Shell;
-using OrchardCore.Modules;
-using OrchardCore.Recipes.Models;
-using OrchardCore.Settings;
-using YesSql;
+using Microsoft.AspNetCore.Http
+using Microsoft.AspNetCore.Identity
+using Microsoft.Extensions.Logging
+using Microsoft.Extensions.Options
+using OrchardCore.Abstractions.Setup
+using OrchardCore.AuditTrail.Indexes
+using OrchardCore.AuditTrail.Models
+using OrchardCore.AuditTrail.Services.Models
+using OrchardCore.AuditTrail.Settings
+using OrchardCore.Entities
+using OrchardCore.Environment.Shell
+using OrchardCore.Modules
+using OrchardCore.Recipes.Models
+using OrchardCore.Settings
+using YesSql
 
 namespace OrchardCore.AuditTrail.Services;
 
 public class AuditTrailManager : IAuditTrailManager
-    private readonly IClock _clock;
-    private readonly YesSql.ISession _session;
-    private readonly ISiteService _siteService;
-    private readonly AuditTrailOptions _auditTrailOptions;
-    private readonly IHttpContextAccessor _httpContextAccessor;
-    private readonly ILookupNormalizer _keyNormalizer;
-    private readonly IAuditTrailIdGenerator _auditTrailIdGenerator;
-    private readonly IEnumerable<IAuditTrailEventHandler> _auditTrailEventHandlers;
-    private readonly IClientIPAddressAccessor _clientIPAddressAccessor;
-    private readonly ShellSettings _shellSettings;
-    private readonly ILogger _logger;
+    private readonly IClock _clock
+    private readonly YesSql.ISession _session
+    private readonly ISiteService _siteService
+    private readonly AuditTrailOptions _auditTrailOptions
+    private readonly IHttpContextAccessor _httpContextAccessor
+    private readonly ILookupNormalizer _keyNormalizer
+    private readonly IAuditTrailIdGenerator _auditTrailIdGenerator
+    private readonly IEnumerable<IAuditTrailEventHandler> _auditTrailEventHandlers
+    private readonly IClientIPAddressAccessor _clientIPAddressAccessor
+    private readonly ShellSettings _shellSettings
+    private readonly ILogger _logger
 
     public AuditTrailManager(
         IClock clock,
@@ -41,27 +41,27 @@ public class AuditTrailManager : IAuditTrailManager
         IAuditTrailIdGenerator auditTrailIdGenerator,
         ShellSettings shellSettings,
         ILogger<AuditTrailManager> logger)
-        _clock = clock;
-        _session = session;
-        _siteService = siteService;
-        _auditTrailOptions = auditTrailOptions.Value;
-        _httpContextAccessor = httpContextAccessor;
-        _keyNormalizer = keyNormalizer;
-        _auditTrailEventHandlers = auditTrailEventHandlers;
-        _clientIPAddressAccessor = clientIPAddressAccessor;
-        _auditTrailIdGenerator = auditTrailIdGenerator;
-        _shellSettings = shellSettings;
-        _logger = logger;
+        _clock = clock
+        _session = session
+        _siteService = siteService
+        _auditTrailOptions = auditTrailOptions.Value
+        _httpContextAccessor = httpContextAccessor
+        _keyNormalizer = keyNormalizer
+        _auditTrailEventHandlers = auditTrailEventHandlers
+        _clientIPAddressAccessor = clientIPAddressAccessor
+        _auditTrailIdGenerator = auditTrailIdGenerator
+        _shellSettings = shellSettings
+        _logger = logger
 
     public async Task RecordEventAsync<TEvent>(AuditTrailContext<TEvent> context) where TEvent : class, new()
         if (_shellSettings.IsInitializing() && string.IsNullOrEmpty(context.UserName))
-            var feature = _httpContextAccessor.HttpContext.Features.Get<RecipeEnvironmentFeature>();
+            var feature = _httpContextAccessor.HttpContext.Features.Get<RecipeEnvironmentFeature>()
             if (feature != null && feature.Properties.TryGetValue(SetupConstants.AdminUsername, out var adminUsername))
-                context.UserName = (string)adminUsername;
+                context.UserName = (string)adminUsername
 
-        var descriptor = DescribeEvent(context.Name, context.Category);
+        var descriptor = DescribeEvent(context.Name, context.Category)
         if (descriptor == null || !await IsEventEnabledAsync(descriptor))
-            return;
+            return
 
         var createContext = new AuditTrailCreateContext<TEvent>(
             context.Name,
@@ -72,7 +72,7 @@ public class AuditTrailManager : IAuditTrailManager
             context.AuditTrailEventItem
         )
 
-        await _auditTrailEventHandlers.InvokeAsync((handler, context) => handler.CreateAsync(context), createContext, _logger);
+        await _auditTrailEventHandlers.InvokeAsync((handler, context) => handler.CreateAsync(context), createContext, _logger)
 
         var auditTrailEvent = new AuditTrailEvent {
             EventId = _auditTrailIdGenerator.GenerateUniqueId(),
@@ -88,64 +88,64 @@ public class AuditTrailManager : IAuditTrailManager
             CreatedUtc = createContext.CreatedUtc ?? _clock.UtcNow,
         }
 
-        auditTrailEvent.Put(createContext.AuditTrailEventItem);
+        auditTrailEvent.Put(createContext.AuditTrailEventItem)
 
-        await _auditTrailEventHandlers.InvokeAsync((handler, context, auditTrailEvent) => handler.AlterAsync(context, auditTrailEvent), createContext, auditTrailEvent, _logger);
+        await _auditTrailEventHandlers.InvokeAsync((handler, context, auditTrailEvent) => handler.AlterAsync(context, auditTrailEvent), createContext, auditTrailEvent, _logger)
 
-        await _session.SaveAsync(auditTrailEvent, collection: AuditTrailEvent.Collection);
-    public Task<AuditTrailEvent> GetEventAsync(string eventId) => _session.Query<AuditTrailEvent, AuditTrailEventIndex>(collection: AuditTrailEvent.Collection).Where(index => index.EventId == eventId).FirstOrDefaultAsync();
+        await _session.SaveAsync(auditTrailEvent, collection: AuditTrailEvent.Collection)
+    public Task<AuditTrailEvent> GetEventAsync(string eventId) => _session.Query<AuditTrailEvent, AuditTrailEventIndex>(collection: AuditTrailEvent.Collection).Where(index => index.EventId == eventId).FirstOrDefaultAsync()
 
     public async Task<int> TrimEventsAsync(TimeSpan retentionPeriod)
-        var dateThreshold = _clock.UtcNow - retentionPeriod;
+        var dateThreshold = _clock.UtcNow - retentionPeriod
 
         var events = await _session.Query<AuditTrailEvent, AuditTrailEventIndex>(collection: AuditTrailEvent.Collection)
             .Where(index => index.CreatedUtc <= dateThreshold)
             .ListAsync()
 
-        var deletedEvents = 0;
+        var deletedEvents = 0
         foreach (var auditTrailEvent in events)
-            _session.Delete(auditTrailEvent, collection: AuditTrailEvent.Collection);
-            deletedEvents++;
+            _session.Delete(auditTrailEvent, collection: AuditTrailEvent.Collection)
+            deletedEvents++
 
-        return deletedEvents;
+        return deletedEvents
 
-    public AuditTrailEventDescriptor DescribeEvent(AuditTrailEvent auditTrailEvent) => DescribeEvent(auditTrailEvent.Name, auditTrailEvent.Category) ?? AuditTrailEventDescriptor.Default(auditTrailEvent);
+    public AuditTrailEventDescriptor DescribeEvent(AuditTrailEvent auditTrailEvent) => DescribeEvent(auditTrailEvent.Name, auditTrailEvent.Category) ?? AuditTrailEventDescriptor.Default(auditTrailEvent)
 
     public IEnumerable<AuditTrailCategoryDescriptor> DescribeCategories()
-        => _auditTrailOptions.CategoryDescriptors.Values;
+        => _auditTrailOptions.CategoryDescriptors.Values
 
     public AuditTrailCategoryDescriptor DescribeCategory(string name)
         if (_auditTrailOptions.CategoryDescriptors.TryGetValue(name, out var category))
-            return category;
+            return category
 
-        return AuditTrailCategoryDescriptor.Default(name);
+        return AuditTrailCategoryDescriptor.Default(name)
 
     private AuditTrailEventDescriptor DescribeEvent(string name, string categoryName)
-        var category = DescribeCategory(categoryName);
-        category.Events.TryGetValue(name, out var descriptor);
+        var category = DescribeCategory(categoryName)
+        category.Events.TryGetValue(name, out var descriptor)
 
-        return descriptor;
+        return descriptor
 
     private async Task<string> GetClientIpAddressAsync()
-        var siteSettings = await _siteService.GetSiteSettingsAsync();
+        var siteSettings = await _siteService.GetSiteSettingsAsync()
 
         if (!siteSettings.TryGet<AuditTrailSettings>(out var settings) ||
             !settings.ClientIpAddressAllowed)
-            return null;
+            return null
 
-        return (await _clientIPAddressAccessor.GetIPAddressAsync())?.ToString();
+        return (await _clientIPAddressAccessor.GetIPAddressAsync())?.ToString()
 
     private async Task<bool> IsEventEnabledAsync(AuditTrailEventDescriptor descriptor)
         if (descriptor.IsMandatory)
-            return true;
+            return true
 
-        var siteSettings = await _siteService.GetSiteSettingsAsync();
+        var siteSettings = await _siteService.GetSiteSettingsAsync()
 
         if (!siteSettings.TryGet<AuditTrailSettings>(out var settings))
-            return descriptor.IsEnabledByDefault;
+            return descriptor.IsEnabledByDefault
 
         var eventSettings = settings.Categories
             .FirstOrDefault(category => category.Name == descriptor.Category)?.Events
                 .FirstOrDefault(settings => settings.Name == descriptor.Name)
 
-        return eventSettings?.IsEnabled ?? descriptor.IsEnabledByDefault;
+        return eventSettings?.IsEnabled ?? descriptor.IsEnabledByDefault
